@@ -1,0 +1,121 @@
+/* ---------- Paleta WaveDrop ---------- */
+:root {
+  --fondo: #0a0f14;
+  --panel: #0d141b;
+  --tarjeta: #111a22;
+  --tarjeta-2: #15212b;
+  --borde: #1c2a35;
+  --borde-fuerte: #27394a;
+  --texto: #e6edf3;
+  --tenue: #8193a3;
+  --cian: #22d3ee;
+  --azul: #3b82f6;
+  --verde: #34d399;
+  --rojo: #f87171;
+  --radio: 14px;
+  --nav: 64px;
+  --mini: 68px;
+  --seguro-abajo: env(safe-area-inset-bottom, 0px);
+  --seguro-arriba: env(safe-area-inset-top, 0px);
+  --curva: cubic-bezier(0.22, 1, 0.36, 1);
+  --margen: 18px;
+  --lateral: 0px;
+  color-scheme: dark;
+}
+
+* { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+
+html, body {
+  margin: 0;
+  height: 100%;
+  background: var(--fondo);
+  color: var(--texto);
+  font-family: "Inter", system-ui, Roboto, "Segoe UI", sans-serif;
+  font-size: 15px;
+  -webkit-font-smoothing: antialiased;
+  overscroll-behavior: none;
+}
+
+button { font: inherit; color: inherit; background: none; border: 0; padding: 0; cursor: pointer; }
+input { font: inherit; color: inherit; }
+img { display: block; }
+
+/* Texto que se corta con "…" */
+.cortar { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.tenue { color: var(--tenue); }
+
+/* ---------- Botones ---------- */
+.pildora {
+  display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+  height: 48px; padding: 0 22px; border-radius: 999px; font-weight: 700; font-size: 16px;
+  transition: transform 0.15s var(--curva), background 0.2s;
+}
+.pildora:active { transform: scale(0.96); }
+.pildora.clara { background: var(--texto); color: #04121a; }
+.pildora.oscura { background: rgba(255, 255, 255, 0.1); }
+.pildora.cian { background: var(--cian); color: #04121a; }
+
+.redondo {
+  width: 44px; height: 44px; border-radius: 50%; display: grid; place-items: center;
+  transition: background 0.2s, transform 0.15s var(--curva);
+}
+.redondo:active { transform: scale(0.9); background: rgba(255, 255, 255, 0.08); }
+.redondo.relleno { background: rgba(255, 255, 255, 0.09); }
+
+.chip {
+  height: 38px; padding: 0 18px; border-radius: 999px; background: var(--tarjeta-2);
+  font-weight: 600; white-space: nowrap; transition: background 0.25s, color 0.25s;
+}
+.chip.activo { background: var(--texto); color: #04121a; }
+
+/* ---------- Secciones ---------- */
+.titulo-vista { font-size: 30px; font-weight: 800; margin: 0; letter-spacing: -0.5px; }
+.titulo-seccion {
+  display: flex; align-items: baseline; justify-content: space-between;
+  font-size: 20px; font-weight: 800; margin: 26px 0 12px; letter-spacing: -0.3px;
+}
+.titulo-seccion small { font-size: 14px; font-weight: 600; color: var(--tenue); }
+.carrusel {
+  display: flex; gap: 14px; overflow-x: auto; scroll-snap-type: x mandatory;
+  margin: 0 -18px; padding: 0 18px 4px; scrollbar-width: none;
+}
+.carrusel::-webkit-scrollbar { display: none; }
+.carrusel > * { scroll-snap-align: start; flex-shrink: 0; }
+.vacio { color: var(--tenue); text-align: center; padding: 48px 24px; line-height: 1.5; }
+
+/* Esqueleto mientras carga */
+.cargando-bloque {
+  background: linear-gradient(90deg, var(--tarjeta) 25%, var(--tarjeta-2) 50%, var(--tarjeta) 75%);
+  background-size: 200% 100%; animation: brillo 1.3s infinite; border-radius: 10px;
+}
+@keyframes brillo { to { background-position: -200% 0; } }
+
+/* ---------- Pantalla ancha (escritorio / tablet) ---------- */
+@media (min-width: 900px) {
+  :root { --nav: 0px; --lateral: 248px; --mini: 84px; --margen: 36px; }
+  .titulo-vista { font-size: 34px; }
+  .carrusel { margin: 0 calc(-1 * var(--margen)); padding: 0 var(--margen) 6px; gap: 18px; }
+  /* Las vistas se centran con un ancho máximo cómodo de leer */
+  main > div { max-width: 1280px; margin: 0 auto; }
+  main .rejilla { grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)) !important; gap: 24px 20px !important; }
+}
+
+/* ---------- Transiciones entre vistas (View Transitions API) ---------- */
+::view-transition-old(contenido), ::view-transition-new(contenido) {
+  animation-duration: 0.32s; animation-timing-function: var(--curva);
+}
+:root[data-dir="adelante"]::view-transition-old(contenido) { animation-name: salir-izq; }
+:root[data-dir="adelante"]::view-transition-new(contenido) { animation-name: entrar-der; }
+:root[data-dir="atras"]::view-transition-old(contenido) { animation-name: salir-der; }
+:root[data-dir="atras"]::view-transition-new(contenido) { animation-name: entrar-izq; }
+:root[data-dir="lado"]::view-transition-old(contenido) { animation-name: desvanecer; }
+:root[data-dir="lado"]::view-transition-new(contenido) { animation-name: aparecer; }
+@keyframes salir-izq { to { transform: translateX(-18%); opacity: 0; } }
+@keyframes entrar-der { from { transform: translateX(28%); opacity: 0; } }
+@keyframes salir-der { to { transform: translateX(28%); opacity: 0; } }
+@keyframes entrar-izq { from { transform: translateX(-18%); opacity: 0; } }
+@keyframes desvanecer { to { opacity: 0; transform: scale(0.985); } }
+@keyframes aparecer { from { opacity: 0; transform: scale(1.015); } }
+@media (prefers-reduced-motion: reduce) {
+  ::view-transition-old(contenido), ::view-transition-new(contenido) { animation: none; }
+}

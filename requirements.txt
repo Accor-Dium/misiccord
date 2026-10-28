@@ -1,0 +1,5 @@
+yt-dlp[default]
+PySide6-Essentials
+PySide6-Addons
+ytmusicapi
+pyinstaller

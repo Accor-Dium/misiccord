@@ -1,0 +1,104 @@
+# =============================================
+#  Python - App de escritorio (raíz del repo)
+# =============================================
+
+# Entorno virtual
+venv/
+.venv/
+env/
+.env/
+
+# Cache de Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.Python
+
+# Distribución / builds (PyInstaller / py2exe / etc.)
+build/
+dist/
+*.spec
+# Excepción: el .spec con la config del proyecto SÍ vale la pena rastrear
+!DescargadorPlaylists.spec
+
+# Logs y bases de datos locales
+*.log
+*.db
+*.sqlite3
+
+# Variables de entorno
+.env
+.env.*
+
+# MyPy / type checkers
+.mypy_cache/
+.dmypy.json
+.pyre/
+
+# Pytest
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Distribución de paquetes Python
+*.egg-info/
+.eggs/
+pip-wheel-metadata/
+
+# =============================================
+#  Instalador (Inno Setup output)
+# =============================================
+instalador/
+# Si quieres rastrear el script .iss pero no el exe generado:
+# instalador/*.exe  <-- alternativa más fina
+
+# =============================================
+#  wavedrop-movil  (Tauri + Vite + Node)
+# =============================================
+
+# Dependencias de Node
+wavedrop-movil/node_modules/
+
+# Build de Vite
+wavedrop-movil/dist/
+wavedrop-movil/dist-ssr/
+
+# Variables de entorno locales de Vite
+wavedrop-movil/*.local
+
+# Compilados de Rust / Tauri
+wavedrop-movil/src-tauri/target/
+
+# Schemas generados por Tauri (capabilities auto-complete)
+wavedrop-movil/src-tauri/gen/schemas/
+
+# APK generado (archivo binario pesado)
+wavedrop-movil/*.apk
+wavedrop-movil/WaveDrop-arm64.apk
+
+# Logs de Node
+wavedrop-movil/logs/
+wavedrop-movil/*.log
+wavedrop-movil/npm-debug.log*
+wavedrop-movil/yarn-debug.log*
+wavedrop-movil/yarn-error.log*
+wavedrop-movil/pnpm-debug.log*
+
+# Editor
+wavedrop-movil/.vscode/*
+!wavedrop-movil/.vscode/extensions.json
+wavedrop-movil/.idea/
+
+# =============================================
+#  Editores / OS (globales)
+# =============================================
+.DS_Store
+Thumbs.db
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+.idea/
+.vscode/
