@@ -8,6 +8,7 @@ emitir(tipo, datos), que en Android llama a emisor.emitir(json) y llega a la int
 """
 import hashlib
 import json
+import os
 import threading
 import time
 import traceback
@@ -144,7 +145,7 @@ def iniciar(d: dict) -> dict:
 
 def _escanear():
     try:
-        nuevas, quitadas = _db().escanear()
+        nuevas, quitadas = _db().escanear(progreso=lambda n: emitir("escaneo", {"revisadas": n}))
         emitir("biblioteca", {"nuevas": nuevas, "quitadas": quitadas, "total": _db().total()})
     except Exception as e:
         emitir("error", {"donde": "escaneo", "mensaje": str(e)})
@@ -261,12 +262,57 @@ def artista(d: dict) -> dict:
 
 def biblioteca_(d: dict) -> dict:
     db = _db()
+    carpeta = d.get("carpeta", "")  # "" = toda la biblioteca
     return {
-        "canciones": [_local(c) for c in db.canciones(d.get("q", ""))],
-        "albumes": [_album_local(a) for a in db.albumes()],
-        "artistas": [{"nombre": n, "canciones": k} for n, k in db.artistas()],
+        "canciones": [_local(c) for c in db.canciones(d.get("q", ""), carpeta)],
+        "albumes": [_album_local(a) for a in db.albumes(carpeta)],
+        "artistas": [{"nombre": n, "canciones": k} for n, k in db.artistas(carpeta)],
         "playlists": [{"id": i, "nombre": n, "canciones": k} for i, n, k in db.playlists()],
     }
+
+
+def carpetas_biblioteca(d: dict) -> dict:
+    """Carpetas que Misiccord escucha para armar la biblioteca (con sus subcarpetas)."""
+    descargas_ = plataforma.carpeta_musica()
+    cuentas = _db().canciones_por_carpeta()
+    return {"carpetas": [{"ruta": r, "canciones": n, "existe": Path(r).is_dir(), "descargas": Path(r) == descargas_}
+                         for r, n in cuentas.items()],
+            "android": plataforma.es_android()}
+
+
+def agregar_carpeta_biblioteca(d: dict) -> dict:
+    """Suma una carpeta de música que ya tienes (solo lectura: no hace falta poder escribir en ella)."""
+    ruta = Path(d["ruta"])
+    if not ruta.is_dir():
+        raise RuntimeError("Esa carpeta no existe")
+    try:
+        next(os.scandir(ruta), None)
+    except OSError as e:
+        raise RuntimeError(f"No se puede leer esa carpeta ({e.strerror or e})") from e
+    _db().agregar_carpeta(ruta)
+    threading.Thread(target=_escanear, daemon=True).start()
+    return carpetas_biblioteca({})
+
+
+def quitar_carpeta_biblioteca(d: dict) -> dict:
+    """Deja de escuchar una carpeta: las canciones salen de la biblioteca, los archivos no se tocan."""
+    ruta = Path(d["ruta"])
+    if ruta == plataforma.carpeta_musica():
+        raise RuntimeError("Esa es la carpeta de descargas; cámbiala en Ajustes")
+    _db().quitar_carpeta(ruta)
+    emitir("biblioteca", {"nuevas": 0, "quitadas": 0, "total": _db().total()})
+    return carpetas_biblioteca({})
+
+
+def subcarpetas(d: dict) -> dict:
+    """Para el selector de carpetas de Android (el selector del sistema no sirve para rutas reales)."""
+    ruta = Path(d.get("ruta") or "/storage/emulated/0")
+    try:
+        hijas = sorted((p for p in ruta.iterdir() if p.is_dir() and not p.name.startswith(".")), key=lambda p: p.name.lower())
+    except OSError as e:
+        raise RuntimeError(f"No se puede abrir esa carpeta ({e.strerror or e})") from e
+    return {"ruta": str(ruta), "padre": str(ruta.parent) if ruta.parent != ruta else None,
+            "carpetas": [{"nombre": p.name, "ruta": str(p)} for p in hijas]}
 
 
 def album_local(d: dict) -> dict:
@@ -581,6 +627,8 @@ FUNCIONES = {
     "inicio": inicio, "recomendaciones": recomendaciones,
     "buscar": buscar, "album": album, "artista": artista,
     "biblioteca": biblioteca_, "album_local": album_local, "artista_local": artista_local,
+    "carpetas_biblioteca": carpetas_biblioteca, "agregar_carpeta_biblioteca": agregar_carpeta_biblioteca,
+    "quitar_carpeta_biblioteca": quitar_carpeta_biblioteca, "subcarpetas": subcarpetas,
     "playlist": playlist, "crear_playlist": crear_playlist, "agregar_a_playlist": agregar_a_playlist,
     "quitar_de_playlist": quitar_de_playlist, "borrar_playlist": borrar_playlist,
     "eliminar_canciones": eliminar_canciones,

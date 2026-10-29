@@ -187,6 +187,17 @@ class Biblioteca:
     def agregar_carpeta(self, ruta: Path):
         self._w("INSERT OR IGNORE INTO carpetas(ruta) VALUES (?)", (str(Path(ruta)),))
 
+    def canciones_por_carpeta(self) -> dict[str, int]:
+        """Cuántas canciones hay dentro de cada carpeta registrada (incluye subcarpetas)."""
+        carpetas = [str(c) for c in self.carpetas()]
+        prefijos = {c: c.rstrip("\\/") + os.sep for c in carpetas}
+        cuenta = dict.fromkeys(carpetas, 0)
+        for r in self._q("SELECT ruta FROM canciones"):
+            for c, p in prefijos.items():
+                if r["ruta"].startswith(p):
+                    cuenta[c] += 1
+        return cuenta
+
     def quitar_carpeta(self, ruta: Path):
         prefijo = str(Path(ruta)).rstrip("\\/") + os.sep
         with self.candado:
@@ -251,12 +262,20 @@ class Biblioteca:
             self.con.commit()
         return nuevas, len(quitadas)
 
-    def canciones(self, texto: str = "") -> list[Cancion]:
-        sql = "SELECT * FROM canciones"
-        params: tuple = ()
+    @staticmethod
+    def _en_carpeta(carpeta: str) -> tuple[str, tuple]:
+        """Condición SQL para limitar a una carpeta registrada y sus subcarpetas ("" = todas)."""
+        if not carpeta:
+            return "1", ()
+        prefijo = carpeta.rstrip("\\/") + os.sep
+        return "substr(ruta, 1, ?) = ?", (len(prefijo), prefijo)
+
+    def canciones(self, texto: str = "", carpeta: str = "") -> list[Cancion]:
+        donde, params = self._en_carpeta(carpeta)
+        sql = f"SELECT * FROM canciones WHERE {donde}"
         if texto:
-            sql += " WHERE titulo LIKE ? OR artista LIKE ? OR album LIKE ?"
-            params = (f"%{texto}%",) * 3
+            sql += " AND (titulo LIKE ? OR artista LIKE ? OR album LIKE ?)"
+            params += (f"%{texto}%",) * 3
         sql += " ORDER BY artista COLLATE NOCASE, album COLLATE NOCASE, pista, titulo COLLATE NOCASE"
         return [self._cancion(r) for r in self._q(sql, params)]
 
@@ -292,15 +311,16 @@ class Biblioteca:
 
     # --- Álbumes y artistas ---
 
-    def albumes(self) -> list[Album]:
+    def albumes(self, carpeta: str = "") -> list[Album]:
         """Agrupa por álbum + artista del álbum (si el archivo no lo trae, solo por nombre de álbum)."""
+        donde, params = self._en_carpeta(carpeta)
         filas = self._q(
-            """SELECT album, COALESCE(artista_album, '') AS grupo, MIN(artista_ppal) AS ppal, MAX(anio) AS anio,
+            f"""SELECT album, COALESCE(artista_album, '') AS grupo, MIN(artista_ppal) AS ppal, MAX(anio) AS anio,
                       COUNT(*) AS n, MIN(ruta) AS ruta
-               FROM canciones WHERE album != ''
+               FROM canciones WHERE album != '' AND {donde}
                GROUP BY album COLLATE NOCASE, COALESCE(artista_album, '') COLLATE NOCASE
                ORDER BY COALESCE(NULLIF(artista_album, ''), MIN(artista_ppal)) COLLATE NOCASE, anio,
-                        album COLLATE NOCASE""")
+                        album COLLATE NOCASE""", params)
         return [Album(r["album"], r["grupo"] or r["ppal"] or "", r["anio"] or "", r["n"], Path(r["ruta"]), r["grupo"])
                 for r in filas]
 
@@ -309,10 +329,11 @@ class Biblioteca:
             """SELECT * FROM canciones WHERE album = ? COLLATE NOCASE AND COALESCE(artista_album, '') = ? COLLATE NOCASE
                ORDER BY pista, titulo COLLATE NOCASE""", (album.nombre, album.grupo))]
 
-    def artistas(self) -> list[tuple[str, int]]:
+    def artistas(self, carpeta: str = "") -> list[tuple[str, int]]:
+        donde, params = self._en_carpeta(carpeta)
         return [(r["a"], r["n"]) for r in self._q(
-            """SELECT artista_ppal AS a, COUNT(*) AS n FROM canciones WHERE artista_ppal != ''
-               GROUP BY artista_ppal COLLATE NOCASE ORDER BY artista_ppal COLLATE NOCASE""")]
+            f"""SELECT artista_ppal AS a, COUNT(*) AS n FROM canciones WHERE artista_ppal != '' AND {donde}
+               GROUP BY artista_ppal COLLATE NOCASE ORDER BY artista_ppal COLLATE NOCASE""", params)]
 
     def canciones_de_artista(self, artista: str) -> list[Cancion]:
         return [self._cancion(r) for r in self._q(
