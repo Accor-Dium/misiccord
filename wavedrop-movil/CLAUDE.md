@@ -12,7 +12,7 @@ documentada abajo; si algo no está documentado, pregunta antes de "arreglarlo".
 
 ---
 
-## Estado del proyecto (al 29 de octubre de 2026 · versión publicada: **1.0.7**)
+## Estado del proyecto (al 29 de octubre de 2026 · versión publicada: **1.0.8**)
 
 Resumen para que no tengas que leer todo el código. Actualiza esta sección cuando publiques una versión.
 
@@ -46,13 +46,14 @@ Resumen para que no tengas que leer todo el código. Actualiza esta sección cua
 | 1.0.5 | Streaming progresivo real (cliente `android_music` sin JS: de ~11 s a ~2 s en el cel) y precarga, YouTube en jams al instante, buscador en Inicio. |
 | 1.0.6 | Links de jam (`https://accor-dium.github.io/misiccord/jam/#…` → `misiccord://`), el QR usa ese link, avisos si un jam no responde. |
 | 1.0.7 | Videos musicales (ver y descargar, opcional) y biblioteca por carpetas (de Omar). |
+| 1.0.8 | Info y edición de etiquetas/carátula, letras con traducción y romanización, estadísticas, Me gusta, ordenar biblioteca, ecualizador, pregunta al reproducir en un jam, mantener para agregar a la cola, descargas en segundo plano en Android (de Omar). |
 
 ### Qué está probado y dónde
 - **En dispositivos reales** (lo probó quien administra el proyecto): app de Windows, Android en varios teléfonos (Samsung S25 Ultra, Pixel 7 Pro…),
   jams en red local, escáner QR, jam por internet abierto desde el cel.
 - **Solo en el emulador o con scripts**: controles de reloj (con `cmd media_session dispatch`), links en Android, eliminar canciones,
   tiempos de streaming, streaming progresivo (en Chromium con la red frenada).
-- **Sin probar todavía**: links y "una sola ventana" en Windows, panel de medios de Windows, un reloj real, un jam con YouTube Music entre teléfonos reales, videos musicales y carpetas de la biblioteca en el cel.
+- **Sin probar todavía**: links y "una sola ventana" en Windows, panel de medios de Windows, un reloj real, un jam con YouTube Music entre teléfonos reales, videos musicales y carpetas de la biblioteca en el cel, lo de 1.0.8 (segundo plano, ecualizador, editar etiquetas) en teléfonos reales.
 
 ### Dónde guarda las cosas
 | | Windows | Android |
