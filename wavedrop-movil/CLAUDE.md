@@ -178,6 +178,12 @@ Todo el trabajo real vive en Python: python/wavedrop/  (el mismo código en las 
   `explorar.buscar_video` porque el id de la canción en YT Music suele ser audio con la portada. El video descargado es `<canción>.mp4` junto al audio
   (`.mp4` no está en `biblioteca.EXTENSIONES`: así no se toma por canción) y `eliminar_canciones` lo borra también. Para **transmitir** solo sirve el cliente
   `android` de yt-dlp (mp4 360p por rangos); tv/web dan más calidad pero YouTube responde 403 sin token (`flujo._extraer_video` prueba cada candidato).
+- **Segundo plano en Android**: sin un servicio en primer plano Android congela la app al apagar la pantalla (`ServicioMedios` solo la cubre mientras suena música).
+  Python anota los trabajos largos (descargas, video, APK de actualización, leer una carpeta, jam abierto) con `api._fondo_actualizar` y manda un resumen
+  con el evento `"fondo"`; `PythonPlugin.Emisor` lo lee **directo** (no por la interfaz, que Android pausa) y `ServicioTareas.kt` (tipo `dataSync`, con
+  WakeLock y notificación de avance) lo muestra. Una tarea nueva se anota **antes** de quitar la anterior (p. ej. el video antes de dar la canción por lista):
+  Android 12+ no deja volver a arrancar un servicio en primer plano desde segundo plano, así que un hueco de "0 tareas" lo apagaría para siempre.
+  Los permisos (notificaciones, sin límites de batería) se piden con el comando `segundo_plano` y se ven en Ajustes → Segundo plano (solo Android).
 - **El servicio de Python fuerza UTF-8** en stdin/stdout (`servicio.py`): Windows usaba cp1252 y rompía acentos.
 
 ## Convenciones

@@ -6,7 +6,7 @@
 import { getVersion } from "@tauri-apps/api/app";
 import { invoke } from "@tauri-apps/api/core";
 import { alEvento, py } from "./api.js";
-import { aviso, mostrarHoja } from "./estado.svelte.js";
+import { aviso, mostrarHoja, pedirAvisosUnaVez } from "./estado.svelte.js";
 
 export const REPO = "Accor-Dium/misiccord";
 const esAndroid = /Android/i.test(navigator.userAgent);
@@ -92,6 +92,7 @@ export async function instalarActualizacion() {
   act.pct = 0;
   try {
     if (esAndroid) {
+      await pedirAvisosUnaVez();
       const { ruta } = await py("actualizacion_descargar", { url: urlApk });
       act.estado = "instalando";
       const r = await invoke("instalar_apk", { ruta });

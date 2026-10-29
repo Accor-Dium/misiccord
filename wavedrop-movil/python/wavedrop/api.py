@@ -34,6 +34,62 @@ AJUSTES_POR_DEFECTO = {
 }
 
 
+# ---------- Trabajo en segundo plano (Android) ----------
+# Descargas, la actualización, un jam abierto... se anotan aquí y el resumen sale como evento "fondo".
+# En Android ese evento lo lee PythonPlugin.kt (sin pasar por la interfaz, que Android pausa con la pantalla apagada)
+# para mantener un servicio en primer plano con una notificación de progreso: sin él, Android duerme la app.
+_fondo = {"tareas": {}, "hechas": [], "ultimo": (0, "", "", -1, 0.0)}
+_fondo_candado = threading.Lock()
+
+
+def _fondo_actualizar(clave: str, texto: str | None, pct: int = -1, detalle: str = "", listo: str | None = None) -> None:
+    """Anota (o con texto=None quita) un trabajo largo. `listo` dice qué terminó, para el aviso final."""
+    if not plataforma.es_android():
+        return
+    with _fondo_candado:
+        if texto is None:
+            if _fondo["tareas"].pop(clave, None) is not None and listo:
+                _fondo["hechas"].append(listo)
+        else:
+            _fondo["tareas"][clave] = {"texto": texto, "pct": pct, "detalle": detalle}
+        resumen = _resumen_fondo()
+        antes = _fondo["ultimo"]
+        ahora = time.monotonic()
+        # Con una sola tarea con avance, el texto es solo "40%": cambiar de porcentaje no cuenta como otro mensaje
+        texto = "" if resumen["activas"] == 1 and resumen["pct"] >= 0 else resumen["texto"]
+        igual = (resumen["activas"], resumen["titulo"], texto) == antes[:3]
+        # El avance se manda cada 2 puntos o 2 s: la notificación no necesita más
+        if igual and not resumen["fin"] and abs(resumen["pct"] - antes[3]) < 2 and ahora - antes[4] < 2:
+            return
+        _fondo["ultimo"] = (resumen["activas"], resumen["titulo"], texto, resumen["pct"], ahora)
+    emitir("fondo", resumen)
+
+
+def _resumen_fondo() -> dict:
+    tareas = list(_fondo["tareas"].values())
+    if not tareas:
+        return {"activas": 0, "titulo": "", "texto": "", "pct": -1, "fin": _mensaje_fin()}
+    conocidos = [t["pct"] for t in tareas if t["pct"] >= 0]
+    pct = sum(conocidos) // len(conocidos) if conocidos else -1
+    if len(tareas) == 1:
+        t = tareas[0]
+        return {"activas": 1, "titulo": t["texto"], "texto": t["detalle"] or (f"{t['pct']}%" if t["pct"] >= 0 else "En curso…"),
+                "pct": pct, "fin": ""}
+    nombres = ", ".join(t["texto"] for t in tareas[:2]) + ("…" if len(tareas) > 2 else "")
+    return {"activas": len(tareas), "titulo": f"{len(tareas)} tareas en segundo plano", "texto": nombres, "pct": pct, "fin": ""}
+
+
+def _mensaje_fin() -> str:
+    """Lo que se avisa al quedar sin trabajo pendiente (y se vacía la cuenta)."""
+    hechas, _fondo["hechas"] = _fondo["hechas"], []
+    if "actualizacion" in hechas:
+        return "Actualización lista: ábrela para instalarla"
+    canciones = hechas.count("cancion")
+    if canciones:
+        return "1 canción descargada" if canciones == 1 else f"{canciones} canciones descargadas"
+    return "Video descargado" if "video" in hechas else ""
+
+
 # ---------- Utilidades ----------
 
 def emitir(tipo: str, datos: dict) -> None:
@@ -145,12 +201,23 @@ def iniciar(d: dict) -> dict:
             "js": list(plataforma.js_runtimes().keys()), "total": _db().total()}
 
 
-def _escanear():
+def _escanear(visible: bool = False):
+    """visible=True (el usuario agregó una carpeta): también se avisa como trabajo en segundo plano."""
+    def progreso(n):
+        emitir("escaneo", {"revisadas": n})
+        if visible:
+            _fondo_actualizar("escaneo", f"Leyendo tu música ({n})")
+
     try:
-        nuevas, quitadas = _db().escanear(progreso=lambda n: emitir("escaneo", {"revisadas": n}))
+        if visible:
+            _fondo_actualizar("escaneo", "Leyendo tu música")
+        nuevas, quitadas = _db().escanear(progreso=progreso)
         emitir("biblioteca", {"nuevas": nuevas, "quitadas": quitadas, "total": _db().total()})
     except Exception as e:
         emitir("error", {"donde": "escaneo", "mensaje": str(e)})
+    finally:
+        if visible:
+            _fondo_actualizar("escaneo", None)
 
 
 def _probar_carpeta(ruta: Path) -> None:
@@ -292,7 +359,8 @@ def agregar_carpeta_biblioteca(d: dict) -> dict:
     except OSError as e:
         raise RuntimeError(f"No se puede leer esa carpeta ({e.strerror or e})") from e
     _db().agregar_carpeta(ruta)
-    threading.Thread(target=_escanear, daemon=True).start()
+    _fondo_actualizar("escaneo", "Leyendo tu música")  # antes de volver: la app sigue en primer plano
+    threading.Thread(target=_escanear, kwargs={"visible": True}, daemon=True).start()
     return carpetas_biblioteca({})
 
 
@@ -462,12 +530,19 @@ def descargar_video(d: dict) -> dict:
     if descargas.ruta_video(ruta):
         return {"estado": "existe"}
 
+    clave = f"video:{ruta}"
+    _fondo_actualizar(clave, f"Video de “{d.get('titulo', '')}”")  # antes de volver: la app sigue en primer plano
+
     def trabajo():
+        terminado = None
         try:
             bajar_video(ruta, d.get("titulo", ""), d.get("artista", ""), d.get("duracion"))
+            terminado = "video"
             emitir("video_descarga", {"estado": "listo", "titulo": d.get("titulo", ""), "ruta": str(ruta)})
         except Exception as e:
             emitir("video_descarga", {"estado": "error", "titulo": d.get("titulo", ""), "error": str(e) or type(e).__name__})
+        finally:
+            _fondo_actualizar(clave, None, listo=terminado)
 
     threading.Thread(target=trabajo, daemon=True).start()
     return {"estado": "descargando"}
@@ -499,6 +574,10 @@ class _Gestor:
         t = self.trabajos[tid]
         t.update(cambios)
         emitir("descarga", {"trabajo": t})
+        if t["estado"] in ("cola", "buscando", "descargando", "etiquetando"):
+            _fondo_actualizar(f"descarga:{tid}", f"Descargando “{t['titulo']}”", t["pct"] if t["estado"] == "descargando" else -1)
+        else:
+            _fondo_actualizar(f"descarga:{tid}", None, listo="cancion" if t["estado"] == "listo" else None)
 
     def agregar(self, entrada: descargas.Entrada, coleccion: str) -> dict:
         tid = uuid.uuid4().hex[:10]
@@ -539,17 +618,24 @@ class _Gestor:
             c = _db().cancion_por_ruta(ruta)
             if c:
                 _db().registrar("descarga", ruta, c.artista, c.titulo)
+            if aj.get("video_descargar"):
+                # Se anota antes de dar la canción por lista: así el servicio en segundo plano no se apaga entre las dos
+                _fondo_actualizar(f"video:{tid}", f"Video de “{entrada.titulo}”")
             self._avisar(tid, estado="listo", pct=100, ruta=str(ruta), cancion=_local(c) if c else None)
             if aj.get("video_descargar"):
                 # La canción ya suena; el video se baja después y avisa aparte (si falla, la canción no se pierde)
+                terminado = None
                 try:
                     bajar_video(ruta, c.titulo if c else entrada.titulo, c.artista if c else entrada.artista,
                                 entrada.duracion, lambda: tid in self.cancelados)
+                    terminado = "video"
                     emitir("video_descarga", {"estado": "listo", "titulo": entrada.titulo, "ruta": str(ruta)})
                 except descargas.Cancelado:
                     pass
                 except Exception as e:
                     emitir("video_descarga", {"estado": "error", "titulo": entrada.titulo, "error": str(e) or type(e).__name__})
+                finally:
+                    _fondo_actualizar(f"video:{tid}", None, listo=terminado)
         except descargas.Cancelado:
             self._avisar(tid, estado="cancelado")
         except Exception as e:
@@ -594,12 +680,15 @@ def jam_crear(d: dict) -> dict:
     """Abre un jam en esta máquina; devuelve puerto, código y el cliente del anfitrión."""
     import sys
     from . import jam
-    return jam.crear(d.get("nombre") or "Misiccord", d.get("modo", "anfitrion"), sys.modules[__name__])
+    r = jam.crear(d.get("nombre") or "Misiccord", d.get("modo", "anfitrion"), sys.modules[__name__])
+    _fondo_actualizar("jam", "Jam abierto", detalle="Tus invitados siguen conectados")
+    return r
 
 
 def jam_cerrar(d: dict) -> dict:
     from . import jam
     jam.cerrar()
+    _fondo_actualizar("jam", None)
     return {}
 
 
@@ -664,17 +753,25 @@ def actualizacion_descargar(d: dict) -> dict:
     import requests
     destino = plataforma.carpeta_cache() / "actualizacion" / "Misiccord.apk"
     destino.parent.mkdir(parents=True, exist_ok=True)
-    with requests.get(d["url"], stream=True, timeout=60, allow_redirects=True) as r:
-        r.raise_for_status()
-        total = int(r.headers.get("Content-Length") or 0)
-        bajado, ultimo = 0, 0.0
-        with open(destino, "wb") as f:
-            for bloque in r.iter_content(256 * 1024):
-                f.write(bloque)
-                bajado += len(bloque)
-                if time.monotonic() - ultimo > 0.4:
-                    ultimo = time.monotonic()
-                    emitir("actualizacion", {"pct": int(bajado * 100 / total) if total else 0})
+    _fondo_actualizar("actualizacion", "Descargando la actualización", 0)
+    terminado = None
+    try:
+        with requests.get(d["url"], stream=True, timeout=60, allow_redirects=True) as r:
+            r.raise_for_status()
+            total = int(r.headers.get("Content-Length") or 0)
+            bajado, ultimo = 0, 0.0
+            with open(destino, "wb") as f:
+                for bloque in r.iter_content(256 * 1024):
+                    f.write(bloque)
+                    bajado += len(bloque)
+                    if time.monotonic() - ultimo > 0.4:
+                        ultimo = time.monotonic()
+                        pct = int(bajado * 100 / total) if total else 0
+                        emitir("actualizacion", {"pct": pct})
+                        _fondo_actualizar("actualizacion", "Descargando la actualización", pct if total else -1)
+        terminado = "actualizacion"
+    finally:
+        _fondo_actualizar("actualizacion", None, listo=terminado)
     emitir("actualizacion", {"pct": 100})
     return {"ruta": str(destino), "mb": round(destino.stat().st_size / 1e6, 1)}
 

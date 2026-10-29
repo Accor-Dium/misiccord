@@ -271,6 +271,32 @@ async fn medios(app: tauri::AppHandle, estado: serde_json::Value) -> Result<(), 
     }
 }
 
+#[allow(dead_code)]
+#[derive(serde::Serialize)]
+struct PedidoFondo {
+    pedir: String,
+}
+
+/// Android: permisos para trabajar en segundo plano (notificaciones de avance y sin límites de batería).
+/// `pedir` = "notificaciones" | "bateria" abre el diálogo del sistema; vacío solo consulta.
+/// Responde { notificaciones, bateria }. En escritorio la app sigue funcionando minimizada: todo está permitido.
+#[tauri::command]
+async fn segundo_plano(app: tauri::AppHandle, pedir: String) -> Result<serde_json::Value, String> {
+    #[cfg(target_os = "android")]
+    {
+        return app
+            .state::<Python<tauri::Wry>>()
+            .0
+            .run_mobile_plugin::<serde_json::Value>("segundoPlano", PedidoFondo { pedir })
+            .map_err(|e| e.to_string());
+    }
+    #[cfg(not(target_os = "android"))]
+    {
+        let _ = (app, pedir);
+        Ok(serde_json::json!({ "notificaciones": true, "bateria": true }))
+    }
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     let constructor = tauri::Builder::default().plugin(tauri_plugin_process::init());
@@ -304,7 +330,7 @@ pub fn run() {
             }
             Ok(())
         })
-        .invoke_handler(tauri::generate_handler![py, permiso_archivos, instalar_apk, medios])
+        .invoke_handler(tauri::generate_handler![py, permiso_archivos, instalar_apk, medios, segundo_plano])
         .build(tauri::generate_context!())
         .expect("error while running tauri application");
 

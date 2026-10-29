@@ -103,15 +103,31 @@ alEvento("video_descarga", (d) => {
 });
 alEvento("biblioteca", () => ui.version++);
 
+/**
+ * Android: la primera vez que se baja algo se pide permiso para mostrar la notificación de avance (Android 13+).
+ * Sin ella igual sigue trabajando en segundo plano, pero sin que se vea. Después solo se pide desde Ajustes.
+ */
+export async function pedirAvisosUnaVez() {
+  if (!/Android/i.test(navigator.userAgent)) return;
+  try {
+    if (localStorage.getItem("misiccord_pidio_avisos")) return;
+    localStorage.setItem("misiccord_pidio_avisos", "1");
+    const { invoke } = await import("@tauri-apps/api/core");
+    await invoke("segundo_plano", { pedir: "notificaciones" });
+  } catch {}
+}
+
 export async function descargar(canciones, coleccion = "") {
   const lista = canciones.filter((c) => !c.local && !c.ruta && c.id);
   if (!lista.length) return;
+  await pedirAvisosUnaVez();
   const r = await py("descargar", { canciones: lista, coleccion });
   for (const t of r.trabajos) descargas.trabajos[t.id] = t;
   aviso(lista.length === 1 ? `Descargando “${lista[0].titulo}”` : `${lista.length} canciones en la cola`);
 }
 
 export async function descargarLink(url) {
+  await pedirAvisosUnaVez();
   const r = await py("descargar", { url });
   for (const t of r.trabajos) descargas.trabajos[t.id] = t;
   aviso(`${r.trabajos.length} canciones de “${r.coleccion}” en la cola`);

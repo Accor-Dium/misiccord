@@ -2,11 +2,13 @@ package com.wavedrop.movil
 
 import android.Manifest
 import android.app.Activity
+import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
 import android.os.Environment
+import android.os.PowerManager
 import android.provider.Settings
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
@@ -54,10 +56,25 @@ class ArgsMedios {
     var enJam: Boolean = false
 }
 
+@InvokeArg
+class ArgsFondo {
+    var pedir: String = "" // "notificaciones" | "bateria" | "" (solo consultar)
+}
+
 /** Python llama a emitir(json) para avisar algo (progreso de descargas, recomendaciones listas...). */
-class Emisor(private val cola: LinkedBlockingQueue<String>) {
+class Emisor(private val cola: LinkedBlockingQueue<String>, private val contexto: Context) {
     fun emitir(texto: String) {
         cola.offer(texto)
+        // El resumen del trabajo en segundo plano va directo al servicio, sin esperar a la interfaz
+        // (con la pantalla apagada Android la pausa y la notificación se quedaría vieja)
+        if (texto.startsWith("{\"tipo\": \"fondo\"")) {
+            try {
+                val j = JSONObject(texto)
+                ServicioTareas.actualizar(contexto, ResumenTareas(
+                    j.getInt("activas"), j.optString("titulo"), j.optString("texto"), j.optInt("pct", -1), j.optString("fin")))
+            } catch (_: Exception) {
+            }
+        }
     }
 }
 
@@ -69,7 +86,7 @@ class Emisor(private val cola: LinkedBlockingQueue<String>) {
 @TauriPlugin
 class PythonPlugin(private val activity: Activity) : Plugin(activity) {
     private val eventos = LinkedBlockingQueue<String>().also { Medios.eventos = it }
-    private val emisor = Emisor(eventos)
+    private val emisor = Emisor(eventos, activity.applicationContext)
 
     private fun python(): Python {
         if (!Python.isStarted()) {
@@ -150,6 +167,41 @@ class PythonPlugin(private val activity: Activity) : Plugin(activity) {
         }
         activity.startActivity(intento)
         invoke.resolve(JSObject().put("abierto", true))
+    }
+
+    /**
+     * Permisos para que descargas y actualizaciones sigan en segundo plano: ver la notificación de avance y
+     * que Android no limite la batería de la app. Con pedir="notificaciones" o "bateria" abre el diálogo
+     * del sistema; siempre responde cómo están ahora (la respuesta del usuario se vuelve a consultar al volver).
+     */
+    @Command
+    fun segundoPlano(invoke: Invoke) {
+        val a = invoke.parseArgs(ArgsFondo::class.java)
+        val app = activity.applicationContext
+        val energia = app.getSystemService(PowerManager::class.java)
+        fun notificaciones() = Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU ||
+            ContextCompat.checkSelfPermission(activity, Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED
+        fun bateria() = energia.isIgnoringBatteryOptimizations(app.packageName)
+
+        if (a.pedir == "notificaciones" && !notificaciones()) {
+            val prefs = app.getSharedPreferences("misiccord", Context.MODE_PRIVATE)
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU && !prefs.getBoolean("pidio_notificaciones", false)) {
+                prefs.edit().putBoolean("pidio_notificaciones", true).apply()
+                ActivityCompat.requestPermissions(activity, arrayOf(Manifest.permission.POST_NOTIFICATIONS), 42)
+            } else {
+                // Ya se negó una vez: Android no vuelve a mostrar el diálogo, hay que ir a los ajustes de la app
+                activity.startActivity(Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS)
+                    .putExtra(Settings.EXTRA_APP_PACKAGE, app.packageName))
+            }
+        } else if (a.pedir == "bateria" && !bateria()) {
+            try {
+                activity.startActivity(Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS,
+                                              Uri.parse("package:${app.packageName}")))
+            } catch (e: Exception) {
+                activity.startActivity(Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS))
+            }
+        }
+        invoke.resolve(JSObject().put("notificaciones", notificaciones()).put("bateria", bateria()))
     }
 
     /** Lo que suena ahora: notificación de música, pantalla bloqueada, relojes y audífonos (ServicioMedios). */

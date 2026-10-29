@@ -10,10 +10,30 @@
   let aj = $state(null);
   let info = $state(null); // carpeta actual, carpetas sugeridas y si es Android
 
-  onMount(async () => {
-    act.actual ||= await getVersion();
-    info = await py("ajustes");
-    aj = info.ajustes;
+  let fondo = $state(null); // Android: { notificaciones, bateria } (permisos para trabajar en segundo plano)
+
+  async function revisarFondo(pedir = "") {
+    try {
+      const { invoke } = await import("@tauri-apps/api/core");
+      fondo = await invoke("segundo_plano", { pedir });
+    } catch {}
+  }
+
+  onMount(() => {
+    // Al volver de los ajustes de Android (o de su diálogo) se vuelve a leer qué quedó permitido
+    const alVolver = () => { if (document.visibilityState === "visible" && info?.android) revisarFondo(); };
+    document.addEventListener("visibilitychange", alVolver);
+    window.addEventListener("focus", alVolver);
+    (async () => {
+      act.actual ||= await getVersion();
+      info = await py("ajustes");
+      aj = info.ajustes;
+      if (info.android) revisarFondo();
+    })();
+    return () => {
+      document.removeEventListener("visibilitychange", alVolver);
+      window.removeEventListener("focus", alVolver);
+    };
   });
 
   async function guardar(cambios) {
@@ -143,6 +163,34 @@
         </div>
       </div>
     </section>
+
+    {#if info.android}
+      <section>
+        <h2>Segundo plano</h2>
+        <p class="tenue acerca">
+          Para que las descargas, las actualizaciones y los jams sigan con la pantalla apagada o en otra app.
+          Mientras trabajan, una notificación muestra el avance.
+        </p>
+        <div class="opcion">
+          <div class="texto">
+            <b>Notificación de avance</b>
+            <small>{fondo?.notificaciones ? "Activada" : "Apagada: la descarga sigue, pero no verás el avance"}</small>
+          </div>
+          {#if fondo && !fondo.notificaciones}
+            <button class="pildora cian chica" onclick={() => revisarFondo("notificaciones")}>Permitir</button>
+          {/if}
+        </div>
+        <div class="opcion">
+          <div class="texto">
+            <b>Sin límites de batería</b>
+            <small>{fondo?.bateria ? "Permitido: Android no pausará la app" : "Android puede pausar la app si pasa mucho rato en segundo plano"}</small>
+          </div>
+          {#if fondo && !fondo.bateria}
+            <button class="pildora cian chica" onclick={() => revisarFondo("bateria")}>Permitir</button>
+          {/if}
+        </div>
+      </section>
+    {/if}
 
     <section>
       <h2>Acerca de</h2>
