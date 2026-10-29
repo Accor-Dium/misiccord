@@ -1,4 +1,4 @@
-/* ---------- Paleta WaveDrop ---------- */
+/* ---------- Paleta Misiccord ---------- */
 :root {
   --fondo: #0a0f14;
   --panel: #0d141b;
@@ -75,12 +75,19 @@ img { display: block; }
   font-size: 20px; font-weight: 800; margin: 26px 0 12px; letter-spacing: -0.3px;
 }
 .titulo-seccion small { font-size: 14px; font-weight: 600; color: var(--tenue); }
+/* El carrusel sale hasta la orilla de la pantalla pero la primera tarjeta queda alineada con el texto:
+   scroll-padding evita que el imán del scroll la pegue a la orilla (se veía "corrido" a la izquierda). */
 .carrusel {
-  display: flex; gap: 14px; overflow-x: auto; scroll-snap-type: x mandatory;
-  margin: 0 -18px; padding: 0 18px 4px; scrollbar-width: none;
+  --hueco: 14px;
+  display: flex; gap: var(--hueco); overflow-x: auto; overscroll-behavior-x: contain;
+  scroll-snap-type: x proximity; scroll-padding-inline: var(--margen);
+  margin: 0 calc(-1 * var(--margen)); padding: 0 var(--margen) 4px; scrollbar-width: none;
 }
 .carrusel::-webkit-scrollbar { display: none; }
-.carrusel > * { scroll-snap-align: start; flex-shrink: 0; }
+.carrusel > * { scroll-snap-align: start; flex-shrink: 0; min-width: 0; }
+.carrusel::after { content: ""; flex: 0 0 1px; } /* respeta el margen derecho al final del scroll */
+/* Artistas: caben 3 y medio en el teléfono para que se note que hay más */
+:root { --artista: clamp(78px, calc((100vw - 2 * var(--margen) - 3 * 14px) / 3.5), 112px); }
 .vacio { color: var(--tenue); text-align: center; padding: 48px 24px; line-height: 1.5; }
 
 /* Esqueleto mientras carga */
@@ -94,7 +101,8 @@ img { display: block; }
 @media (min-width: 900px) {
   :root { --nav: 0px; --lateral: 248px; --mini: 84px; --margen: 36px; }
   .titulo-vista { font-size: 34px; }
-  .carrusel { margin: 0 calc(-1 * var(--margen)); padding: 0 var(--margen) 6px; gap: 18px; }
+  .carrusel { --hueco: 18px; padding-bottom: 6px; }
+  :root { --artista: 132px; }
   /* Las vistas se centran con un ancho máximo cómodo de leer */
   main > div { max-width: 1280px; margin: 0 auto; }
   main .rejilla { grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)) !important; gap: 24px 20px !important; }

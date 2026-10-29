@@ -319,6 +319,22 @@ class Biblioteca:
             """SELECT * FROM canciones WHERE artista_ppal = ? COLLATE NOCASE
                ORDER BY album COLLATE NOCASE, pista, titulo COLLATE NOCASE""", (artista,))]
 
+    # --- Eliminar ---
+
+    def canciones_por_ids(self, ids: list[int]) -> list[Cancion]:
+        if not ids:
+            return []
+        marcas = ",".join("?" * len(ids))
+        return [self._cancion(r) for r in self._q(f"SELECT * FROM canciones WHERE id IN ({marcas})", tuple(ids))]
+
+    def olvidar(self, canciones: list[Cancion]) -> None:
+        """Quita canciones de la biblioteca, de todas las playlists (ON DELETE CASCADE) y del historial."""
+        with self.candado:
+            for c in canciones:
+                self.con.execute("DELETE FROM canciones WHERE id = ?", (c.id,))
+                self.con.execute("DELETE FROM eventos WHERE ruta = ?", (str(c.ruta),))
+            self.con.commit()
+
     # --- Historial (para recomendaciones) ---
 
     def registrar(self, tipo: str, ruta: Path, artista: str, titulo: str):

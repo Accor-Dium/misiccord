@@ -37,7 +37,7 @@ def carpeta_datos() -> Path:
 
 
 def carpeta_musica() -> Path:
-    return _carpeta("musica", Path.home() / "Music" / "WaveDrop")
+    return _carpeta("musica", Path.home() / "Music" / "Misiccord")
 
 
 def carpeta_cache() -> Path:
@@ -56,6 +56,28 @@ def herramienta(nombre: str) -> str | None:
 
 def hay_ffmpeg() -> bool:
     return bool(herramienta("ffmpeg") and herramienta("ffprobe"))
+
+
+def archivo_nuevo(ruta: Path) -> None:
+    """Android: avisa al sistema de la canción nueva para que aparezca en las demás apps de música."""
+    if not es_android():
+        return
+    try:
+        from java import jarray, jclass
+        contexto = jclass("com.chaquo.python.Python").getPlatform().getApplication()
+        rutas = jarray(jclass("java.lang.String"))([str(ruta)])
+        jclass("android.media.MediaScannerConnection").scanFile(contexto, rutas, None, None)
+    except Exception:
+        pass
+
+
+def lib_nativa(nombre: str) -> Path | None:
+    """Android: un ejecutable que viaja en el APK como lib<nombre>.so (qjs, cloudflared)."""
+    if es_android() and _config["libs"]:
+        ruta = Path(_config["libs"]) / f"lib{nombre}.so"
+        if ruta.exists():
+            return ruta
+    return None
 
 
 def js_runtimes() -> dict:

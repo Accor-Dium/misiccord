@@ -9,6 +9,7 @@
   import Icono from "./Icono.svelte";
   import Letra from "./Letra.svelte";
   import Portada from "./Portada.svelte";
+  import Volumen from "./Volumen.svelte";
 
   // Reproductor a pantalla completa. Fondo: la portada difuminada. Desliza hacia abajo para cerrarlo.
   let panel = $state("portada"); // "portada" | "letra" | "cola"
@@ -147,6 +148,8 @@
       </button>
     </section>
 
+    <div class="vol"><Volumen claro /></div>
+
     <footer>
       <button class="redondo relleno" class:encendido={vista === "cola"} onclick={() => alternarPanel("cola")} aria-label="Cola">
         <Icono nombre="cola" tam={22} />
@@ -239,6 +242,7 @@
   .redondo { position: relative; }
   .uno { position: absolute; top: 7px; right: 6px; font-size: 10px; font-weight: 800; color: var(--cian); }
   footer { display: flex; justify-content: space-between; }
+  .vol { margin: -6px 0 14px; }
   .apagado { opacity: 0.4; }
   .girando {
     width: 30px; height: 30px; border-radius: 50%; border: 3px solid rgba(4, 18, 26, 0.2);
@@ -254,7 +258,9 @@
       grid-template-rows: auto 1fr auto auto auto auto; padding: 26px 56px 30px;
     }
     header { grid-column: 1 / -1; }
-    .centro, .datos, .barra, .controles, footer { grid-column: 1; }
+    .centro, .datos, .barra, .controles, .vol, footer { grid-column: 1; }
+    .reproductor { grid-template-rows: auto 1fr auto auto auto auto auto; }
+    .derecha { grid-row: 2 / span 6; }
     .centro { margin: 24px 0; }
     .portada { width: 100%; }
     footer { justify-content: center; gap: 28px; }

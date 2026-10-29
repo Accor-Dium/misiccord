@@ -1,4 +1,4 @@
-"""Servicio de WaveDrop para escritorio: la app de Tauri lo arranca y le habla por stdin/stdout.
+"""Servicio de Misiccord para escritorio: la app de Tauri lo arranca y le habla por stdin/stdout.
 
 Protocolo (una línea JSON por mensaje):
   entrada  {"id": 7, "funcion": "buscar", "datos": "{...}"}
@@ -7,6 +7,7 @@ Protocolo (una línea JSON por mensaje):
 
 Cada llamada corre en su propio hilo para que una búsqueda lenta no bloquee a las demás.
 """
+import io
 import json
 import os
 import sys
@@ -19,7 +20,9 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from wavedrop import api  # noqa: E402
 
 _salida = threading.Lock()
-_stdout = sys.stdout
+# El protocolo siempre va en UTF-8, sin importar la configuración regional de Windows
+_stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8", newline="\n")
+_stdin = io.TextIOWrapper(sys.stdin.buffer, encoding="utf-8")
 # Cualquier print() de una librería iría a stdout y rompería el protocolo: se manda a stderr
 sys.stdout = sys.stderr
 
@@ -38,7 +41,7 @@ class Emisor:
 
 def contexto() -> dict:
     local = Path(os.environ.get("LOCALAPPDATA", Path.home())) / "WaveDrop"
-    musica = os.environ.get("WAVEDROP_MUSICA") or str(Path.home() / "Music" / "WaveDrop")
+    musica = os.environ.get("WAVEDROP_MUSICA") or str(Path.home() / "Music" / "Misiccord")
     return {"datos": str(local), "musica": musica, "cache": str(local / "cache")}
 
 
@@ -50,7 +53,7 @@ def atender(peticion: dict, emisor: Emisor, ctx: str) -> None:
 def main() -> None:
     emisor = Emisor()
     ctx = json.dumps(contexto())
-    for linea in sys.stdin:
+    for linea in _stdin:
         linea = linea.strip()
         if not linea:
             continue

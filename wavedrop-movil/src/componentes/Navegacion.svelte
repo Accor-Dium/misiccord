@@ -6,7 +6,6 @@
   // Abajo en el cel; barra lateral con nombres en pantalla ancha.
   const pestanas = [
     { id: "inicio", icono: "inicio", texto: "Inicio" },
-    { id: "buscar", icono: "buscar", texto: "Buscar" },
     { id: "biblioteca", icono: "biblioteca", texto: "Biblioteca" },
     { id: "jams", icono: "jam", texto: "Jams" },
     { id: "descargas", icono: "descargas", texto: "Descargas" },
@@ -17,7 +16,7 @@
 <nav class="barra">
   <div class="marca">
     <span class="ondas"><i></i><i></i><i></i><i></i></span>
-    <b>WaveDrop</b>
+    <b>Misiccord</b>
   </div>
   {#each pestanas as p}
     <button class="boton" class:activo={nav.pestana === p.id} onclick={() => irPestana(p.id)} aria-label={p.texto}>

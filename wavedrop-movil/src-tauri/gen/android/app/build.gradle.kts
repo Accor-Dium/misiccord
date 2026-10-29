@@ -15,6 +15,14 @@ val tauriProperties = Properties().apply {
     }
 }
 
+// Llave de firma (wavedrop-movil/firma/keystore.properties, fuera del control de versiones)
+val firma = Properties().apply {
+    val archivo = file("../../../../firma/keystore.properties")
+    if (archivo.exists()) {
+        archivo.inputStream().use { load(it) }
+    }
+}
+
 android {
     compileSdk = 37
     namespace = "com.wavedrop.movil"
@@ -31,6 +39,16 @@ android {
     }
     // qjs (QuickJS) va como "libqjs.so" para que Android lo deje ejecutar: hay que extraerlo al instalar
     packaging { jniLibs { useLegacyPackaging = true } }
+    signingConfigs {
+        create("release") {
+            if (firma.containsKey("storeFile")) {
+                storeFile = file(firma.getProperty("storeFile"))
+                storePassword = firma.getProperty("storePassword")
+                keyAlias = firma.getProperty("keyAlias")
+                keyPassword = firma.getProperty("keyPassword")
+            }
+        }
+    }
     buildTypes {
         getByName("debug") {
             manifestPlaceholders["usesCleartextTraffic"] = "true"
@@ -45,6 +63,7 @@ android {
             }
         }
         getByName("release") {
+            signingConfig = signingConfigs.getByName("release")
             optimization {
                enable = true
             }
@@ -92,6 +111,7 @@ chaquopy {
             install("yt-dlp-ejs")  // scripts de JS que yt-dlp corre con QuickJS para YouTube
             install("ytmusicapi")
             install("mutagen")
+            install("qrcode")  // QR para unirse a un jam (puro Python)
         }
     }
 }
@@ -102,6 +122,7 @@ dependencies {
     implementation("androidx.activity:activity-ktx:1.10.1")
     implementation("com.google.android.material:material:1.12.0")
     implementation("androidx.lifecycle:lifecycle-process:2.10.0")
+    implementation("androidx.media:media:1.7.0") // MediaSession y notificación de música (relojes, pantalla bloqueada)
     testImplementation("junit:junit:4.13.2")
     androidTestImplementation("androidx.test.ext:junit:1.1.4")
     androidTestImplementation("androidx.test.espresso:espresso-core:3.5.0")

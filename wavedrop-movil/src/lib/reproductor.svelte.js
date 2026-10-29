@@ -2,7 +2,8 @@
 //
 // Usa dos <audio>: al cambiar de canción, el nuevo sube de volumen mientras el viejo baja,
 // con curva de potencia constante (seno/coseno) para que no haya "hueco" a mitad del fundido.
-// Las canciones de YouTube Music que no tienes se escuchan como vista previa (se bajan a caché).
+// Las canciones de YouTube Music que no tienes suenan mientras llegan (flujo del servidor local de Python);
+// si se escuchan completas se quedan en la caché de previas.
 import { py, src } from "./api.js";
 import { aviso } from "./estado.svelte.js";
 
@@ -17,8 +18,10 @@ export const rep = $state({
   dur: 0,
   aleatorio: false,
   repetir: 0, // 0 no, 1 toda la lista, 2 una canción
-  volumen: 1,
+  volumen: Number(localStorage.getItem("wavedrop_volumen") ?? 1),
+  silencio: false,
   fundido: 6, // segundos; se carga de los ajustes
+  salto: 0, // sube cada vez que se adelanta o regresa (para avisar al reloj y a la notificación)
 });
 
 const audios = [new Audio(), new Audio()];
@@ -43,17 +46,38 @@ audios.forEach((a, i) => {
   });
   a.addEventListener("play", () => i === actual && (rep.sonando = true));
   a.addEventListener("pause", () => i === actual && (rep.sonando = false));
+  a.addEventListener("seeked", () => i === actual && rep.salto++);
   a.addEventListener("error", () => {
-    if (i === actual && a.src) aviso("No se pudo reproducir esta canción", "error");
+    if (i !== actual || !a.src) return;
+    const c = rep.actual;
+    // Si falló el flujo, respaldo: bajarla completa (como antes) y seguir donde iba
+    if (c && !c.ruta && c.id && !c.respaldo) {
+      c.respaldo = true;
+      const donde = a.currentTime;
+      rep.cargando = true;
+      py("previa", { id: c.id, completa: true })
+        .then(({ ruta }) => {
+          if (rep.actual !== c) return;
+          c.fuente_previa = src(ruta);
+          a.src = c.fuente_previa;
+          a.currentTime = donde;
+          a.play().catch(() => {});
+        })
+        .catch(() => aviso("No se pudo reproducir esta canción", "error"))
+        .finally(() => (rep.cargando = false));
+      return;
+    }
+    aviso("No se pudo reproducir esta canción", "error");
   });
 });
 
-/** Ruta reproducible: la canción descargada o, si es de YouTube Music, su vista previa en caché. */
-async function rutaDe(c) {
-  if (c.ruta) return c.ruta;
-  if (c.ruta_previa) return c.ruta_previa;
-  c.ruta_previa = (await py("previa", { id: c.id })).ruta;
-  return c.ruta_previa;
+/** Dirección reproducible: el archivo descargado o, si es de YouTube Music, la caché o el flujo en vivo. */
+async function fuenteDe(c) {
+  if (c.ruta) return src(c.ruta);
+  if (c.fuente_previa) return c.fuente_previa;
+  const r = await py("previa", { id: c.id });
+  c.fuente_previa = r.ruta ? src(r.ruta) : r.url;
+  return c.fuente_previa;
 }
 
 function cancelarFundido() {
@@ -110,9 +134,9 @@ async function cargar(i, manual) {
   rep.cargando = true;
   avanceProgramado = false;
   contada = false;
-  let ruta;
+  let fuente;
   try {
-    ruta = await rutaDe(c);
+    fuente = await fuenteDe(c);
   } catch (e) {
     rep.cargando = false;
     aviso(`No se pudo cargar “${c.titulo}”`, "error");
@@ -121,7 +145,7 @@ async function cargar(i, manual) {
   if (rep.indice !== i) return; // mientras cargaba se eligió otra
   rep.cargando = false;
   // Fundido completo cuando termina sola; uno cortito si la cambias tú
-  cruzarA(src(ruta), manual ? Math.min(0.6, rep.fundido) : rep.fundido);
+  cruzarA(fuente, manual ? Math.min(0.6, rep.fundido) : rep.fundido);
   precargarSiguiente();
 }
 
@@ -143,7 +167,7 @@ let siguientePrecargado = -1;
 function precargarSiguiente() {
   const j = rep.aleatorio ? -1 : indiceSiguiente();
   siguientePrecargado = j;
-  if (j >= 0 && !rep.cola[j].ruta && !rep.cola[j].ruta_previa) rutaDe(rep.cola[j]).catch(() => {});
+  if (j >= 0 && !rep.cola[j].ruta && !rep.cola[j].fuente_previa) fuenteDe(rep.cola[j]).catch(() => {});
 }
 
 function revisarFin(a) {
@@ -209,9 +233,20 @@ export function irA(segundos) {
 }
 
 export function ponerVolumen(v) {
-  rep.volumen = v;
-  if (!fundido) el().volume = v;
+  rep.volumen = Math.max(0, Math.min(1, v));
+  rep.silencio = false;
+  localStorage.setItem("wavedrop_volumen", String(rep.volumen));
+  for (const a of audios) a.muted = false;
+  if (!fundido) el().volume = rep.volumen;
 }
+
+export function alternarSilencio() {
+  rep.silencio = !rep.silencio;
+  for (const a of audios) a.muted = rep.silencio;
+}
+
+// El volumen guardado se aplica desde el arranque
+for (const a of audios) a.volume = rep.volumen;
 
 export function alternarAleatorio() {
   rep.aleatorio = !rep.aleatorio;
@@ -223,6 +258,44 @@ export function ciclarRepetir() {
 
 export function reproducirDeCola(i) {
   cargar(i, true);
+}
+
+/** Antes de borrar: suelta el archivo si es lo que suena (Windows no deja borrar un archivo abierto). */
+export function soltarSi(seBorra) {
+  if (!rep.actual?.ruta || !seBorra(rep.actual)) return;
+  cancelarFundido();
+  for (const a of audios) { a.pause(); a.removeAttribute("src"); a.load(); }
+}
+
+/** Canciones borradas del dispositivo: salen de la cola (las de YouTube Music vuelven a ser vista previa). */
+export function olvidarRutas(rutas) {
+  const borradas = new Set(rutas);
+  if (!rep.cola.some((c) => borradas.has(c.ruta))) return;
+  const antes = rep.indice;
+  const sonabaBorrada = borradas.has(rep.cola[antes]?.ruta);
+  let quitadasAntes = 0;
+  let seFueLaActual = false;
+  const quedan = [];
+  rep.cola.forEach((c, k) => {
+    if (!borradas.has(c.ruta)) return quedan.push(c);
+    if (c.id) return quedan.push({ ...c, ruta: null, local: false }); // se puede seguir oyendo en línea
+    if (k < antes) quitadasAntes++;
+    if (k === antes) seFueLaActual = true;
+  });
+  rep.cola = quedan;
+  const j = antes - quitadasAntes;
+  if (!seFueLaActual) {
+    rep.indice = j;
+    rep.actual = quedan[j] ?? null;
+    if (rep.actual && sonabaBorrada) cargar(j, true); // la descargada se borró: sigue en línea
+  } else if (j < quedan.length) {
+    cargar(j, true); // la que sonaba ya no existe: entra la que seguía
+  } else {
+    rep.actual = null;
+    rep.indice = -1;
+    rep.sonando = false;
+    rep.pos = rep.dur = 0;
+  }
 }
 
 /** Cuando una vista previa se descarga, la canción pasa a ser local (sin cortar lo que suena). */

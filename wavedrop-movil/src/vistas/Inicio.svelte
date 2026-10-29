@@ -4,6 +4,7 @@
   import { alEvento, py } from "../lib/api.js";
   import { abrir, ui } from "../lib/estado.svelte.js";
   import { reproducir } from "../lib/reproductor.svelte.js";
+  import Buscador from "../componentes/Buscador.svelte";
   import FilaCancion from "../componentes/FilaCancion.svelte";
   import Icono from "../componentes/Icono.svelte";
   import Tarjeta from "../componentes/Tarjeta.svelte";
@@ -41,6 +42,13 @@
   }
 
   const d = $derived(e.datos);
+  let buscandoAlgo = $state(false);
+
+  // Las primeras recomendaciones se dejan listas para que suenen en cuanto las toques
+  $effect(() => {
+    const ids = (d?.secciones?.[0]?.canciones ?? []).filter((c) => !c.ruta).slice(0, 4).map((c) => c.id);
+    if (ids.length) py("precargar", { ids }).catch(() => {});
+  });
 </script>
 
 <div class="vista">
@@ -49,6 +57,9 @@
     <button class="redondo" onclick={() => abrir("ajustes")} aria-label="Ajustes"><Icono nombre="ajustes" tam={24} /></button>
   </header>
 
+  <Buscador {e} bind:activo={buscandoAlgo} />
+
+  {#if !buscandoAlgo}
   <div class="chips">
     <button class="chip" class:activo={pestana === "para_ti"} onclick={() => (pestana = "para_ti")}>Para ti</button>
     <button class="chip" class:activo={pestana === "tu_musica"} onclick={() => (pestana = "tu_musica")}>Tu música</button>
@@ -72,7 +83,7 @@
           {#if s.artistas?.length}
             <div class="carrusel">
               {#each s.artistas as a}
-                <Tarjeta portada={a.miniatura} titulo={a.nombre} redonda icono="persona" ancho="120px"
+                <Tarjeta portada={a.miniatura} titulo={a.nombre} redonda icono="persona" ancho="var(--artista)"
                   alTocar={() => abrir("artista", { id: a.browse_id, nombre: a.nombre })} />
               {/each}
             </div>
@@ -106,7 +117,7 @@
   {:else}
     <div in:fade={{ duration: 220 }}>
       {#if d && !d.total}
-        <p class="vacio">Todavía no tienes canciones. Búscalas en la pestaña <b>Buscar</b> y descárgalas.</p>
+        <p class="vacio">Todavía no tienes canciones. Búscalas arriba y descárgalas.</p>
       {/if}
       {#if d?.recientes?.length}
         <div class="titulo-seccion">Escuchado recientemente</div>
@@ -134,11 +145,12 @@
       {/if}
     </div>
   {/if}
+  {/if}
 </div>
 
 <style>
   .vista { padding: calc(var(--seguro-arriba) + 14px) var(--margen) 0; }
   header { display: flex; align-items: center; justify-content: space-between; }
   .chips { display: flex; gap: 10px; margin: var(--margen) 0 4px; }
-  .rejilla { display: grid; grid-template-columns: 1fr 1fr; gap: 16px 14px; }
+  .rejilla { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px 14px; }
 </style>

@@ -4,6 +4,7 @@
   import { py, src } from "../lib/api.js";
   import { abrir, atras, aviso, descargar, descargarLink, ui } from "../lib/estado.svelte.js";
   import { reproducir, reproducirAleatorio } from "../lib/reproductor.svelte.js";
+  import { pedirEliminar } from "../lib/eliminar.js";
   import FilaCancion from "../componentes/FilaCancion.svelte";
   import Icono from "../componentes/Icono.svelte";
   import Portada from "../componentes/Portada.svelte";
@@ -31,7 +32,22 @@
   $effect(() => { if (ui.version !== version) { version = ui.version; cargar(); } });
 
   const faltan = $derived(a?.canciones?.filter((c) => !c.local && !c.ruta) ?? []);
+
+  // Las primeras canciones se dejan listas para que suenen en cuanto las toques
+  $effect(() => {
+    const ids = (a?.canciones ?? []).filter((c) => !c.ruta && c.id).slice(0, 5).map((c) => c.id);
+    if (ids.length) py("precargar", { ids }).catch(() => {});
+  });
   const duracion = $derived(Math.round((a?.canciones ?? []).reduce((s, c) => s + (c.duracion || 0), 0) / 60));
+
+  function eliminarAlbum() {
+    const rutas = new Set(a.canciones.map((c) => c.ruta));
+    pedirEliminar({
+      objetivo: { album: { nombre: e.local.nombre, grupo: e.local.grupo, artista: e.local.artista } },
+      cuantas: a.canciones.length, titulo: `el álbum “${a.titulo}”`, seBorra: (c) => rutas.has(c.ruta),
+      alTerminar: (r) => r?.eliminadas && atras(),
+    });
+  }
 
   function descargarTodo() {
     if (a.lista) descargarLink(a.lista).catch(() => descargar(faltan, a.titulo));
@@ -59,6 +75,9 @@
       {#if faltan.length}
         <button class="redondo relleno" onclick={descargarTodo} aria-label="Descargar álbum"><Icono nombre="descargas" tam={22} /></button>
       {/if}
+      {#if a.local && a.canciones.length}
+        <button class="redondo relleno borrar" onclick={eliminarAlbum} aria-label="Eliminar álbum" title="Eliminar álbum"><Icono nombre="basura" tam={22} /></button>
+      {/if}
     </div>
     <div class="canciones">
       {#each a.canciones as c, i}
@@ -85,4 +104,5 @@
   .meta { margin: 6px 0 0; color: var(--tenue); font-size: 14px; }
   .acciones { display: flex; gap: 10px; justify-content: center; align-items: center; margin: 20px 0 14px; }
   .acciones .pildora { flex: 1; max-width: 170px; }
+  .borrar { color: var(--rojo); }
 </style>

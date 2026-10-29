@@ -16,13 +16,14 @@
         {#if ui.hoja.portada !== undefined}<Portada url={ui.hoja.portada} tam="52px" radio="8px" />{/if}
         <div class="textos">
           <b class="cortar">{ui.hoja.titulo}</b>
-          {#if ui.hoja.subtitulo}<small class="cortar">{ui.hoja.subtitulo}</small>{/if}
+          {#if ui.hoja.subtitulo}<small class:cortar={!ui.hoja.subtituloLargo}>{ui.hoja.subtitulo}</small>{/if}
         </div>
       </div>
     {/if}
     {#each ui.hoja.opciones as op}
       <button
         class="opcion"
+        class:peligro={op.peligro}
         onclick={() => {
           cerrarHoja();
           setTimeout(op.accion, 120);
@@ -51,6 +52,8 @@
     font-size: 16px; text-align: left;
   }
   .opcion:active, .opcion:hover { background: var(--tarjeta-2); }
+  .peligro { color: var(--rojo); font-weight: 700; }
+  .textos small:not(.cortar) { line-height: 1.4; margin-top: 2px; }
   @media (min-width: 900px) {
     /* En escritorio, ventana centrada en vez de hoja que sube */
     .hoja { left: calc(50% - 220px); right: auto; width: 440px; bottom: auto; top: 16vh; border-radius: 20px; padding-bottom: 12px; }

@@ -1,6 +1,6 @@
 """Jams en red local: varias personas escuchan y arman la cola juntas.
 
-Cualquier WaveDrop (Windows o Android) puede ser anfitrión. Este módulo levanta un servidor HTTP
+Cualquier Misiccord (Windows o Android) puede ser anfitrión. Este módulo levanta un servidor HTTP
 (solo librería estándar) al que se conectan las interfaces de los invitados directamente:
 
   GET  /info                  nombre de la sala (sin código, para el descubrimiento)
@@ -24,6 +24,7 @@ import json
 import mimetypes
 import secrets
 import socket
+import sys
 import threading
 import time
 import urllib.parse
@@ -70,6 +71,7 @@ class Sala:
         self.anfitrion = secrets.token_hex(8)
         self.participantes = {self.anfitrion: {"nombre": anfitrion, "rol": "anfitrion", "visto": time.time()}}
         self.bloqueados: set[str] = set()
+        self.fallos: dict[str, list[float]] = {}  # códigos equivocados por origen (contra adivinar desde internet)
         self.invitados_agregan = True
         self.cola: list[dict] = []
         self.indice = -1
@@ -162,18 +164,22 @@ class Sala:
         if not ruta and cancion.get("id"):
             existente = self.api._db().buscar_existente(pista["artista"], pista["titulo"], pista["duracion"])
             ruta = str(existente.ruta) if existente else None
+        if not ruta and cancion.get("id"):
+            # ¿Ya sonó completa como vista previa? Entonces está en la caché
+            guardada = next((p for p in explorar.carpeta_cache().glob(f"{cancion['id']}.*")
+                             if p.suffix.lower() in (".m4a", ".webm", ".opus", ".mp3")), None)
+            ruta = str(guardada) if guardada else None
         if ruta and Path(ruta).exists():
             pista["ruta"] = ruta
             pista["portada_local"] = self.api.portada_local(Path(ruta))
             if not pista["duracion"]:
                 pista["duracion"] = biblioteca.leer_archivo(Path(ruta))["duracion"]
         elif cancion.get("id"):
-            # El anfitrión no la tiene: se descarga y entra a la cola cuando esté lista
-            pista["estado"] = "descargando"
-            r = explorar.ResultadoCancion(cancion["id"], pista["titulo"], pista["artista"], pista["album"],
-                                          pista["duracion"], cancion.get("portada"))
-            trabajo = self.api._gestor.agregar(explorar.a_entrada(r), self.nombre)
-            threading.Thread(target=self._esperar_descarga, args=(pid, trabajo), daemon=True).start()
+            # El anfitrión no la tiene: suena de YouTube al instante (el servidor del jam la va pasando
+            # conforme llega). Se resuelve desde ya para que al tocarle no haya que esperar.
+            from . import flujo
+            pista["video_id"] = cancion["id"]
+            flujo.precargar([cancion["id"]])
         else:
             raise ValueError("Canción sin archivo ni id de YouTube Music")
         if pista.get("portada_local"):
@@ -226,7 +232,7 @@ class _Manejador(BaseHTTPRequestHandler):
 
     def _cors(self):
         self.send_header("Access-Control-Allow-Origin", "*")
-        self.send_header("Access-Control-Allow-Headers", "Content-Type, X-Codigo, Range")
+        self.send_header("Access-Control-Allow-Headers", "Content-Type, X-Codigo, X-Cliente, X-Meta, Range")
         self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
         self.send_header("Access-Control-Allow-Private-Network", "true")
         self.send_header("Access-Control-Expose-Headers", "Content-Range, Accept-Ranges, Content-Length")
@@ -250,9 +256,21 @@ class _Manejador(BaseHTTPRequestHandler):
         n = int(self.headers.get("Content-Length") or 0)
         return json.loads(self.rfile.read(n) or b"{}") if n else {}
 
+    def _origen(self) -> str:
+        # Por el túnel de internet todo llega desde 127.0.0.1: Cloudflare dice quién es en realidad
+        ip = self.client_address[0]
+        return self.headers.get("CF-Connecting-IP") or ip if ip == "127.0.0.1" else ip
+
     def _autorizado(self) -> bool:
+        origen = self._origen()
+        ahora = time.time()
+        fallos = [t for t in self.sala.fallos.get(origen, []) if ahora - t < 600]
+        if len(fallos) >= 8:
+            self._json({"error": "Demasiados intentos. Espera unos minutos."}, 429)
+            return False
         codigo = self.headers.get("X-Codigo") or self._consulta().get("codigo")
-        if codigo != self.sala.codigo:
+        if not secrets.compare_digest(str(codigo or ""), self.sala.codigo):
+            self.sala.fallos[origen] = fallos + [ahora]
             self._json({"error": "Código incorrecto"}, 403)
             return False
         return True
@@ -287,8 +305,14 @@ class _Manejador(BaseHTTPRequestHandler):
                 return self._json(sala.publico())
             if ruta == "/eventos":
                 return self._eventos()
+            if ruta == "/esperar":
+                return self._esperar()
             if ruta.startswith("/audio/"):
-                return self._archivo(sala.pista(ruta.split("/")[2]), "ruta")
+                pista = sala.pista(ruta.split("/")[2])
+                if pista and not pista.get("ruta") and pista.get("video_id"):
+                    from . import flujo
+                    return flujo.servir(self, pista["video_id"], self.headers.get("Range"), self._cors)
+                return self._archivo(pista, "ruta")
             if ruta.startswith("/portada/"):
                 return self._archivo(sala.pista(ruta.split("/")[2]), "portada_local")
             if ruta == "/biblioteca":
@@ -315,6 +339,8 @@ class _Manejador(BaseHTTPRequestHandler):
         try:
             if not self._autorizado():
                 return
+            if ruta == "/subir":
+                return self._subir()
             datos = self._cuerpo()
             if ruta == "/unirse":
                 cliente = datos.get("cliente")
@@ -367,6 +393,50 @@ class _Manejador(BaseHTTPRequestHandler):
             except OSError:
                 pass
 
+    def _subir(self):
+        """Un invitado manda el archivo de una canción suya; se guarda en la caché y entra a la cola."""
+        from . import biblioteca, plataforma
+        sala = self.sala
+        cliente = self._cliente({"cliente": self.headers.get("X-Cliente")})
+        if not cliente:
+            return
+        if cliente != sala.anfitrion and not sala.invitados_agregan:
+            return self._json({"error": "El anfitrión no permite agregar canciones"}, 403)
+        tamano = int(self.headers.get("Content-Length") or 0)
+        if not 0 < tamano <= 80 * 1024 * 1024:
+            return self._json({"error": "El archivo debe pesar menos de 80 MB"}, 413)
+        meta = json.loads(urllib.parse.unquote(self.headers.get("X-Meta") or "{}"))
+        ext = meta.get("ext") if str(meta.get("ext", "")).lower() in (".mp3", ".m4a", ".opus", ".ogg", ".flac", ".wav", ".aac", ".webm") else ".bin"
+        carpeta = plataforma.carpeta_cache() / "jam"
+        carpeta.mkdir(parents=True, exist_ok=True)
+        pid = secrets.token_hex(5)
+        destino = carpeta / f"{pid}{ext}"
+        restante = tamano
+        with open(destino, "wb") as f:
+            while restante > 0:
+                bloque = self.rfile.read(min(256 * 1024, restante))
+                if not bloque:
+                    break
+                f.write(bloque)
+                restante -= len(bloque)
+        if restante:
+            destino.unlink(missing_ok=True)
+            return self._json({"error": "Se cortó la subida"}, 400)
+        etiquetas = biblioteca.leer_archivo(destino)
+        pista = {"pid": pid, "titulo": meta.get("titulo") or etiquetas["titulo"],
+                 "artista": meta.get("artista") or etiquetas["artista"], "album": meta.get("album") or etiquetas["album"],
+                 "duracion": meta.get("duracion") or etiquetas["duracion"], "portada": None,
+                 "agregada_por": sala.participantes[cliente]["nombre"], "estado": "lista", "ruta": str(destino),
+                 "subida": True}
+        portada = sala.api.portada_local(destino)
+        if portada:
+            pista["portada_local"] = portada
+            pista["portada"] = f"/portada/{pid}"
+        with sala.candado:
+            sala.cola.append(pista)
+        sala.avisar()
+        return self._json({"pista": {k: v for k, v in pista.items() if k not in ("ruta", "portada_local")}})
+
     def _control(self, d: dict):
         sala = self.sala
         accion = d.get("accion")
@@ -413,33 +483,70 @@ class _Manejador(BaseHTTPRequestHandler):
         sala.avisar()
 
     def _eventos(self):
-        """Server-Sent Events: manda el estado cada vez que cambia (y un latido cada 15 s)."""
+        """Server-Sent Events: manda el estado cada vez que cambia (y un latido cada 15 s).
+
+        Va en HTTP/1.1 por trozos (chunked): el túnel de Cloudflare reenvía cada trozo al instante,
+        mientras que una respuesta HTTP/1.0 sin largo la retiene hasta que termina.
+        """
+        self.protocol_version = "HTTP/1.1"
+        self.close_connection = True
         self.send_response(200)
         self._cors()
         self.send_header("Content-Type", "text/event-stream")
-        self.send_header("Cache-Control", "no-cache")
-        self.send_header("Connection", "keep-alive")
+        self.send_header("Cache-Control", "no-cache, no-transform")
+        self.send_header("X-Accel-Buffering", "no")
+        self.send_header("Transfer-Encoding", "chunked")
         self.end_headers()
+
+        def mandar(texto: str) -> None:
+            datos = texto.encode()
+            self.wfile.write(f"{len(datos):X}\r\n".encode() + datos + b"\r\n")
+            self.wfile.flush()
+
         cliente = self._consulta().get("cliente")
         visto = -1
         while not getattr(self.sala, "cerrada", False):
             if cliente in self.sala.bloqueados:
-                self.wfile.write(b"event: expulsado\ndata: {}\n\n")
-                self.wfile.flush()
-                return
+                mandar("event: expulsado\ndata: {}\n\n")
+                break
             if cliente in self.sala.participantes:
                 self.sala.participantes[cliente]["visto"] = time.time()
             if self.sala.version != visto:
                 visto = self.sala.version
-                datos = json.dumps(self.sala.publico(), ensure_ascii=False)
-                self.wfile.write(f"data: {datos}\n\n".encode())
+                mandar(f"data: {json.dumps(self.sala.publico(), ensure_ascii=False)}\n\n")
             else:
-                self.wfile.write(b": latido\n\n")
-            self.wfile.flush()
+                mandar(": latido\n\n")
             with self.sala.cambio:
                 self.sala.cambio.wait(timeout=15)
-        self.wfile.write(b"event: cerrada\ndata: {}\n\n")
+        else:
+            mandar("event: cerrada\ndata: {}\n\n")
+        self.wfile.write(b"0\r\n\r\n")  # fin de los trozos
         self.wfile.flush()
+
+    def _esperar(self):
+        """Sondeo largo para los que entran por internet (los túneles rápidos de Cloudflare no pasan SSE):
+        responde en cuanto la sala cambia respecto a ?version= o a los 20 s si no pasa nada."""
+        consulta = self._consulta()
+        cliente = consulta.get("cliente")
+        try:
+            version = int(consulta.get("version", -1))
+        except ValueError:
+            version = -1
+        limite = time.time() + 20
+        while True:
+            if getattr(self.sala, "cerrada", False):
+                return self._json({"evento": "cerrada"})
+            if cliente in self.sala.bloqueados:
+                return self._json({"evento": "expulsado"})
+            if cliente in self.sala.participantes:
+                self.sala.participantes[cliente]["visto"] = time.time()
+            if self.sala.version != version:
+                return self._json({"estado": self.sala.publico()})
+            restante = limite - time.time()
+            if restante <= 0:
+                return self._json({"sin_cambios": True})
+            with self.sala.cambio:
+                self.sala.cambio.wait(timeout=min(restante, 5))
 
     def _archivo(self, pista: dict | None, clave: str):
         if not pista or not pista.get(clave) or not Path(pista[clave]).exists():
@@ -475,7 +582,14 @@ class _Manejador(BaseHTTPRequestHandler):
 
 class _Servidor(ThreadingHTTPServer):
     daemon_threads = True
-    allow_reuse_address = True
+    # En Windows SO_REUSEADDR deja que dos servidores compartan el puerto (y se roben las conexiones)
+    allow_reuse_address = sys.platform != "win32"
+
+    def handle_error(self, request, client_address):
+        # Celulares que se duermen y el túnel cerrando conexiones viejas: normal, no hace falta el error entero
+        if isinstance(sys.exc_info()[1], (ConnectionError, TimeoutError)):
+            return
+        super().handle_error(request, client_address)
 
 
 _actual: dict = {"sala": None, "servidor": None, "puerto": None}
@@ -498,10 +612,14 @@ def crear(nombre_anfitrion: str, modo: str, api) -> dict:
     threading.Thread(target=servidor.serve_forever, daemon=True).start()
     threading.Thread(target=sala.vigilar, daemon=True).start()
     threading.Thread(target=_anunciar, args=(sala, puerto), daemon=True).start()
-    return {"puerto": puerto, "codigo": sala.codigo, "cliente": sala.anfitrion, "ips": ips_locales(), "nombre": sala.nombre}
+    from . import tunel
+    return {"puerto": puerto, "codigo": sala.codigo, "cliente": sala.anfitrion, "ips": ips_locales(), "nombre": sala.nombre,
+            "internet_disponible": tunel.disponible()}
 
 
 def cerrar() -> None:
+    from . import tunel
+    tunel.cerrar()
     sala, servidor = _actual["sala"], _actual["servidor"]
     if sala:
         sala.cerrada = True
@@ -513,8 +631,31 @@ def cerrar() -> None:
     _actual.update(sala=None, servidor=None, puerto=None)
 
 
+def olvidar_rutas(rutas: set[str]) -> None:
+    """Canciones borradas del dispositivo: salen de la cola del jam (si la que suena es una, pasa a la siguiente)."""
+    sala = _actual["sala"]
+    if not sala or not rutas:
+        return
+    with sala.candado:
+        actual = sala.cola[sala.indice]["pid"] if 0 <= sala.indice < len(sala.cola) else None
+        quedan = [p for p in sala.cola if p.get("ruta") not in rutas]
+        if len(quedan) == len(sala.cola):
+            return
+        sonaba_borrada = actual is not None and all(p["pid"] != actual for p in quedan)
+        anteriores = sum(1 for p in sala.cola[:max(sala.indice, 0)] if p.get("ruta") in rutas)
+        sala.cola = quedan
+        sala.indice = max(-1, sala.indice - anteriores)
+        if sonaba_borrada:
+            # La que sonaba ya no existe: entra la que quedó en su lugar (o se detiene si no hay)
+            sala._empezar(sala.indice)
+            if not (0 <= sala.indice < len(sala.cola)) or sala.cola[sala.indice]["estado"] != "lista":
+                sala.sonando = False
+                sala.pausa_pos = 0.0
+    sala.avisar()
+
+
 def _anunciar(sala: Sala, puerto: int) -> None:
-    """Grita "aquí hay un jam" por UDP cada 2 s para que los WaveDrop de la red lo encuentren."""
+    """Grita "aquí hay un jam" por UDP cada 2 s para que los Misiccord de la red lo encuentren."""
     ips = ips_locales()
     mensaje = json.dumps({"wavedrop_jam": 1, "nombre": sala.nombre, "puerto": puerto, "ips": ips,
                           "anfitrion": sala.participantes[sala.anfitrion]["nombre"]}).encode()

@@ -67,7 +67,7 @@
           {#if tipo === "todo"}<div class="titulo-seccion">Artistas</div>{/if}
           <div class={tipo === "todo" ? "carrusel" : "rejilla"}>
             {#each r.artistas as a}
-              <Tarjeta portada={a.miniatura} titulo={a.nombre} redonda icono="persona" ancho={tipo === "todo" ? "112px" : "100%"}
+              <Tarjeta portada={a.miniatura} titulo={a.nombre} redonda icono="persona" ancho={tipo === "todo" ? "var(--artista)" : "100%"}
                 alTocar={() => abrir("artista", { id: a.browse_id, nombre: a.nombre })} />
             {/each}
           </div>
@@ -107,7 +107,7 @@
   .caja input { flex: 1; min-width: 0; height: 100%; border: 0; outline: 0; background: transparent; color: #04121a; font-size: 16px; }
   .caja input::placeholder { color: #5b6b78; }
   .chips { display: flex; gap: 8px; margin: 16px calc(-1 * var(--margen)) 4px; padding: 0 var(--margen); overflow-x: auto; scrollbar-width: none; }
-  .rejilla { display: grid; grid-template-columns: 1fr 1fr; gap: 18px 14px; margin-top: 16px; }
+  .rejilla { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 18px 14px; margin-top: 16px; }
   .link { margin-top: 20px; padding: 18px; border-radius: var(--radio); background: var(--tarjeta); }
   .link p { margin: 0 0 14px; color: var(--tenue); line-height: 1.5; }
 </style>

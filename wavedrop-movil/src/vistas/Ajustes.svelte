@@ -1,21 +1,58 @@
 <script>
   import { onMount } from "svelte";
   import { py } from "../lib/api.js";
-  import { atras } from "../lib/estado.svelte.js";
+  import { atras, aviso } from "../lib/estado.svelte.js";
+  import { act, buscarActualizacion, instalarActualizacion, REPO } from "../lib/actualizaciones.svelte.js";
+  import { getVersion } from "@tauri-apps/api/app";
   import { rep } from "../lib/reproductor.svelte.js";
   import Icono from "../componentes/Icono.svelte";
 
   let aj = $state(null);
-  let info = $state(null);
+  let info = $state(null); // carpeta actual, carpetas sugeridas y si es Android
 
   onMount(async () => {
-    aj = (await py("ajustes")).ajustes;
+    act.actual ||= await getVersion();
+    info = await py("ajustes");
+    aj = info.ajustes;
   });
 
   async function guardar(cambios) {
     aj = { ...aj, ...cambios };
     if ("fundido" in cambios) rep.fundido = cambios.fundido;
-    aj = (await py("guardar_ajustes", cambios)).ajustes;
+    try {
+      info = await py("guardar_ajustes", cambios);
+      aj = info.ajustes;
+      if ("carpeta" in cambios) aviso("Las descargas nuevas se guardarán ahí", "ok");
+    } catch (e) {
+      aviso(e.message, "error");
+      info = await py("ajustes");
+      aj = info.ajustes;
+    }
+  }
+
+  /** Android: las carpetas públicas (Música) piden "Acceso a todos los archivos" antes de poder escribir. */
+  async function elegirCarpetaAndroid(c) {
+    const publica = c.ruta.startsWith("/storage/emulated/0/") && !c.ruta.includes("/Android/data/");
+    if (!publica) return guardar({ carpeta: c.ruta });
+    const { invoke } = await import("@tauri-apps/api/core");
+    if (await invoke("permiso_archivos", { pedir: false })) return guardar({ carpeta: c.ruta });
+    aviso("Activa “Permitir acceso a todos los archivos” para Misiccord y regresa a la app");
+    await invoke("permiso_archivos", { pedir: true });
+    // Al volver de Ajustes de Android se revisa otra vez y, si ya hay permiso, se aplica la carpeta
+    const alVolver = async () => {
+      if (document.visibilityState !== "visible") return;
+      document.removeEventListener("visibilitychange", alVolver);
+      if (await invoke("permiso_archivos", { pedir: false })) guardar({ carpeta: c.ruta });
+      else aviso("Sin ese permiso las canciones se quedan en la carpeta de la app", "error");
+    };
+    document.addEventListener("visibilitychange", alVolver);
+  }
+
+  async function elegirCarpeta() {
+    // Escritorio: el selector de carpetas del sistema
+    const { open } = await import("@tauri-apps/plugin-dialog");
+    const ruta = await open({ directory: true, title: "¿Dónde guardar las canciones?", defaultPath: info.carpeta_actual });
+    if (ruta) guardar({ carpeta: ruta });
   }
 </script>
 
@@ -42,6 +79,25 @@
 
     <section>
       <h2>Descargas</h2>
+      <div class="opcion">
+        <div class="texto">
+          <b><Icono nombre="descargas" tam={18} /> Carpeta de descargas</b>
+          <small class="ruta">{info.carpeta_actual}</small>
+        </div>
+        {#if !info.android}
+          <button class="pildora oscura chica" onclick={elegirCarpeta}>Cambiar…</button>
+        {/if}
+      </div>
+      {#if info.android}
+        {#each info.carpetas as c}
+          <button class="eleccion" class:activa={info.carpeta_actual === c.ruta} onclick={() => elegirCarpetaAndroid(c)}>
+            <span class="radio"></span>
+            <span class="texto"><b>{c.nombre}</b><small>{c.detalle}</small></span>
+          </button>
+        {/each}
+      {:else if info.carpeta_actual !== info.carpetas[0]?.ruta}
+        <button class="restaurar" onclick={() => guardar({ carpeta: info.carpetas[0].ruta })}>Volver a la carpeta por defecto</button>
+      {/if}
       <label class="opcion">
         <div class="texto">
           <b>Completar datos con MusicBrainz</b>
@@ -71,8 +127,31 @@
 
     <section>
       <h2>Acerca de</h2>
+      <div class="opcion">
+        <div class="texto">
+          <b>Misiccord {act.actual || ""}</b>
+          <small>
+            {#if act.estado === "buscando"}Buscando versiones nuevas…
+            {:else if act.estado === "al_dia"}Tienes la versión más reciente
+            {:else if act.estado === "disponible"}Hay una versión nueva: {act.version}
+            {:else if act.estado === "descargando"}Descargando la actualización… {act.pct}%
+            {:else if act.estado === "instalando"}Instalando…
+            {:else if act.estado === "error"}No se pudo revisar: {act.error}
+            {:else}Las versiones nuevas se publican en github.com/{REPO}{/if}
+          </small>
+        </div>
+        {#if act.estado === "disponible"}
+          <button class="pildora cian chica" onclick={instalarActualizacion}>Actualizar</button>
+        {:else}
+          <button class="pildora oscura chica" disabled={act.estado === "buscando" || act.estado === "descargando"}
+            onclick={() => buscarActualizacion({ avisar: false, manual: true })}>Buscar</button>
+        {/if}
+      </div>
+      {#if act.estado === "descargando"}
+        <div class="progreso"><div style:width="{act.pct}%"></div></div>
+      {/if}
       <p class="tenue acerca">
-        WaveDrop · música de YouTube Music, recomendaciones y letras de LRCLIB, datos de MusicBrainz.
+        Misiccord · música de YouTube Music, recomendaciones y letras de LRCLIB, datos de MusicBrainz.
         Descarga solo contenido que tengas permiso de guardar.
       </p>
     </section>
@@ -101,4 +180,12 @@
   .segmentos button { width: 38px; height: 38px; border-radius: 10px; background: var(--tarjeta-2); font-weight: 700; }
   .segmentos .activo { background: var(--cian); color: #04121a; }
   .acerca { line-height: 1.5; font-size: 14px; }
+  .ruta { font-family: ui-monospace, monospace; font-size: 12.5px; word-break: break-all; }
+  .chica { height: 40px; padding: 0 16px; font-size: 14px; flex-shrink: 0; }
+  .eleccion { width: 100%; display: flex; align-items: center; gap: 14px; padding: 12px 4px; text-align: left; border-bottom: 1px solid var(--borde); }
+  .radio { width: 22px; height: 22px; border-radius: 50%; border: 2px solid var(--borde-fuerte); flex-shrink: 0; transition: border 0.2s; }
+  .eleccion.activa .radio { border: 7px solid var(--cian); }
+  .restaurar { color: var(--cian); font-weight: 600; padding: 10px 0; }
+  .progreso { height: 4px; border-radius: 2px; background: var(--borde-fuerte); overflow: hidden; margin: 4px 0 10px; }
+  .progreso div { height: 100%; background: var(--cian); transition: width 0.4s var(--curva); }
 </style>

@@ -220,8 +220,10 @@ def previa(video_id: str) -> Path:
         "outtmpl": str(cache / "%(id)s.%(ext)s"),
         "noplaylist": True,
     }
-    with yt_dlp.YoutubeDL(opciones) as ydl:
-        info = ydl.extract_info(f"https://music.youtube.com/watch?v={video_id}", download=True)
+    try:
+        info = nucleo.extraer(opciones, f"https://music.youtube.com/watch?v={video_id}", True, logger)
+    except Exception as e:
+        raise RuntimeError(logger.ultimo_error or str(e)) from e
     if not info or not info.get("requested_downloads"):
         raise RuntimeError(logger.ultimo_error or "No se pudo cargar la vista previa")
     # Limpiar las más viejas

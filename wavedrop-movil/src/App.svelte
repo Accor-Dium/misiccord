@@ -2,7 +2,11 @@
   import { onMount } from "svelte";
   import { fade } from "svelte/transition";
   import { py } from "./lib/api.js";
+  import { revisarAlIniciar } from "./lib/actualizaciones.svelte.js";
+  import { escucharEnlaces } from "./lib/enlaces.svelte.js";
   import { nav } from "./lib/estado.svelte.js";
+  import { jam } from "./lib/jam.svelte.js";
+  import "./lib/medios.svelte.js"; // notificación, pantalla bloqueada, relojes y teclas multimedia
   import { rep } from "./lib/reproductor.svelte.js";
   import Avisos from "./componentes/Avisos.svelte";
   import Hoja from "./componentes/Hoja.svelte";
@@ -35,6 +39,8 @@
       const r = await py("iniciar");
       rep.fundido = r.ajustes.fundido;
       listo = true;
+      revisarAlIniciar();
+      escucharEnlaces(); // links de jam con los que se abre la app
     } catch (e) {
       error = e.message;
     }
@@ -56,11 +62,11 @@
     <div class="logo">
       <span></span><span></span><span></span><span></span><span></span>
     </div>
-    <b>WaveDrop</b>
+    <b>Misiccord</b>
     {#if error}<p class="error">No se pudo iniciar: {error}</p>{/if}
   </div>
 {:else}
-  <main bind:this={principal} class:con-mini={rep.actual}>
+  <main bind:this={principal} class:con-mini={rep.actual || jam.sala}>
     {#key entrada}
       {@const Vista = vistas[entrada.vista]}
       <Vista e={entrada} />

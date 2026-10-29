@@ -10,11 +10,20 @@ export const jam = $state({
   escuchando: true, // reproducir aquí (en modo sincronizado o si eres el anfitrión)
   desfase: 0, // ms que hay que sumarle al reloj local para tener el del anfitrión
   conectado: false,
+  invitacion: null, // datos de un link de jam con el que se abrió la app (falta unirse)
 });
 
 const audio = new Audio();
 audio.preload = "auto";
 let eventos = null;
+
+// El audio del jam usa el mismo volumen que el reproductor normal
+$effect.root(() => {
+  $effect(() => {
+    audio.volume = rep.volumen;
+    audio.muted = rep.silencio;
+  });
+});
 
 export const soyAnfitrion = () => jam.conexion?.rol === "anfitrion";
 export const pistaActual = () => {
@@ -30,11 +39,20 @@ export function urlJam(ruta) {
 }
 
 async function pedir(ruta, datos) {
-  const r = await fetch(jam.conexion.base + ruta, {
-    method: datos ? "POST" : "GET",
-    headers: { "X-Codigo": jam.conexion.codigo, "Content-Type": "application/json" },
-    body: datos ? JSON.stringify({ cliente: jam.conexion.cliente, ...datos }) : undefined,
-  });
+  let r;
+  try {
+    r = await fetch(jam.conexion.base + ruta, {
+      method: datos ? "POST" : "GET",
+      headers: { "X-Codigo": jam.conexion.codigo, "Content-Type": "application/json" },
+      body: datos ? JSON.stringify({ cliente: jam.conexion.cliente, ...datos }) : undefined,
+      // Sin límite, un jam que no se alcanza (otra red, anfitrión apagado) se quedaría "conectando" para siempre
+      signal: AbortSignal.timeout(ruta.startsWith("/buscar") ? 30000 : 12000),
+    });
+  } catch {
+    throw new Error(jam.conexion.base.startsWith("https://")
+      ? "No se pudo conectar con el jam. ¿El anfitrión lo sigue teniendo abierto a internet?"
+      : "No se pudo conectar con el jam. Conéctate a la misma red Wi-Fi que el anfitrión.");
+  }
   const cuerpo = await r.json();
   if (!r.ok) throw new Error(cuerpo.error || `Error ${r.status}`);
   return cuerpo;
@@ -53,8 +71,34 @@ async function sincronizarReloj() {
   jam.desfase = mejor.desfase;
 }
 
+/** Por internet (túnel de Cloudflare) no pasa SSE: se pregunta "¿algo nuevo?" y el anfitrión contesta al cambiar. */
+async function sondear(conexion) {
+  while (jam.conexion === conexion) {
+    try {
+      const v = jam.sala?.version ?? -1;
+      const r = await fetch(`${conexion.base}/esperar?codigo=${conexion.codigo}&cliente=${conexion.cliente}&version=${v}`,
+                            { signal: AbortSignal.timeout(35000) });
+      if (jam.conexion !== conexion) return;
+      const d = await r.json();
+      jam.conectado = r.ok;
+      if (d.evento === "expulsado") return terminar("El anfitrión te sacó del jam");
+      if (d.evento === "cerrada") return terminar("El anfitrión terminó el jam");
+      if (d.estado) aplicar(d.estado);
+      if (!r.ok) await new Promise((ok) => setTimeout(ok, 3000));
+    } catch {
+      jam.conectado = false;
+      await new Promise((ok) => setTimeout(ok, 2000));
+    }
+  }
+}
+
 function escucharEventos() {
   eventos?.close();
+  eventos = null;
+  if (jam.conexion.base.startsWith("https://")) {
+    sondear(jam.conexion);
+    return;
+  }
   const { base, codigo, cliente } = jam.conexion;
   eventos = new EventSource(`${base}/eventos?codigo=${codigo}&cliente=${cliente}`);
   eventos.onopen = () => (jam.conectado = true);
@@ -77,11 +121,28 @@ async function conectar(conexion) {
 export async function crear(nombre, modo) {
   const r = await py("jam_crear", { nombre, modo });
   await conectar({ base: `http://127.0.0.1:${r.puerto}`, codigo: r.codigo, cliente: r.cliente, nombre,
-                   ips: r.ips, puerto: r.puerto });
+                   ips: r.ips, puerto: r.puerto, internetDisponible: r.internet_disponible, internet: null });
 }
 
-export async function unirse(ip, puerto, codigo, nombre) {
-  await conectar({ base: `http://${ip}:${puerto}`, codigo, cliente: null, nombre, ips: [ip], puerto });
+export async function unirse(ip, puerto, codigo, nombre, base = null) {
+  await conectar({ base: base || `http://${ip}:${puerto}`, codigo, cliente: null, nombre, ips: [ip], puerto });
+}
+
+/** Une con lo que trae un QR o link: si estás en la misma red va directo; si no, por la dirección de internet. */
+export async function unirseConDatos(datos, nombre) {
+  if (datos.url) {
+    const local = await fetch(`http://${datos.ip}:${datos.puerto}/info`, { signal: AbortSignal.timeout(1500) })
+      .then((r) => r.ok).catch(() => false);
+    if (!local) return unirse(datos.ip, datos.puerto, datos.codigo, nombre, datos.url.replace(/\/$/, ""));
+  }
+  return unirse(datos.ip, datos.puerto, datos.codigo, nombre);
+}
+
+/** Anfitrión: abrir o cerrar el jam a internet (túnel de Cloudflare). Devuelve la dirección pública. */
+export async function abrirInternet(activar = true) {
+  const { url } = await py("jam_internet", { activar });
+  jam.conexion.internet = url;
+  return url;
 }
 
 export async function buscarCercanos() {
@@ -164,6 +225,39 @@ export function posicionJam() {
 }
 
 // ---------- Acciones ----------
+
+/** Agrega una canción de TU biblioteca: el anfitrión la lee directo; un invitado se la sube por la red. */
+export async function agregarPropia(c) {
+  if (soyAnfitrion()) return agregar(c);
+  const { base, codigo, cliente } = jam.conexion;
+  return py("jam_subir", { base, codigo, cliente, ruta: c.ruta, titulo: c.titulo, artista: c.artista,
+                           album: c.album, duracion: c.duracion });
+}
+
+/** ¿Puedo meter canciones a la cola? (el anfitrión siempre; los invitados si él lo permite) */
+export const puedoAgregar = () => !!jam.sala && (soyAnfitrion() || jam.sala.invitados_agregan);
+
+/** Manda cualquier canción al jam desde cualquier vista: las tuyas se suben, las de YouTube las baja el anfitrión. */
+export async function agregarAlJam(c) {
+  try {
+    if (c.ruta) {
+      if (!soyAnfitrion()) aviso(`Mandando “${c.titulo}” al jam…`);
+      await agregarPropia(c);
+      aviso(`“${c.titulo}” a la cola del jam`, "ok");
+    } else {
+      await agregar(c);
+      aviso(`“${c.titulo}” a la cola del jam`, "ok");
+    }
+  } catch (err) {
+    aviso(err.message || "No se pudo agregar al jam", "error");
+  }
+}
+
+/** QR del jam (SVG) para que otros se unan escaneándolo. */
+export async function qrDelJam() {
+  const { ips, puerto, codigo, internet } = jam.conexion;
+  return py("jam_qr", { ip: ips?.[0], puerto, codigo, nombre: jam.sala?.nombre ?? "", url: internet });
+}
 
 export const control = (accion, extra = {}) => pedir("/control", { accion, ...extra });
 export const votar = () => pedir("/votar", {});

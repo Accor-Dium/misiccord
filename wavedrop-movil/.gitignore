@@ -22,3 +22,15 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Llave de firma de Android (privada)
+firma/
+servicio-dist/
+*.apk
+
+# Lo que se sube a cada Release (instaladores, APK, latest.json): ya vive en GitHub Releases
+publicar/
+/*.exe
+# Tauri copia aquí el servicio de Windows (bundle.resources) al compilar Android: es salida, no código
+src-tauri/gen/android/app/src/main/assets/servicio/
+__pycache__/

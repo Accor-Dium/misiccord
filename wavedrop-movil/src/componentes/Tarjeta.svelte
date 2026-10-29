@@ -13,11 +13,12 @@
 
 <style>
   .tarjeta {
-    display: flex; flex-direction: column; gap: 4px; text-align: left;
+    display: flex; flex-direction: column; gap: 4px; text-align: left; min-width: 0;
     transition: transform 0.18s var(--curva);
   }
   .tarjeta:active { transform: scale(0.96); }
   .redonda { text-align: center; align-items: center; }
+  .redonda b { font-size: 13.5px; font-weight: 600; }
   b { margin-top: 8px; font-size: 15px; font-weight: 700; width: 100%; }
   small { color: var(--tenue); font-size: 13.5px; width: 100%; }
 </style>

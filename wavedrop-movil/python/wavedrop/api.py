@@ -1,4 +1,4 @@
-"""API de WaveDrop para la interfaz (Tauri). Todo entra por despachar() y sale como JSON.
+"""API de Misiccord para la interfaz (Tauri). Todo entra por despachar() y sale como JSON.
 
 - Android: Kotlin (PythonPlugin) llama a despachar(funcion, datos, contexto, emisor).
 - Windows: el servicio local hará lo mismo (siguiente etapa).
@@ -27,6 +27,7 @@ AJUSTES_POR_DEFECTO = {
     "musicbrainz": True,   # completar datos al descargar
     "por_artista": True,   # carpetas por artista
     "descargas_simultaneas": 2,
+    "carpeta": "",         # dónde guardar las descargas ("" = la carpeta por defecto de cada sistema)
 }
 
 
@@ -124,10 +125,18 @@ def _album_local(a: biblioteca.Album) -> dict:
 
 def iniciar(d: dict) -> dict:
     with _candado:
+        _estado["musica_app"] = d["musica"]
         plataforma.configurar(d["datos"], d["musica"], d["cache"], d.get("libs"))
+        elegida = _ajustes().get("carpeta")
+        if elegida:
+            try:
+                _probar_carpeta(Path(elegida))
+                plataforma.configurar(d["datos"], elegida, d["cache"], d.get("libs"))
+            except OSError:
+                pass  # la carpeta elegida ya no existe o no se puede escribir: se usa la de siempre
         if _estado["db"] is None:
             _estado["db"] = biblioteca.Biblioteca()
-        _db().agregar_carpeta(Path(d["musica"]))
+        _db().agregar_carpeta(plataforma.carpeta_musica())
     threading.Thread(target=_escanear, daemon=True).start()
     return {"ajustes": _ajustes(), "android": plataforma.es_android(), "ffmpeg": plataforma.hay_ffmpeg(),
             "js": list(plataforma.js_runtimes().keys()), "total": _db().total()}
@@ -141,14 +150,41 @@ def _escanear():
         emitir("error", {"donde": "escaneo", "mensaje": str(e)})
 
 
+def _probar_carpeta(ruta: Path) -> None:
+    """Lanza OSError si no se puede crear o escribir en la carpeta."""
+    ruta.mkdir(parents=True, exist_ok=True)
+    prueba = ruta / ".wavedrop-prueba"
+    prueba.write_text("ok", encoding="utf-8")
+    prueba.unlink()
+
+
+def _carpetas_sugeridas() -> list[dict]:
+    app = _estado.get("musica_app") or str(plataforma.carpeta_musica())
+    if plataforma.es_android():
+        return [{"ruta": app, "nombre": "Carpeta de la app", "detalle": "Solo Misiccord la ve; se borra si desinstalas"},
+                {"ruta": "/storage/emulated/0/Music/Misiccord", "nombre": "Música del teléfono",
+                 "detalle": "Tus otras apps de música también la ven"}]
+    return [{"ruta": app, "nombre": "Música / Misiccord", "detalle": "La carpeta por defecto"}]
+
+
 def ajustes(d: dict) -> dict:
-    return {"ajustes": _ajustes()}
+    return {"ajustes": _ajustes(), "carpeta_actual": str(plataforma.carpeta_musica()),
+            "carpetas": _carpetas_sugeridas(), "android": plataforma.es_android()}
 
 
 def guardar_ajustes(d: dict) -> dict:
+    if "carpeta" in d and d["carpeta"]:
+        nueva = Path(d["carpeta"])
+        try:
+            _probar_carpeta(nueva)
+        except OSError as e:
+            raise RuntimeError(f"No se puede guardar en esa carpeta ({e.strerror or e})") from e
+        plataforma._config["musica"] = str(nueva)
+        _db().agregar_carpeta(nueva)
+        threading.Thread(target=_escanear, daemon=True).start()
     _ajustes().update({k: v for k, v in d.items() if k in AJUSTES_POR_DEFECTO})
     _ruta_ajustes().write_text(json.dumps(_ajustes(), ensure_ascii=False), encoding="utf-8")
-    return {"ajustes": _ajustes()}
+    return ajustes({})
 
 
 # ---------- Inicio y recomendaciones ----------
@@ -267,6 +303,54 @@ def borrar_playlist(d: dict) -> dict:
     return {}
 
 
+def eliminar_canciones(d: dict) -> dict:
+    """Borra canciones del dispositivo y de todos lados: biblioteca, playlists, historial, jam y Android.
+
+    Recibe {"db_ids": [...]}, {"album": {nombre, grupo}} o {"artista": nombre}.
+    """
+    db = _db()
+    if d.get("album"):
+        al = d["album"]
+        canciones = db.canciones_de_album(biblioteca.Album(al["nombre"], al.get("artista", ""), "", 0, Path(), al.get("grupo", "")))
+    elif d.get("artista"):
+        canciones = db.canciones_de_artista(d["artista"])
+    else:
+        canciones = db.canciones_por_ids([int(i) for i in d.get("db_ids") or []])
+    if not canciones:
+        return {"eliminadas": 0, "rutas": [], "fallidas": []}
+
+    raiz = plataforma.carpeta_musica().resolve()
+    borradas, fallidas = [], []
+    for c in canciones:
+        try:
+            c.ruta.unlink(missing_ok=True)
+            borradas.append(c)
+        except OSError as e:
+            fallidas.append({"titulo": c.titulo, "error": str(e)})
+            continue
+        plataforma.archivo_nuevo(c.ruta)  # Android: escanear una ruta que ya no existe la quita de MediaStore
+        # Carpetas de artista/álbum que quedaron vacías (solo dentro de la carpeta de música de la app)
+        carpeta = c.ruta.parent.resolve()
+        while raiz in carpeta.parents:
+            try:
+                restos = [p for p in carpeta.iterdir() if p.name.lower() not in ("cover.jpg", "folder.jpg", "desktop.ini")]
+                if restos:
+                    break
+                for p in carpeta.iterdir():
+                    p.unlink()
+                carpeta.rmdir()
+            except OSError:
+                break
+            carpeta = carpeta.parent
+
+    db.olvidar(borradas)
+    rutas = [str(c.ruta) for c in borradas]
+    from . import jam
+    jam.olvidar_rutas(set(rutas))
+    emitir("biblioteca", {"nuevas": 0, "quitadas": len(borradas), "total": db.total()})
+    return {"eliminadas": len(borradas), "rutas": rutas, "fallidas": fallidas}
+
+
 def reproduccion(d: dict) -> dict:
     c = _db().cancion_por_ruta(Path(d["ruta"]))
     _db().registrar("reproduccion", Path(d["ruta"]), c.artista if c else "", c.titulo if c else Path(d["ruta"]).stem)
@@ -274,11 +358,30 @@ def reproduccion(d: dict) -> dict:
 
 
 def previa(d: dict) -> dict:
-    return {"ruta": str(explorar.previa(d["id"]))}
+    """Audio de una canción que no tienes: de la caché si ya sonó completa; si no, un flujo que suena al instante.
+    Con completa=True se baja entera primero (respaldo si el flujo falla)."""
+    from . import flujo
+    cache = explorar.carpeta_cache()
+    guardada = next((p for p in sorted(cache.glob(f"{d['id']}.*")) if p.suffix.lower() in (".m4a", ".webm", ".opus", ".mp3")), None)
+    if guardada:
+        guardada.touch()
+        return {"ruta": str(guardada)}
+    if d.get("completa"):
+        return {"ruta": str(explorar.previa(d["id"]))}
+    return {"url": flujo.url(d["id"])}
+
+
+def precargar(d: dict) -> dict:
+    """Deja listas en segundo plano las canciones en pantalla para que al tocarlas suenen al instante."""
+    from . import flujo
+    flujo.precargar([str(i) for i in d.get("ids") or []][:10])
+    return {}
 
 
 def letra(d: dict) -> dict:
-    l = letras.obtener_letra(Path(d["ruta"]), d.get("titulo", ""), d.get("artista", ""), d.get("album", ""))
+    # Las que suenan en línea no tienen archivo: su .lrc se guarda en la caché de previas
+    ruta = Path(d["ruta"]) if d.get("ruta") else explorar.carpeta_cache() / f"{d['id']}.letra"
+    l = letras.obtener_letra(ruta, d.get("titulo", ""), d.get("artista", ""), d.get("album", ""), d.get("duracion"))
     return {"tipo": l.tipo, "lineas": l.lineas, "fuente": l.fuente}
 
 
@@ -337,6 +440,7 @@ class _Gestor:
                 except Exception:
                     pass
             _db().indexar(ruta)
+            plataforma.archivo_nuevo(ruta)
             c = _db().cancion_por_ruta(ruta)
             if c:
                 _db().registrar("descarga", ruta, c.artista, c.titulo)
@@ -385,7 +489,7 @@ def jam_crear(d: dict) -> dict:
     """Abre un jam en esta máquina; devuelve puerto, código y el cliente del anfitrión."""
     import sys
     from . import jam
-    return jam.crear(d.get("nombre") or "WaveDrop", d.get("modo", "anfitrion"), sys.modules[__name__])
+    return jam.crear(d.get("nombre") or "Misiccord", d.get("modo", "anfitrion"), sys.modules[__name__])
 
 
 def jam_cerrar(d: dict) -> dict:
@@ -394,10 +498,80 @@ def jam_cerrar(d: dict) -> dict:
     return {}
 
 
+def jam_subir(d: dict) -> dict:
+    """Invitado: sube al anfitrión una canción que tiene en su dispositivo para que entre a la cola."""
+    import urllib.parse
+    import requests
+    ruta = Path(d["ruta"])
+    if not ruta.exists():
+        raise RuntimeError("No encontré el archivo de esa canción")
+    meta = {"titulo": d.get("titulo") or ruta.stem, "artista": d.get("artista", ""), "album": d.get("album", ""),
+            "duracion": d.get("duracion"), "ext": ruta.suffix.lower()}
+    with open(ruta, "rb") as f:
+        r = requests.post(f"{d['base']}/subir", data=f, timeout=180, headers={
+            "X-Codigo": d["codigo"], "X-Cliente": d["cliente"], "Content-Type": "application/octet-stream",
+            "Content-Length": str(ruta.stat().st_size), "X-Meta": urllib.parse.quote(json.dumps(meta))})
+    cuerpo = r.json()
+    if not r.ok:
+        raise RuntimeError(cuerpo.get("error") or f"El anfitrión respondió {r.status_code}")
+    return cuerpo
+
+
+def jam_internet(d: dict) -> dict:
+    """Anfitrión: abre (activar=True) o cierra el jam a internet con un túnel de Cloudflare."""
+    from . import jam, tunel
+    if not d.get("activar"):
+        tunel.cerrar()
+        return {"url": None}
+    if not tunel.disponible():
+        raise RuntimeError("Este dispositivo no puede abrir el jam a internet (actualiza Misiccord)")
+    puerto = jam._actual["puerto"]
+    if not puerto:
+        raise RuntimeError("No hay un jam abierto")
+    return {"url": tunel.abrir(puerto, lambda pct: emitir("jam_internet", {"pct": pct}))}
+
+
+def jam_qr(d: dict) -> dict:
+    """QR (SVG) y link para unirse. Es una página que abre Misiccord sola (misiccord://jam?...), así que
+    funciona igual al escanearlo con la cámara del teléfono, desde la app o al tocarlo en un chat.
+    Los datos van después de "#": el navegador no se los manda al servidor de la página."""
+    import urllib.parse
+    import qrcode
+    import qrcode.image.svg
+    datos = {"ip": d["ip"], "puerto": d["puerto"], "codigo": d["codigo"], "nombre": d.get("nombre", "")}
+    if d.get("url"):
+        datos["url"] = d["url"]  # por internet: los de fuera usan esta; los de la red pueden seguir con la IP
+    texto = "https://accor-dium.github.io/misiccord/jam/#" + urllib.parse.urlencode(datos)
+    imagen = qrcode.make(texto, image_factory=qrcode.image.svg.SvgPathImage, box_size=10, border=2)
+    return {"svg": imagen.to_string(encoding="unicode"), "texto": texto}
+
+
 def jam_buscar(d: dict) -> dict:
     """Busca jams anunciados en la red local (tarda unos segundos)."""
     from . import jam
     return {"jams": jam.buscar(float(d.get("segundos", 3)))}
+
+
+# ---------- Actualizaciones (Android) ----------
+
+def actualizacion_descargar(d: dict) -> dict:
+    """Baja el APK de una versión nueva a la caché, avisando el avance con el evento "actualizacion"."""
+    import requests
+    destino = plataforma.carpeta_cache() / "actualizacion" / "Misiccord.apk"
+    destino.parent.mkdir(parents=True, exist_ok=True)
+    with requests.get(d["url"], stream=True, timeout=60, allow_redirects=True) as r:
+        r.raise_for_status()
+        total = int(r.headers.get("Content-Length") or 0)
+        bajado, ultimo = 0, 0.0
+        with open(destino, "wb") as f:
+            for bloque in r.iter_content(256 * 1024):
+                f.write(bloque)
+                bajado += len(bloque)
+                if time.monotonic() - ultimo > 0.4:
+                    ultimo = time.monotonic()
+                    emitir("actualizacion", {"pct": int(bajado * 100 / total) if total else 0})
+    emitir("actualizacion", {"pct": 100})
+    return {"ruta": str(destino), "mb": round(destino.stat().st_size / 1e6, 1)}
 
 
 # ---------- Entrada ----------
@@ -409,10 +583,12 @@ FUNCIONES = {
     "biblioteca": biblioteca_, "album_local": album_local, "artista_local": artista_local,
     "playlist": playlist, "crear_playlist": crear_playlist, "agregar_a_playlist": agregar_a_playlist,
     "quitar_de_playlist": quitar_de_playlist, "borrar_playlist": borrar_playlist,
-    "reproduccion": reproduccion, "previa": previa, "letra": letra,
+    "eliminar_canciones": eliminar_canciones,
+    "reproduccion": reproduccion, "previa": previa, "precargar": precargar, "letra": letra,
     "descargar": descargar, "descargas": descargas_, "cancelar_descarga": cancelar_descarga,
     "limpiar_descargas": limpiar_descargas,
-    "jam_crear": jam_crear, "jam_cerrar": jam_cerrar, "jam_buscar": jam_buscar,
+    "jam_crear": jam_crear, "jam_cerrar": jam_cerrar, "jam_buscar": jam_buscar, "jam_qr": jam_qr,
+    "jam_subir": jam_subir, "jam_internet": jam_internet, "actualizacion_descargar": actualizacion_descargar,
 }
 
 

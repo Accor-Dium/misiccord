@@ -1,1 +1,1 @@
-﻿"""Núcleo de WaveDrop compartido entre Android (Chaquopy) y Windows."""
+"""Núcleo de Misiccord compartido entre Android (Chaquopy) y Windows."""

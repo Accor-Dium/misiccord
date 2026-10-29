@@ -13,6 +13,7 @@ export const ui = $state({
   hoja: null, // { titulo, subtitulo, portada, opciones: [{ texto, icono, accion }] }
   avisos: [],
   version: 0, // sube cuando cambia la biblioteca, para que las vistas recarguen
+  alAtras: null, // qué hacer con el próximo "atrás" (p. ej. cerrar la cámara del QR)
 });
 
 pantallaAmplia.addEventListener("change", (e) => (ui.amplio = e.matches));
@@ -59,8 +60,13 @@ export function cerrarReproductor() {
 }
 
 // El botón/gesto "atrás" de Android cierra primero la hoja o el reproductor y luego regresa de vista
+// (alAtras: algo nativo encima de la app, como la cámara del QR, que se cierra con "atrás")
 window.addEventListener("popstate", () => {
-  if (ui.hoja) ui.hoja = null;
+  if (ui.alAtras) {
+    const f = ui.alAtras;
+    ui.alAtras = null;
+    f();
+  } else if (ui.hoja) ui.hoja = null;
   else if (ui.reproductorAbierto) ui.reproductorAbierto = false;
   else atras();
 });

@@ -13,6 +13,12 @@
   const a = $derived(e.datos);
   let verMas = $state(false);
 
+  // Las primeras canciones se dejan listas para que suenen en cuanto las toques
+  $effect(() => {
+    const ids = (a?.canciones ?? []).filter((c) => !c.ruta && c.id).slice(0, 5).map((c) => c.id);
+    if (ids.length) py("precargar", { ids }).catch(() => {});
+  });
+
   onMount(async () => {
     if (e.datos) return;
     try {
@@ -71,7 +77,7 @@
         <div class="titulo-seccion">Artistas parecidos</div>
         <div class="carrusel">
           {#each a.parecidos as p}
-            <Tarjeta portada={p.miniatura} titulo={p.nombre} redonda icono="persona" ancho="116px"
+            <Tarjeta portada={p.miniatura} titulo={p.nombre} redonda icono="persona" ancho="var(--artista)"
               alTocar={() => abrir("artista", { id: p.browse_id, nombre: p.nombre })} />
           {/each}
         </div>

@@ -11,12 +11,12 @@
 
   $effect(() => {
     const c = rep.actual;
-    const ruta = c?.ruta || c?.ruta_previa;
-    const k = ruta + "|" + c?.titulo;
-    if (!ruta || k === clave) return;
+    const ruta = c?.ruta || null;
+    const k = (ruta || c?.id) + "|" + c?.titulo;
+    if (!c || (!ruta && !c.id) || k === clave) return;
     clave = k;
     estado = "cargando";
-    py("letra", { ruta, titulo: c.titulo, artista: c.artista, album: c.album || "" })
+    py("letra", { ruta, id: c.id, titulo: c.titulo, artista: c.artista, album: c.album || "", duracion: c.duracion })
       .then((r) => {
         lineas = r.lineas;
         sincronizada = r.tipo === "sincronizada";

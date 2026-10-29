@@ -20,7 +20,7 @@ from mutagen.mp4 import MP4, MP4Cover
 from .biblioteca import artista_principal, normalizar, separar_titulo
 
 CONTACTO = "app de escritorio local"
-CABECERAS = {"User-Agent": f"WaveDrop/2.1 ( {CONTACTO} )", "Accept": "application/json"}
+CABECERAS = {"User-Agent": f"Misiccord/2.1 ( {CONTACTO} )", "Accept": "application/json"}
 API = "https://musicbrainz.org/ws/2"
 
 _candado = threading.Lock()

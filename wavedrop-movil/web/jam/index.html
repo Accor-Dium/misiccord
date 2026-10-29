@@ -1,0 +1,99 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>Unirse al jam · Misiccord</title>
+<meta name="description" content="Te invitaron a escuchar música juntos en Misiccord.">
+<meta property="og:title" content="Te invitaron a un jam de Misiccord">
+<meta property="og:description" content="Toca para abrir Misiccord y escuchar juntos.">
+<style>
+  /* Página que abre Misiccord con los datos del jam. Los datos vienen después de "#": el navegador no se
+     los manda a este servidor, solo los lee esta página en tu teléfono para pasárselos a la app. */
+  :root { --fondo: #0a0f14; --tarjeta: #111a22; --borde: #1c2a35; --texto: #e6edf3; --tenue: #8193a3; --cian: #22d3ee; --morado: #a78bfa; }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; min-height: 100vh; display: grid; place-items: center; padding: 24px 16px;
+    background: radial-gradient(120% 80% at 50% 0%, #10303a 0%, var(--fondo) 60%); color: var(--texto);
+    font-family: "Inter", system-ui, -apple-system, Roboto, "Segoe UI", sans-serif;
+  }
+  main { width: min(420px, 100%); text-align: center; }
+  .sello {
+    width: 84px; height: 84px; margin: 0 auto 18px; border-radius: 24px; display: grid; place-items: center;
+    background: linear-gradient(135deg, var(--cian), var(--morado)); box-shadow: 0 18px 50px rgba(34, 211, 238, 0.25);
+  }
+  small { display: block; font-size: 12px; font-weight: 800; letter-spacing: 1.6px; color: var(--cian); }
+  h1 { margin: 8px 0 6px; font-size: 28px; line-height: 1.2; letter-spacing: -0.4px; }
+  p { margin: 0; color: var(--tenue); line-height: 1.5; }
+  .tarjeta { margin: 24px 0 18px; padding: 16px; border-radius: 18px; background: var(--tarjeta); border: 1px solid var(--borde); display: flex; justify-content: space-around; }
+  .dato span { display: block; font-size: 11px; letter-spacing: 1.4px; color: var(--tenue); }
+  .dato b { font-size: 22px; letter-spacing: 4px; color: var(--cian); }
+  .boton {
+    display: flex; align-items: center; justify-content: center; gap: 10px; width: 100%; height: 54px; border-radius: 999px;
+    font-size: 17px; font-weight: 800; text-decoration: none; border: 0; cursor: pointer;
+  }
+  .principal { background: var(--cian); color: #04121a; }
+  .secundario { margin-top: 12px; background: transparent; color: var(--texto); border: 1px solid var(--borde); }
+  .nota { margin-top: 20px; font-size: 13.5px; }
+  .error { color: #f87171; }
+  [hidden] { display: none !important; }
+</style>
+</head>
+<body>
+<main>
+  <div class="sello" aria-hidden="true">
+    <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="#04121a" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M12 12a2 2 0 1 0 0-4 2 2 0 0 0 0 4zM7.8 14.2a6 6 0 0 1 0-8.4M16.2 5.8a6 6 0 0 1 0 8.4M5 17a10 10 0 0 1 0-14M19 3a10 10 0 0 1 0 14M12 12v9"/>
+    </svg>
+  </div>
+
+  <section id="invitacion" hidden>
+    <small>TE INVITARON A UN JAM</small>
+    <h1 id="nombre">Jam de Misiccord</h1>
+    <p id="donde">Escuchen juntos: todos arman la cola y suena sincronizado.</p>
+    <div class="tarjeta"><div class="dato"><span>CÓDIGO</span><b id="codigo">····</b></div></div>
+    <a class="boton principal" id="abrir" href="#">Abrir en Misiccord</a>
+    <a class="boton secundario" href="https://github.com/Accor-Dium/misiccord/releases/latest">¿No tienes Misiccord? Descárgalo</a>
+    <p class="nota">Si no se abrió sola, toca <b>Abrir en Misiccord</b>. En la PC, el navegador te pregunta si quieres abrir la app.</p>
+  </section>
+
+  <section id="invalido" hidden>
+    <h1>Este link no es de un jam</h1>
+    <p class="error">Pídele al anfitrión que te vuelva a mandar el link desde Jams → Invitar.</p>
+    <a class="boton secundario" href="https://github.com/Accor-Dium/misiccord/releases/latest">Descargar Misiccord</a>
+  </section>
+</main>
+
+<script>
+  (function () {
+    var datos = new URLSearchParams(location.hash.slice(1) || location.search.slice(1));
+    var codigo = datos.get("codigo");
+    if (!codigo || !(datos.get("ip") || datos.get("url"))) {
+      document.getElementById("invalido").hidden = false;
+      return;
+    }
+    document.getElementById("invitacion").hidden = false;
+    document.getElementById("codigo").textContent = codigo;
+    if (datos.get("nombre")) {
+      document.getElementById("nombre").textContent = datos.get("nombre");
+      document.title = datos.get("nombre") + " · Misiccord";
+    }
+    if (datos.get("url")) document.getElementById("donde").textContent = "Funciona desde cualquier lugar: en tu Wi-Fi o por internet.";
+    else document.getElementById("donde").textContent = "Conéctate a la misma red Wi-Fi que el anfitrión.";
+
+    var consulta = datos.toString();
+    var propio = "misiccord://jam?" + consulta;
+    var enlace = propio;
+    if (/Android/i.test(navigator.userAgent)) {
+      // Intent de Android: abre Misiccord directo y, si no está instalado, manda a la página de descarga
+      enlace = "intent://jam?" + consulta + "#Intent;scheme=misiccord;package=com.wavedrop.movil;S.browser_fallback_url=" +
+        encodeURIComponent("https://github.com/Accor-Dium/misiccord/releases/latest") + ";end";
+    }
+    document.getElementById("abrir").href = enlace;
+    // Se intenta abrir sola; algunos navegadores lo bloquean si no tocaste nada (para eso está el botón)
+    setTimeout(function () { location.href = enlace; }, 300);
+  })();
+</script>
+</body>
+</html>

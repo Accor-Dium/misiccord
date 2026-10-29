@@ -13,7 +13,7 @@ import mutagen
 import requests
 
 API = "https://lrclib.net/api"
-CABECERAS = {"User-Agent": "WaveDrop/2.0 (https://github.com/yt-dlp/yt-dlp)"}
+CABECERAS = {"User-Agent": "Misiccord/2.1 ( app de escritorio local )"}
 
 _MARCA = re.compile(r"\[(\d+):(\d+(?:[.:]\d+)?)\]")
 _OFFSET = re.compile(r"\[offset:\s*([+-]?\d+)\]", re.I)
@@ -144,7 +144,7 @@ def duracion_de(ruta: Path) -> float | None:
         return None
 
 
-def obtener_letra(ruta: Path, titulo: str, artista: str, album: str) -> Letra:
+def obtener_letra(ruta: Path, titulo: str, artista: str, album: str, duracion: float | None = None) -> Letra:
     """Primero el .lrc junto a la canción; si no hay, LRCLIB (y se guarda el .lrc)."""
     local = ruta.with_suffix(".lrc")
     if local.exists():
@@ -152,7 +152,7 @@ def obtener_letra(ruta: Path, titulo: str, artista: str, album: str) -> Letra:
         if letra.tipo != "ninguna":
             return letra
 
-    letra, original = buscar_en_linea(titulo, artista, album, duracion_de(ruta))
+    letra, original = buscar_en_linea(titulo, artista, album, duracion or (duracion_de(ruta) if ruta.exists() else None))
     if original and letra.tipo in ("sincronizada", "simple"):
         try:
             local.write_text(original, encoding="utf-8")

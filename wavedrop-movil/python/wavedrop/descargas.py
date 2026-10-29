@@ -107,12 +107,14 @@ class _Logger:
 
     def __init__(self):
         self.ultimo_error = ""
+        self.archivada = False  # yt-dlp la saltó porque está en descargados.txt
 
     def debug(self, msg):
-        pass
+        if "already been recorded in the archive" in msg:
+            self.archivada = True
 
     def info(self, msg):
-        pass
+        self.debug(msg)
 
     def warning(self, msg):
         pass
@@ -128,7 +130,47 @@ def _opciones_base(logger: _Logger) -> dict:
     ffmpeg = ruta_herramienta("ffmpeg")
     if ffmpeg:
         opciones["ffmpeg_location"] = str(Path(ffmpeg).parent)
+    if _cliente_bueno:
+        opciones["extractor_args"] = {"youtube": {"player_client": _cliente_bueno}}
     return opciones
+
+
+# Cuando YouTube marca la conexión como sospechosa ("Sign in to confirm you're not a bot")
+# suele dejar pasar a otros clientes. Se prueban en orden y se recuerda el que funcionó.
+_CLIENTES_RESPALDO = [["android_vr"], ["tv_simply", "tv"], ["web_safari", "mweb"], ["web_embedded"]]
+_cliente_bueno: list[str] | None = None
+
+
+def _es_bloqueo(texto: str) -> bool:
+    texto = texto.lower()
+    return "not a bot" in texto or "sign in to confirm" in texto or "http error 403" in texto
+
+
+def extraer(opciones: dict, url: str, download: bool, logger: _Logger, preparar=None):
+    """extract_info con reintentos usando otros clientes de YouTube si nos bloquean."""
+    global _cliente_bueno
+    intentos = [None] + [c for c in _CLIENTES_RESPALDO if c != _cliente_bueno]
+    primero = None  # el error de bloqueo original es el que vale la pena mostrar
+    for cliente in intentos:
+        op = dict(opciones)
+        if cliente:
+            op["extractor_args"] = {"youtube": {"player_client": cliente}}
+        logger.ultimo_error = None
+        try:
+            with yt_dlp.YoutubeDL(op) as ydl:
+                if preparar:
+                    preparar(ydl)
+                info = ydl.extract_info(url, download=download)
+            if cliente:
+                _cliente_bueno = cliente
+            return info
+        except Exception as e:
+            if primero is None:
+                if not _es_bloqueo(f"{logger.ultimo_error or ''} {e}"):
+                    raise
+                primero = (e, logger.ultimo_error)
+    logger.ultimo_error = primero[1]
+    raise primero[0]
 
 
 def _sin_topic(nombre: str | None) -> str:
@@ -348,21 +390,26 @@ class Descargador:
             opciones["noplaylist"] = True
 
         al_progreso("Buscando en YT Music" if entrada.por_busqueda else "Descargando", 0, None, None)
-        try:
-            with yt_dlp.YoutubeDL(opciones) as ydl:
-                ydl.add_post_processor(_FijarMetadatos(entrada), when="pre_process")
-                info = ydl.extract_info(entrada.url, download=True)
-        except Cancelado:
-            raise
-        except Exception as e:
-            if cancelado():
-                raise Cancelado() from e
-            raise RuntimeError(logger.ultimo_error or str(e)) from e
-
-        if info and info.get("_type") == "playlist":  # resultado de búsqueda
-            info = next((e for e in info.get("entries") or [] if e), None)
-            if info is None:
-                raise RuntimeError("No se encontró en YouTube Music")
+        for intento in range(2):
+            try:
+                info = extraer(opciones, entrada.url, True, logger,
+                               lambda ydl: ydl.add_post_processor(_FijarMetadatos(entrada), when="pre_process"))
+            except Cancelado:
+                raise
+            except Exception as e:
+                if cancelado():
+                    raise Cancelado() from e
+                raise RuntimeError(logger.ultimo_error or str(e)) from e
+            if info and info.get("_type") == "playlist":  # resultado de búsqueda
+                info = next((e for e in info.get("entries") or [] if e), None)
+            # Si se borró de la biblioteca, descargados.txt todavía la tiene: se baja de nuevo sin consultarlo
+            if logger.archivada and not (info and info.get("requested_downloads")) and intento == 0:
+                opciones.pop("download_archive", None)
+                logger.archivada = False
+                continue
+            break
+        if info is None:
+            raise RuntimeError("No se encontró en YouTube Music")
         if not info or not info.get("requested_downloads"):
             raise RuntimeError(logger.ultimo_error or "No se descargó nada")
 
