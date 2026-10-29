@@ -18,6 +18,7 @@ from ytmusicapi import YTMusic
 from . import biblioteca
 from . import descargas as nucleo
 from . import plataforma
+from .idioma import actual as idioma_actual, t
 
 _local = threading.local()
 
@@ -27,6 +28,17 @@ def _yt() -> YTMusic:
     if not hasattr(_local, "cliente"):
         _local.cliente = YTMusic()
     return _local.cliente
+
+
+def _yt_idioma() -> YTMusic:
+    """Cliente en el idioma de la app, solo para lo que se muestra tal cual (inicio, estados de ánimo, explorar).
+    Las búsquedas no: ytmusicapi reconoce el tipo de cada resultado por su texto en inglés y en otro idioma
+    los filtros (canciones, álbumes) regresan vacíos."""
+    idioma = idioma_actual()
+    if getattr(_local, "idioma", None) != idioma:
+        _local.cliente_idioma = YTMusic(language=idioma)
+        _local.idioma = idioma
+    return _local.cliente_idioma
 
 
 @dataclass
@@ -264,8 +276,8 @@ def recomendaciones_guardadas(max_horas: float = 6) -> list[Seccion] | None:
         datos = json.loads(_cache_recomendaciones().read_text(encoding="utf-8"))
     except (OSError, ValueError):
         return None
-    if time.time() - datos.get("fecha", 0) > max_horas * 3600:
-        return None
+    if time.time() - datos.get("fecha", 0) > max_horas * 3600 or datos.get("idioma", "es") != idioma_actual():
+        return None  # vieja o con los títulos en otro idioma
     return [Seccion(s["titulo"], [ResultadoCancion(**c) for c in s["canciones"]], s.get("artistas", []))
             for s in datos.get("secciones", [])]
 
@@ -286,13 +298,14 @@ def recomendaciones(db: biblioteca.Biblioteca, semillas: int = 3) -> list[Seccio
             vistas.add(clave)
             nuevas.append(r)
         if nuevas:
-            porque.append(Seccion(f"Porque {motivo} {titulo} · {biblioteca.artista_principal(artista)}", nuevas[:14]))
+            porque.append(Seccion(t("Porque {motivo} {titulo} · {artista}", motivo=t(motivo), titulo=titulo,
+                                    artista=biblioteca.artista_principal(artista)), nuevas[:14]))
 
     secciones = []
     if porque:
         # "Para ti": las primeras de cada radio, intercaladas
         mezcla = [s.canciones[i] for i in range(4) for s in porque if i < len(s.canciones)]
-        secciones.append(Seccion("Para ti", mezcla[:12]))
+        secciones.append(Seccion(t("Para ti"), mezcla[:12]))
         secciones.extend(porque)
     favorito = db.artista_favorito()
     if favorito:
@@ -301,11 +314,117 @@ def recomendaciones(db: biblioteca.Biblioteca, semillas: int = 3) -> list[Seccio
         except Exception:
             parecidos = []
         if parecidos:
-            secciones.append(Seccion(f"Artistas parecidos a {favorito}", artistas=parecidos))
+            secciones.append(Seccion(t("Artistas parecidos a {nombre}", nombre=favorito), artistas=parecidos))
 
     try:
         _cache_recomendaciones().write_text(json.dumps(
-            {"fecha": time.time(), "secciones": [asdict(s) for s in secciones]}, ensure_ascii=False), encoding="utf-8")
+            {"fecha": time.time(), "idioma": idioma_actual(), "secciones": [asdict(s) for s in secciones]},
+            ensure_ascii=False), encoding="utf-8")
     except OSError:
         pass
     return secciones
+
+
+# ---------- Lo que YouTube Music muestra en su inicio (sin cuenta) ----------
+# Secciones generales (selecciones rápidas, playlists por tema, lanzamientos), estados de ánimo y géneros,
+# y "Explorar". Se guardan un rato en memoria: cambian poco y así Inicio abre al instante.
+
+_memoria: dict[str, tuple[float, object]] = {}
+
+
+def _guardado(clave: str, horas: float, crear, forzar: bool = False):
+    clave = f"{idioma_actual()}:{clave}"
+    if not forzar and clave in _memoria and time.time() - _memoria[clave][0] < horas * 3600:
+        return _memoria[clave][1]
+    valor = crear()
+    _memoria[clave] = (time.time(), valor)
+    return valor
+
+
+def _subtitulo(d: dict) -> str:
+    if d.get("artists"):
+        return ", ".join(a["name"] for a in d["artists"] if a.get("name"))
+    return d.get("description") or d.get("subscribers") or d.get("year") or ""
+
+
+def _tarjeta(d: dict) -> dict | None:
+    """Un elemento de una sección que no es canción: playlist, álbum o artista (lo que se abre al tocarlo)."""
+    bid = d.get("browseId") or ""
+    base = {"titulo": d.get("title") or "", "subtitulo": _subtitulo(d), "miniatura": _miniatura(d.get("thumbnails"), 400)}
+    if bid.startswith("MPRE"):
+        return {**base, "tipo": "album", "id": bid}
+    if bid.startswith("UC"):
+        return {**base, "tipo": "artista", "id": bid}
+    if d.get("playlistId"):
+        return {**base, "tipo": "playlist", "id": d["playlistId"]}
+    if bid.startswith("VL"):
+        return {**base, "tipo": "playlist", "id": bid[2:]}
+    return None
+
+
+def _seccion_yt(titulo: str, elementos: list) -> dict | None:
+    canciones, tarjetas = [], []
+    for d in elementos or []:
+        if d.get("videoId"):
+            c = _cancion(d)
+            if c:
+                canciones.append(c)
+        else:
+            x = _tarjeta(d)
+            if x:
+                tarjetas.append(x)
+    if not canciones and not tarjetas:
+        return None
+    return {"titulo": titulo, "canciones": canciones, "tarjetas": tarjetas}
+
+
+def inicio_yt(forzar: bool = False) -> list[dict]:
+    def crear():
+        secciones = []
+        for s in _yt_idioma().get_home(limit=10):
+            x = _seccion_yt(s.get("title") or "", s.get("contents"))
+            if x:
+                secciones.append(x)
+        return secciones
+    return _guardado("inicio", 1, crear, forzar)
+
+
+def estados(forzar: bool = False) -> list[dict]:
+    """Estados de ánimo y géneros: [{"grupo", "opciones": [{"titulo", "params"}]}]."""
+    def crear():
+        return [{"grupo": grupo, "opciones": [{"titulo": o["title"], "params": o["params"]} for o in opciones]}
+                for grupo, opciones in _yt_idioma().get_mood_categories().items()]
+    return _guardado("estados", 24, crear, forzar)
+
+
+def playlists_de_estado(params: str) -> list[dict]:
+    return _guardado(f"estado:{params}", 6, lambda: [x for x in (_tarjeta(d) for d in _yt_idioma().get_mood_playlists(params)) if x])
+
+
+def explorar() -> dict:
+    """Nuevos lanzamientos (álbumes), lo que es tendencia (canciones) y videos nuevos."""
+    def crear():
+        e = _yt_idioma().get_explore()
+        tendencia = e.get("trending") or {}
+        return {
+            "lanzamientos": [x for x in (_tarjeta(d) for d in e.get("new_releases") or []) if x],
+            "tendencia": [c for c in (_cancion(d) for d in tendencia.get("items") or []) if c],
+            "tendencia_lista": (tendencia.get("playlist") or "").removeprefix("VL"),
+            "videos": [x for x in (_tarjeta(d) for d in e.get("new_videos") or []) if x],
+        }
+    return _guardado("explorar", 3, crear)
+
+
+def playlist(playlist_id: str, limite: int = 100) -> dict:
+    """Una playlist de YouTube Music con la misma forma que `album()`, para mostrarla en la misma vista."""
+    p = _yt_idioma().get_playlist(playlist_id, limit=limite)
+    portada = _miniatura(p.get("thumbnails"), 600)
+    autor = p.get("author") or {}
+    return {
+        "playlist_id": playlist_id, "titulo": p.get("title", ""),
+        "artista": autor.get("name", "") if isinstance(autor, dict) else str(autor),
+        "artista_id": None, "anio": str(p.get("year") or ""), "tipo": "Playlist", "portada": portada,
+        "descripcion": p.get("description") or "",
+        "canciones": [c for c in (_cancion(t_) for t_ in p.get("tracks") or []) if c],
+        "lista": f"https://music.youtube.com/playlist?list={playlist_id}",
+    }

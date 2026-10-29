@@ -1,62 +1,22 @@
 <script>
-  import { py, tiempo } from "../lib/api.js";
-  import { abrir, abrirAlbumDe, aColaPorMantener, alternarMeGusta, aviso, descargar, mostrarHoja, ui, verInfo } from "../lib/estado.svelte.js";
-  import { pedirEliminar } from "../lib/eliminar.js";
+  import { tiempo } from "../lib/api.js";
+  import { t } from "../lib/idioma.svelte.js";
   import { agregarAlJam, puedoAgregar } from "../lib/jam.svelte.js";
   import { mantener } from "../lib/mantener.js";
-  import { agregarACola, rep } from "../lib/reproductor.svelte.js";
+  import { menuCancion } from "../lib/menuCancion.js";
+  import { rep } from "../lib/reproductor.svelte.js";
   import BotonDescarga from "./BotonDescarga.svelte";
   import Icono from "./Icono.svelte";
   import Portada from "./Portada.svelte";
 
-  // Una canción en una lista. Toca para reproducir; "⋯" abre más opciones.
+  // Una canción en una lista. Toca para reproducir; "⋯" o dejarla presionada abre el menú (lib/menuCancion.js).
   let { cancion, numero = null, alTocar, sinPortada = false, extras = [] } = $props();
   const sonando = $derived(rep.actual && rep.actual.titulo === cancion.titulo && rep.actual.artista === cancion.artista);
-
-  async function aPlaylist() {
-    const { playlists } = await py("biblioteca");
-    mostrarHoja({
-      titulo: "Agregar a playlist",
-      opciones: playlists.length
-        ? playlists.map((p) => ({ texto: p.nombre, icono: "lista", accion: async () => {
-            await py("agregar_a_playlist", { id: p.id, db_ids: [cancion.db_id] });
-            ui.version++;
-            aviso(`Agregada a “${p.nombre}”`, "ok");
-          } }))
-        : [{ texto: "Primero crea una playlist en Biblioteca", icono: "agregar", accion: () => {} }],
-    });
-  }
-
-  async function opciones() {
-    const ops = [];
-    const { gusta } = await py("me_gusta_es", { titulo: cancion.titulo, artista: cancion.artista }).catch(() => ({ gusta: false }));
-    ops.push({ texto: gusta ? "Quitar de Me gusta" : "Me gusta", icono: "corazon", accion: () => { alternarMeGusta(cancion).then(() => ui.version++); } });
-    if (puedoAgregar()) ops.push({ texto: "Agregar al jam", icono: "jam", accion: () => agregarAlJam(cancion) });
-    if (rep.actual) {
-      ops.push({ texto: "Reproducir a continuación", icono: "siguiente", accion: () => {
-        agregarACola(cancion, true);
-        aviso(`“${cancion.titulo}” suena después de esta`, "ok");
-      } });
-    }
-    ops.push({ texto: "Agregar a la cola", icono: "cola", accion: () => {
-      agregarACola(cancion);
-      aviso(`“${cancion.titulo}” se agregó a la cola`, "ok");
-    } });
-    if (cancion.db_id) ops.push({ texto: "Agregar a playlist", icono: "lista", accion: aPlaylist });
-    if (!cancion.local && !cancion.ruta) ops.push({ texto: "Descargar", icono: "descargas", accion: () => descargar([cancion]) });
-    if (cancion.album) ops.push({ texto: "Ver álbum", icono: "disco", accion: () => abrirAlbumDe(cancion) });
-    ops.push({ texto: cancion.ruta ? "Información y etiquetas" : "Información", icono: "info", accion: () => verInfo(cancion) });
-    ops.push({ texto: `Buscar más de ${cancion.artista.split(",")[0]}`, icono: "persona",
-               accion: () => abrir("buscar_artista", { nombre: cancion.artista.split(",")[0] }) });
-    if (cancion.db_id) ops.push({ texto: "Eliminar de la biblioteca", icono: "basura", peligro: true, accion: () =>
-      pedirEliminar({ objetivo: { db_ids: [cancion.db_id] }, cuantas: 1, titulo: `“${cancion.titulo}”`,
-                      seBorra: (c) => c.ruta === cancion.ruta }) });
-    mostrarHoja({ titulo: cancion.titulo, subtitulo: cancion.artista, portada: cancion.portada, opciones: [...extras, ...ops] });
-  }
+  const opciones = () => menuCancion(cancion, extras);
 </script>
 
 <div class="fila" class:sonando role="button" tabindex="0" onclick={alTocar} onkeydown={(e) => e.key === "Enter" && alTocar?.()}
-  use:mantener={() => aColaPorMantener(cancion)}>
+  use:mantener={opciones}>
   {#if numero !== null}
     <span class="numero">{#if sonando}<span class="barras"><i></i><i></i><i></i></span>{:else}{numero}{/if}</span>
   {/if}
@@ -69,12 +29,12 @@
   </div>
   {#if cancion.duracion}<span class="dur">{tiempo(cancion.duracion)}</span>{/if}
   {#if puedoAgregar()}
-    <button class="al-jam" aria-label="Agregar al jam" title="Agregar al jam"
+    <button class="al-jam" aria-label={t("Agregar al jam")} title={t("Agregar al jam")}
       onclick={(e) => { e.stopPropagation(); agregarAlJam(cancion); }}>
       <Icono nombre="jam" tam={20} />
     </button>
   {:else if !cancion.local}<BotonDescarga {cancion} />{/if}
-  <button class="mas" aria-label="Más opciones" onclick={(e) => { e.stopPropagation(); opciones(); }}>
+  <button class="mas" aria-label={t("Más opciones")} onclick={(e) => { e.stopPropagation(); opciones(); }}>
     <Icono nombre="mas" tam={22} />
   </button>
 </div>

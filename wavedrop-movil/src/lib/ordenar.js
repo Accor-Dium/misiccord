@@ -1,3 +1,4 @@
+import { t } from "./idioma.svelte.js";
 // Buscar, ordenar y agrupar la biblioteca en la interfaz (es instantáneo: no hace falta preguntarle a Python).
 
 /** Minúsculas y sin acentos: "Corazón" y "corazon" son lo mismo al buscar y al ordenar. */
@@ -33,18 +34,18 @@ export function agruparPorLetra(items, nombreDe) {
 }
 
 export const ORDENES = [
-  ["titulo", "Título (A–Z)"],
-  ["artista", "Artista (A–Z)"],
-  ["album", "Álbum"],
-  ["recientes", "Agregadas recientemente"],
+  ["titulo", t("Título (A–Z)")],
+  ["artista", t("Artista (A–Z)")],
+  ["album", t("Álbum")],
+  ["recientes", t("Agregadas recientemente")],
 ];
 
 function periodo(segundos) {
   const dias = (Date.now() / 1000 - (segundos || 0)) / 86400;
-  if (dias < 7) return "Esta semana";
-  if (dias < 31) return "Este mes";
-  if (dias < 92) return "Últimos 3 meses";
-  return "Antes";
+  if (dias < 7) return t("Esta semana");
+  if (dias < 31) return t("Este mes");
+  if (dias < 92) return t("Últimos 3 meses");
+  return t("Antes");
 }
 
 /**
@@ -60,7 +61,7 @@ export function agrupar(canciones, orden) {
     grupoDe = (c) => letraDe(c.artista);
   } else if (orden === "album") {
     lista.sort((a, b) => comparar(a.album || "~", b.album || "~") || (a.pista ?? 0) - (b.pista ?? 0) || comparar(a.titulo, b.titulo));
-    grupoDe = (c) => c.album || "Sin álbum";
+    grupoDe = (c) => c.album || t("Sin álbum");
   } else if (orden === "recientes") {
     lista.sort((a, b) => (b.agregada || 0) - (a.agregada || 0));
     grupoDe = (c) => periodo(c.agregada);

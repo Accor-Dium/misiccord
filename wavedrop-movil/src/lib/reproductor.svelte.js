@@ -6,6 +6,7 @@
 // si se escuchan completas se quedan en la caché de previas.
 import { py, src } from "./api.js";
 import { aviso } from "./estado.svelte.js";
+import { t } from "./idioma.svelte.js";
 
 export const rep = $state({
   cola: [],
@@ -69,11 +70,11 @@ audios.forEach((a, i) => {
           a.currentTime = donde;
           a.play().catch(() => {});
         })
-        .catch(() => aviso("No se pudo reproducir esta canción", "error"))
+        .catch(() => aviso(t("No se pudo reproducir esta canción"), "error"))
         .finally(() => (rep.cargando = false));
       return;
     }
-    aviso("No se pudo reproducir esta canción", "error");
+    aviso(t("No se pudo reproducir esta canción"), "error");
   });
 });
 
@@ -261,7 +262,7 @@ async function cargar(i, manual) {
     fuente = await fuenteDe(c);
   } catch (e) {
     rep.cargando = false;
-    aviso(`No se pudo cargar “${c.titulo}”`, "error");
+    aviso(t("No se pudo cargar “{titulo}”", { titulo: c.titulo }), "error");
     return;
   }
   if (rep.indice !== i) return; // mientras cargaba se eligió otra
@@ -347,7 +348,7 @@ export function reproducir(lista, i = 0, origen = "", { aunEnJam = false } = {})
 
 /** Agrega a la cola: al final, o justo después de la que suena. Si no suena nada, empieza a sonar. */
 export function agregarACola(c, aContinuacion = false) {
-  if (!rep.actual) return reproducir([c], 0, "Tu cola");
+  if (!rep.actual) return reproducir([c], 0, t("Tu cola"));
   const copia = { ...c };
   if (aContinuacion) rep.cola.splice(rep.indice + 1, 0, copia);
   else rep.cola.push(copia);

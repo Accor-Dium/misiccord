@@ -1,14 +1,15 @@
 <script>
+  import { t } from "../lib/idioma.svelte.js";
   import { activas, irPestana, nav } from "../lib/estado.svelte.js";
   import { jam } from "../lib/jam.svelte.js";
   import Icono from "./Icono.svelte";
 
   // Abajo en el cel; barra lateral con nombres en pantalla ancha.
   const pestanas = [
-    { id: "inicio", icono: "inicio", texto: "Inicio" },
-    { id: "biblioteca", icono: "biblioteca", texto: "Biblioteca" },
-    { id: "jams", icono: "jam", texto: "Jams" },
-    { id: "descargas", icono: "descargas", texto: "Descargas" },
+    { id: "inicio", icono: "inicio", texto: t("Inicio") },
+    { id: "biblioteca", icono: "biblioteca", texto: t("Biblioteca") },
+    { id: "jams", icono: "jam", texto: t("Jams") },
+    { id: "descargas", icono: "descargas", texto: t("Descargas") },
   ];
   const pendientes = $derived(activas());
 </script>

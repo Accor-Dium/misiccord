@@ -5,11 +5,13 @@
   import { abrir, atras, aviso, descargar, descargarLink, ui } from "../lib/estado.svelte.js";
   import { reproducir, reproducirAleatorio } from "../lib/reproductor.svelte.js";
   import { pedirEliminar } from "../lib/eliminar.js";
+  import { canciones, t } from "../lib/idioma.svelte.js";
   import FilaCancion from "../componentes/FilaCancion.svelte";
   import Icono from "../componentes/Icono.svelte";
   import Portada from "../componentes/Portada.svelte";
 
-  // Álbum de YouTube Music (e.id, o e.buscar con "álbum artista"), o de tu biblioteca (e.local).
+  // Álbum de YouTube Music (e.id, o e.buscar con "álbum artista"), playlist de YouTube Music (e.playlist)
+  // o álbum de tu biblioteca (e.local).
   let { e } = $props();
   const a = $derived(e.datos);
 
@@ -19,6 +21,8 @@
         const r = await py("album_local", { nombre: e.local.nombre, artista: e.local.artista, grupo: e.local.grupo });
         e.datos = { titulo: e.local.nombre, artista: e.local.artista, anio: e.local.anio, tipo: "Álbum",
                     portada: e.local.portada, canciones: r.canciones, local: true };
+      } else if (e.playlist) {
+        e.datos = (await py("playlist_yt", { id: e.playlist })).album;
       } else {
         if (!e.id && e.buscar) {
           // Solo se sabe el nombre (canción en vista previa): el primer álbum que encuentre YouTube Music
@@ -29,7 +33,7 @@
         e.datos = (await py("album", { browse_id: e.id })).album;
       }
     } catch (err) {
-      aviso("No se pudo abrir el álbum", "error");
+      aviso(e.playlist ? t("No se pudo abrir la playlist") : t("No se pudo abrir el álbum"), "error");
     }
   }
   onMount(() => { if (!e.datos) cargar(); });
@@ -50,7 +54,7 @@
     const rutas = new Set(a.canciones.map((c) => c.ruta));
     pedirEliminar({
       objetivo: { album: { nombre: e.local.nombre, grupo: e.local.grupo, artista: e.local.artista } },
-      cuantas: a.canciones.length, titulo: `el álbum “${a.titulo}”`, seBorra: (c) => rutas.has(c.ruta),
+      cuantas: a.canciones.length, titulo: t("el álbum “{titulo}”", a), seBorra: (c) => rutas.has(c.ruta),
       alTerminar: (r) => r?.eliminadas && atras(),
     });
   }
@@ -62,7 +66,7 @@
 </script>
 
 <div class="vista">
-  <button class="redondo relleno volver" onclick={atras} aria-label="Atrás"><Icono nombre="atras" tam={24} /></button>
+  <button class="redondo relleno volver" onclick={atras} aria-label={t("Atrás")}><Icono nombre="atras" tam={24} /></button>
   {#if a}
     <div class="hero" in:fade={{ duration: 300 }}>
       <div class="ambiente" style:background-image={a.portada ? `url("${src(a.portada)}")` : "none"}></div>
@@ -73,16 +77,16 @@
       {:else}
         <p class="artista">{a.artista}</p>
       {/if}
-      <p class="meta">{[a.tipo, a.anio, `${a.canciones.length} canciones`, duracion ? `${duracion} min` : ""].filter(Boolean).join(" · ")}</p>
+      <p class="meta">{[a.tipo === "Álbum" || a.tipo === "Playlist" ? t(a.tipo) : a.tipo, a.anio, canciones(a.canciones.length), duracion ? `${duracion} min` : ""].filter(Boolean).join(" · ")}</p>
     </div>
     <div class="acciones">
-      <button class="pildora clara" onclick={() => reproducir(a.canciones, 0, a.titulo)}><Icono nombre="play" relleno tam={20} /> Reproducir</button>
-      <button class="pildora oscura" onclick={() => reproducirAleatorio(a.canciones, a.titulo)}><Icono nombre="aleatorio" tam={20} /> Aleatorio</button>
+      <button class="pildora clara" onclick={() => reproducir(a.canciones, 0, a.titulo)}><Icono nombre="play" relleno tam={20} /> {t("Reproducir")}</button>
+      <button class="pildora oscura" onclick={() => reproducirAleatorio(a.canciones, a.titulo)}><Icono nombre="aleatorio" tam={20} /> {t("Aleatorio")}</button>
       {#if faltan.length}
-        <button class="redondo relleno" onclick={descargarTodo} aria-label="Descargar álbum"><Icono nombre="descargas" tam={22} /></button>
+        <button class="redondo relleno" onclick={descargarTodo} aria-label={e.playlist ? t("Descargar playlist") : t("Descargar álbum")}><Icono nombre="descargas" tam={22} /></button>
       {/if}
       {#if a.local && a.canciones.length}
-        <button class="redondo relleno borrar" onclick={eliminarAlbum} aria-label="Eliminar álbum" title="Eliminar álbum"><Icono nombre="basura" tam={22} /></button>
+        <button class="redondo relleno borrar" onclick={eliminarAlbum} aria-label={t("Eliminar álbum")} title={t("Eliminar álbum")}><Icono nombre="basura" tam={22} /></button>
       {/if}
     </div>
     <div class="canciones">

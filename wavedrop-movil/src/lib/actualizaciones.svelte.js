@@ -7,6 +7,7 @@ import { getVersion } from "@tauri-apps/api/app";
 import { invoke } from "@tauri-apps/api/core";
 import { alEvento, py } from "./api.js";
 import { aviso, mostrarHoja, pedirAvisosUnaVez } from "./estado.svelte.js";
+import { t } from "./idioma.svelte.js";
 
 export const REPO = "Accor-Dium/misiccord";
 const esAndroid = /Android/i.test(navigator.userAgent);
@@ -64,7 +65,7 @@ export async function buscarActualizacion({ avisar = true, manual = false } = {}
     const nueva = esAndroid ? await buscarAndroid() : await buscarEscritorio();
     if (!nueva) {
       act.estado = "al_dia";
-      if (manual) aviso(`Ya tienes la versión más reciente (${act.actual})`, "ok");
+      if (manual) aviso(t("Ya tienes la versión más reciente ({version})", { version: act.actual }), "ok");
       return;
     }
     act.version = nueva.version;
@@ -72,18 +73,18 @@ export async function buscarActualizacion({ avisar = true, manual = false } = {}
     act.estado = "disponible";
     if (avisar) {
       mostrarHoja({
-        titulo: `Misiccord ${nueva.version} está disponible`,
-        subtitulo: `Tienes la ${act.actual}`,
+        titulo: t("Misiccord {version} está disponible", { version: nueva.version }),
+        subtitulo: t("Tienes la {version}", { version: act.actual }),
         opciones: [
-          { texto: "Actualizar ahora", icono: "descargas", accion: instalarActualizacion },
-          { texto: "Después", icono: "cerrar", accion: () => {} },
+          { texto: t("Actualizar ahora"), icono: "descargas", accion: instalarActualizacion },
+          { texto: t("Después"), icono: "cerrar", accion: () => {} },
         ],
       });
     }
   } catch (e) {
     act.estado = "error";
     act.error = e?.message || String(e);
-    if (manual) aviso("No se pudo revisar si hay actualizaciones", "error");
+    if (manual) aviso(t("No se pudo revisar si hay actualizaciones"), "error");
   }
 }
 
@@ -97,7 +98,7 @@ export async function instalarActualizacion() {
       act.estado = "instalando";
       const r = await invoke("instalar_apk", { ruta });
       if (r?.falta_permiso) {
-        aviso("Permite que Misiccord instale apps y vuelve a tocar “Actualizar”");
+        aviso(t("Permite que Misiccord instale apps y vuelve a tocar “Actualizar”"));
         act.estado = "disponible";
       }
       return;
@@ -117,7 +118,7 @@ export async function instalarActualizacion() {
   } catch (e) {
     act.estado = "error";
     act.error = e?.message || String(e);
-    aviso("No se pudo instalar la actualización", "error");
+    aviso(t("No se pudo instalar la actualización"), "error");
   }
 }
 

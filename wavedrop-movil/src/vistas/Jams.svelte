@@ -1,4 +1,5 @@
 <script>
+  import { t } from "../lib/idioma.svelte.js";
   import { onMount, untrack } from "svelte";
   import { flip } from "svelte/animate";
   import { fade, fly, scale, slide } from "svelte/transition";
@@ -33,13 +34,13 @@
   const esCelular = /Android|iPhone|iPad/i.test(navigator.userAgent);
 
   async function escanear() {
-    if (!nombre.trim()) return aviso("Escribe tu nombre primero");
+    if (!nombre.trim()) return aviso(t("Escribe tu nombre primero"));
     try {
       // Cámara a pantalla completa con el escáner nativo (solo en el cel)
       const { scan, cancel, checkPermissions, requestPermissions, Format } = await import("@tauri-apps/plugin-barcode-scanner");
       let permiso = await checkPermissions();
       if (permiso !== "granted") permiso = await requestPermissions();
-      if (permiso !== "granted") return aviso("Sin permiso de cámara no puedo leer el QR", "error");
+      if (permiso !== "granted") return aviso(t("Sin permiso de cámara no puedo leer el QR"), "error");
       // "Atrás" de Android mientras la cámara está abierta: cancelar el escaneo en vez de salir de la app
       ui.alAtras = () => cancel().catch(() => {});
       history.pushState({ wavedrop: "camara" }, "");
@@ -61,7 +62,7 @@
 
   function unirseConLink(texto) {
     const datos = leerInvitacion(texto);
-    if (!datos) return aviso("Ese QR o link no es de un jam de Misiccord", "error");
+    if (!datos) return aviso(t("Ese QR o link no es de un jam de Misiccord"), "error");
     intentar(() => unirseConDatos(datos, nombre.trim()));
   }
 
@@ -95,12 +96,12 @@
   onMount(() => { if (!jam.sala) buscar(); });
 
   async function intentar(f) {
-    if (!nombre.trim()) return aviso("Escribe tu nombre para que los demás sepan quién eres");
+    if (!nombre.trim()) return aviso(t("Escribe tu nombre para que los demás sepan quién eres"));
     ocupado = true;
     try {
       await f();
     } catch (err) {
-      aviso(err.message || "No se pudo conectar", "error");
+      aviso(err.message || t("No se pudo conectar"), "error");
     } finally {
       ocupado = false;
     }
@@ -113,8 +114,8 @@
   const puedeAgregar = $derived(anfitrion || s?.invitados_agregan);
   let pos = $state(0);
   onMount(() => {
-    const t = setInterval(() => (pos = posicionJam()), 500);
-    return () => clearInterval(t);
+    const reloj = setInterval(() => (pos = posicionJam()), 500);
+    return () => clearInterval(reloj);
   });
   const duracion = $derived(p?.duracion || 0);
   const pendientes = $derived(s ? s.cola.length - s.indice - 1 : 0);
@@ -141,7 +142,7 @@
     arrastre = null;
     if (sobre === desde || s.cola[desde]?.pid !== pid) return;
     s.cola.splice(sobre, 0, s.cola.splice(desde, 1)[0]); // se ve al instante; el anfitrión confirma con el próximo aviso
-    control("mover", { pid, a: sobre }).catch(() => aviso("No se pudo mover la canción", "error"));
+    control("mover", { pid, a: sobre }).catch(() => aviso(t("No se pudo mover la canción"), "error"));
   }
   /** Cuánto se corre cada fila mientras arrastras: la tuya sigue al dedo y las demás le hacen espacio. */
   function desplazamiento(i) {
@@ -172,9 +173,9 @@
     try {
       const url = await abrirInternet(!jam.conexion.internet);
       qr = await qrDelJam(); // el QR ahora lleva (o ya no) la dirección pública
-      if (url) aviso("Tu jam ya se puede abrir desde cualquier lugar", "ok");
+      if (url) aviso(t("Tu jam ya se puede abrir desde cualquier lugar"), "ok");
     } catch (err) {
-      aviso(err.message || "No se pudo abrir a internet", "error");
+      aviso(err.message || t("No se pudo abrir a internet"), "error");
     } finally {
       abriendo = false;
     }
@@ -186,7 +187,7 @@
       try {
         qr = await qrDelJam();
       } catch {
-        aviso("No se pudo generar el QR", "error");
+        aviso(t("No se pudo generar el QR"), "error");
       }
     }
   }
@@ -231,12 +232,12 @@
     try {
       if (fuente === "mias") {
         subiendo = c.ruta;
-        if (!anfitrion) aviso(`Mandando “${c.titulo}” al anfitrión…`);
+        if (!anfitrion) aviso(t("Mandando “{titulo}” al anfitrión…", c));
         await agregarPropia(c);
-        aviso(`“${c.titulo}” a la cola`, "ok");
+        aviso(t("“{titulo}” a la cola", c), "ok");
       } else {
         await agregar(c);
-        aviso(`“${c.titulo}” a la cola`, "ok");
+        aviso(t("“{titulo}” a la cola", c), "ok");
       }
     } catch (err) {
       aviso(err.message, "error");
@@ -258,8 +259,8 @@
       <header class="hero">
         <span class="sello"><Icono nombre="jam" tam={30} /></span>
         <div>
-          <h1 class="titulo-vista">Jams</h1>
-          <p class="tenue">Escuchen juntos en la misma red: todos arman la cola y suena sincronizado.</p>
+          <h1 class="titulo-vista">{t("Jams")}</h1>
+          <p class="tenue">{t("Escuchen juntos en la misma red: todos arman la cola y suena sincronizado.")}</p>
         </div>
       </header>
 
@@ -268,73 +269,73 @@
           <span class="sello"><Icono nombre="jam" tam={26} /></span>
           <div class="invitacion-texto">
             <small>TE INVITARON A UN JAM</small>
-            <b class="cortar">{invitacion.nombre || "Jam de Misiccord"}</b>
-            <span class="tenue">{ocupado ? "Conectando…" : invitacion.url ? "Por internet o en tu red" : "En tu red Wi-Fi"}</span>
+            <b class="cortar">{invitacion.nombre || t("Jam de Misiccord")}</b>
+            <span class="tenue">{ocupado ? t("Conectando…") : invitacion.url ? t("Por internet o en tu red") : t("En tu red Wi-Fi")}</span>
           </div>
           <div class="invitacion-acciones">
-            <button class="pildora cian" disabled={ocupado || !nombre.trim()} onclick={aceptarInvitacion}>{ocupado ? "…" : "Unirme"}</button>
-            <button class="ignorar" onclick={() => (jam.invitacion = null)} aria-label="Ignorar invitación"><Icono nombre="cerrar" tam={18} /></button>
+            <button class="pildora cian" disabled={ocupado || !nombre.trim()} onclick={aceptarInvitacion}>{ocupado ? "…" : t("Unirme")}</button>
+            <button class="ignorar" onclick={() => (jam.invitacion = null)} aria-label={t("Ignorar invitación")}><Icono nombre="cerrar" tam={18} /></button>
           </div>
-          {#if !nombre.trim()}<p class="pide-nombre">Escribe tu nombre abajo y toca <b>Unirme</b>.</p>{/if}
+          {#if !nombre.trim()}<p class="pide-nombre">{t("Escribe tu nombre abajo y toca “Unirme”.")}</p>{/if}
         </section>
       {/if}
 
       <label class="yo">
         <span class="avatar">{nombre.trim() ? iniciales(nombre.trim()) : "?"}</span>
         <span class="yo-campo">
-          <small>Tu nombre en el jam</small>
-          <input bind:value={nombre} placeholder="¿Cómo te ven los demás?" maxlength="30" />
+          <small>{t("Tu nombre en el jam")}</small>
+          <input bind:value={nombre} placeholder={t("¿Cómo te ven los demás?")} maxlength="30" />
         </span>
       </label>
 
       {#if !ui.amplio}
         <div class="pestanas" role="tablist">
-          <button class:activa={paso === "crear"} onclick={() => (paso = "crear")}>Crear</button>
-          <button class:activa={paso === "unirme"} onclick={() => (paso = "unirme")}>Unirme</button>
+          <button class:activa={paso === "crear"} onclick={() => (paso = "crear")}>{t("Crear")}</button>
+          <button class:activa={paso === "unirme"} onclick={() => (paso = "unirme")}>{t("Unirme")}</button>
         </div>
       {/if}
 
       <div class="columnas">
         {#if ui.amplio || paso === "crear"}
           <section class="panel" in:fade={{ duration: 180 }}>
-            <h2>Crear un jam</h2>
-            <p class="tenue sub">Tú eres el anfitrión: controlas la música y los demás se unen con un código.</p>
+            <h2>{t("Crear un jam")}</h2>
+            <p class="tenue sub">{t("Tú eres el anfitrión: controlas la música y los demás se unen con un código.")}</p>
             <div class="modos">
               <button class:activo={modo === "sincronizado"} onclick={() => (modo = "sincronizado")}>
                 <span class="radio"></span>
-                <span><b>Sincronizado</b><small>Suena en todos los dispositivos al mismo tiempo</small></span>
+                <span><b>{t("Sincronizado")}</b><small>{t("Suena en todos los dispositivos al mismo tiempo")}</small></span>
               </button>
               <button class:activo={modo === "anfitrion"} onclick={() => (modo = "anfitrion")}>
                 <span class="radio"></span>
-                <span><b>Solo aquí</b><small>Suena en este dispositivo, ideal con una bocina</small></span>
+                <span><b>{t("Solo aquí")}</b><small>{t("Suena en este dispositivo, ideal con una bocina")}</small></span>
               </button>
             </div>
             <button class="pildora cian ancho" disabled={ocupado} onclick={() => { creando = true; intentar(() => crear(nombre.trim(), modo)).finally(() => (creando = false)); }}>
-              <Icono nombre="jam" tam={20} /> {creando ? "Abriendo…" : "Crear jam"}
+              <Icono nombre="jam" tam={20} /> {creando ? t("Abriendo…") : t("Crear jam")}
             </button>
           </section>
         {/if}
 
         {#if ui.amplio || paso === "unirme"}
           <section class="panel" in:fade={{ duration: 180 }}>
-            <h2>Unirme a un jam</h2>
+            <h2>{t("Unirme a un jam")}</h2>
             {#if esCelular}
               <button class="escanear" disabled={ocupado} onclick={escanear}>
                 <span class="icono-qr"><Icono nombre="camara" tam={26} /></span>
-                <span><b>Escanear QR</b><small>Apunta al código que muestra el anfitrión</small></span>
+                <span><b>{t("Escanear QR")}</b><small>{t("Apunta al código que muestra el anfitrión")}</small></span>
               </button>
             {/if}
 
             <div class="sub-cab">
-              <span>Cerca de ti</span>
+              <span>{t("Cerca de ti")}</span>
               <button class="buscar-otra" onclick={buscar} disabled={cercanos === null}>
-                {cercanos === null ? "Buscando…" : "Buscar de nuevo"}
+                {cercanos === null ? t("Buscando…") : t("Buscar de nuevo")}
               </button>
             </div>
             {#if cercanos === null}
               <div class="cargando-bloque" style="height:62px"></div>
             {:else if !cercanos.length}
-              <p class="tenue nota">No encontré jams en tu red. Pide el QR o el código al anfitrión.</p>
+              <p class="tenue nota">{t("No encontré jams en tu red. Pide el QR o el código al anfitrión.")}</p>
             {:else}
               {#each cercanos as j}
                 <div class="cercano" class:elegido={elegido === j}>
@@ -346,8 +347,8 @@
                   {#if elegido === j}
                     <form class="linea" transition:slide={{ duration: 200 }}
                       onsubmit={(ev) => { ev.preventDefault(); intentar(() => unirse(j.ip, j.puerto, codigo, nombre.trim())); }}>
-                      <input class="pin" bind:value={codigo} placeholder="Código" inputmode="numeric" maxlength="4" />
-                      <button class="pildora cian" disabled={ocupado || codigo.length !== 4}>Entrar</button>
+                      <input class="pin" bind:value={codigo} placeholder={t("Código")} inputmode="numeric" maxlength="4" />
+                      <button class="pildora cian" disabled={ocupado || codigo.length !== 4}>{t("Entrar")}</button>
                     </form>
                   {/if}
                 </div>
@@ -355,19 +356,19 @@
             {/if}
 
             <button class="otras" onclick={() => (otrasFormas = !otrasFormas)}>
-              Otras formas de unirme <Icono nombre={otrasFormas ? "cerrar" : "agregar"} tam={16} />
+              {t("Otras formas de unirme")} <Icono nombre={otrasFormas ? "cerrar" : "agregar"} tam={16} />
             </button>
             {#if otrasFormas}
               <div class="otras-cuerpo" transition:slide={{ duration: 200 }}>
                 <form class="linea" onsubmit={(ev) => { ev.preventDefault(); unirseConLink(link); }}>
-                  <input bind:value={link} placeholder="Pega el link del jam" />
-                  <button class="pildora oscura" disabled={ocupado || !link.trim()}>Entrar</button>
+                  <input bind:value={link} placeholder={t("Pega el link del jam")} />
+                  <button class="pildora oscura" disabled={ocupado || !link.trim()}>{t("Entrar")}</button>
                 </form>
                 <form class="manual" onsubmit={(ev) => { ev.preventDefault(); intentar(() => unirse(manual.ip.trim(), manual.puerto, manual.codigo, nombre.trim())); }}>
-                  <input bind:value={manual.ip} placeholder="IP del anfitrión (ej. 192.168.1.14)" />
-                  <input bind:value={manual.puerto} placeholder="Puerto" inputmode="numeric" />
-                  <input bind:value={manual.codigo} placeholder="Código" inputmode="numeric" maxlength="4" />
-                  <button class="pildora oscura" disabled={ocupado}>Entrar</button>
+                  <input bind:value={manual.ip} placeholder={t("IP del anfitrión (ej. 192.168.1.14)")} />
+                  <input bind:value={manual.puerto} placeholder={t("Puerto")} inputmode="numeric" />
+                  <input bind:value={manual.codigo} placeholder={t("Código")} inputmode="numeric" maxlength="4" />
+                  <button class="pildora oscura" disabled={ocupado}>{t("Entrar")}</button>
                 </form>
               </div>
             {/if}
@@ -380,17 +381,17 @@
     <div class="sala" in:fade={{ duration: 250 }}>
       <header class="sala-cab">
         <div class="sala-titulo">
-          <small class="envivo" class:caido={!jam.conectado}><i></i> {jam.conectado ? "EN VIVO" : "RECONECTANDO…"}</small>
+          <small class="envivo" class:caido={!jam.conectado}><i></i> {jam.conectado ? t("EN VIVO") : t("RECONECTANDO…")}</small>
           <h1 class="cortar">{s.nombre}</h1>
           <button class="gente" onclick={() => (pestana = "sala")}>
             <span class="caras">
               {#each s.participantes.slice(0, 4) as persona}<span class="avatar mini">{iniciales(persona.nombre)}</span>{/each}
             </span>
-            {s.participantes.length} {s.participantes.length === 1 ? "persona" : "personas"} · {s.modo === "sincronizado" ? "sincronizado" : "suena en el anfitrión"}
+            {s.participantes.length === 1 ? t("1 persona") : t("{n} personas", { n: s.participantes.length })} · {s.modo === "sincronizado" ? t("sincronizado") : t("suena en el anfitrión")}
           </button>
         </div>
         {#if anfitrion}
-          <button class="pildora cian invitar" onclick={abrirInvitar}><Icono nombre="qr" tam={20} /> Invitar</button>
+          <button class="pildora cian invitar" onclick={abrirInvitar}><Icono nombre="qr" tam={20} /> {t("Invitar")}</button>
         {/if}
       </header>
 
@@ -417,30 +418,30 @@
             {:else}
               <div class="sin-pista">
                 <span class="sello"><Icono nombre="nota" tam={34} /></span>
-                <b>La cola está vacía</b>
+                <b>{t("La cola está vacía")}</b>
                 {#if puedeAgregar}
-                  <button class="pildora cian" onclick={() => (pestana = "agregar")}><Icono nombre="agregar" tam={18} /> Agregar la primera</button>
+                  <button class="pildora cian" onclick={() => (pestana = "agregar")}><Icono nombre="agregar" tam={18} /> {t("Agregar la primera")}</button>
                 {:else}
-                  <p>Espera a que el anfitrión ponga algo.</p>
+                  <p>{t("Espera a que el anfitrión ponga algo.")}</p>
                 {/if}
               </div>
             {/if}
 
             <div class="controles">
               {#if anfitrion}
-                <button class="redondo grande" onclick={() => control("anterior")} aria-label="Anterior"><Icono nombre="anterior" relleno tam={30} /></button>
-                <button class="play" onclick={() => control(s.sonando ? "pausa" : "play")} aria-label="Reproducir o pausar">
+                <button class="redondo grande" onclick={() => control("anterior")} aria-label={t("Anterior")}><Icono nombre="anterior" relleno tam={30} /></button>
+                <button class="play" onclick={() => control(s.sonando ? "pausa" : "play")} aria-label={t("Reproducir o pausar")}>
                   <Icono nombre={s.sonando ? "pausa" : "play"} relleno tam={32} />
                 </button>
-                <button class="redondo grande" onclick={() => control("siguiente")} aria-label="Siguiente"><Icono nombre="siguiente" relleno tam={30} /></button>
+                <button class="redondo grande" onclick={() => control("siguiente")} aria-label={t("Siguiente")}><Icono nombre="siguiente" relleno tam={30} /></button>
               {:else if p}
-                <button class="pildora clara" onclick={() => votar().then(() => aviso("Votaste para saltar"))}>
-                  <Icono nombre="siguiente" relleno tam={18} /> Saltar · {s.votos}/{s.votos_necesarios}
+                <button class="pildora clara" onclick={() => votar().then(() => aviso(t("Votaste para saltar")))}>
+                  <Icono nombre="siguiente" relleno tam={18} /> {t("Saltar")} · {s.votos}/{s.votos_necesarios}
                 </button>
               {/if}
             </div>
             <div class="emojis">
-              {#each emojis as em}<button onclick={() => reaccionar(em)} aria-label="Reaccionar {em}">{em}</button>{/each}
+              {#each emojis as em}<button onclick={() => reaccionar(em)} aria-label={t("Reaccionar {emoji}", { emoji: em })}>{em}</button>{/each}
             </div>
             {#if jam.escuchando && (s.modo === "sincronizado" || anfitrion)}
               <div class="vol"><Volumen claro /></div>
@@ -452,12 +453,12 @@
         <section class="lado">
           <div class="pestanas" role="tablist">
             <button class:activa={pestana === "cola"} onclick={() => (pestana = "cola")}>
-              Cola{#if pendientes > 0}<span class="cuenta">{pendientes}</span>{/if}
+              {t("Cola")}{#if pendientes > 0}<span class="cuenta">{pendientes}</span>{/if}
             </button>
             {#if puedeAgregar}
-              <button class:activa={pestana === "agregar"} onclick={() => (pestana = "agregar")}>Agregar</button>
+              <button class:activa={pestana === "agregar"} onclick={() => (pestana = "agregar")}>{t("Agregar")}</button>
             {/if}
-            <button class:activa={pestana === "sala"} onclick={() => (pestana = "sala")}>Sala</button>
+            <button class:activa={pestana === "sala"} onclick={() => (pestana = "sala")}>{t("Sala")}</button>
           </div>
 
           {#if pestana === "cola"}
@@ -469,7 +470,7 @@
                   transition:slide={{ duration: 200 }} animate:flip={{ duration: arrastre ? 0 : 200 }}>
                   {#if anfitrion && i > s.indice}
                     <!-- Agarradera: arrastrar para cambiar el orden de lo que falta por sonar -->
-                    <span class="agarrar" aria-label="Arrastrar para reordenar" role="button" tabindex="-1"
+                    <span class="agarrar" aria-label={t("Arrastrar para reordenar")} role="button" tabindex="-1"
                       onpointerdown={(e) => empezarArrastre(e, i)} onpointermove={moverArrastre} onpointerup={soltarArrastre}
                       onpointercancel={() => (arrastre = null)}>
                       <Icono nombre="arrastrar" tam={20} />
@@ -482,33 +483,33 @@
                   <span class="textos">
                     <b class="cortar">{pista.titulo}</b>
                     <small class="cortar">
-                      {#if pista.estado === "descargando"}Descargando…{:else if pista.estado === "error"}No se pudo descargar{:else}{pista.artista}{/if}
+                      {#if pista.estado === "descargando"}{t("Descargando…")}{:else if pista.estado === "error"}{t("No se pudo descargar")}{:else}{pista.artista}{/if}
                       · {pista.agregada_por}
                     </small>
                   </span>
                   {#if anfitrion}
                     {#if i !== s.indice && pista.estado === "lista"}
-                      <button class="redondo" onclick={() => control("saltar_a", { indice: i })} aria-label="Poner ya"><Icono nombre="play" relleno tam={18} /></button>
+                      <button class="redondo" onclick={() => control("saltar_a", { indice: i })} aria-label={t("Poner ya")}><Icono nombre="play" relleno tam={18} /></button>
                     {/if}
-                    <button class="redondo" onclick={() => control("quitar", { pid: pista.pid })} aria-label="Quitar"><Icono nombre="cerrar" tam={18} /></button>
+                    <button class="redondo" onclick={() => control("quitar", { pid: pista.pid })} aria-label={t("Quitar")}><Icono nombre="cerrar" tam={18} /></button>
                   {/if}
                 </div>
               {:else}
-                <p class="tenue nota centro">Todavía no hay canciones en la cola.</p>
+                <p class="tenue nota centro">{t("Todavía no hay canciones en la cola.")}</p>
               {/each}
             </div>
           {:else if pestana === "agregar"}
             <div in:fade={{ duration: 160 }}>
               <div class="fuentes">
                 {#if !anfitrion}
-                  <button class:activo={fuente === "mias"} onclick={() => (fuente = "mias")}>Mis canciones</button>
+                  <button class:activo={fuente === "mias"} onclick={() => (fuente = "mias")}>{t("Mis canciones")}</button>
                 {/if}
-                <button class:activo={fuente === "biblioteca"} onclick={() => (fuente = "biblioteca")}>{anfitrion ? "Mi biblioteca" : "Del anfitrión"}</button>
+                <button class:activo={fuente === "biblioteca"} onclick={() => (fuente = "biblioteca")}>{anfitrion ? t("Mi biblioteca") : t("Del anfitrión")}</button>
                 <button class:activo={fuente === "buscar"} onclick={() => (fuente = "buscar")}>YouTube Music</button>
               </div>
               <form class="buscador" onsubmit={(ev) => { ev.preventDefault(); cargarResultados(); }}>
                 <Icono nombre="buscar" tam={18} />
-                <input bind:value={q} oninput={alEscribir} placeholder={fuente === "buscar" ? "Buscar canción o artista…" : "Filtrar canciones…"} />
+                <input bind:value={q} oninput={alEscribir} placeholder={fuente === "buscar" ? t("Buscar canción o artista…") : t("Filtrar canciones…")} />
               </form>
               {#if cargando}
                 {#each Array(4) as _}<div class="cargando-bloque" style="height:52px;margin:8px 0"></div>{/each}
@@ -519,13 +520,13 @@
                       <Portada url={fuente === "mias" || !c.local ? c.portada : null} tam="44px" radio="8px" />
                       <span class="textos"><b class="cortar">{c.titulo}</b><small class="cortar">{c.artista}</small></span>
                       <button class="sumar" disabled={subiendo === c.ruta} onclick={() => sumar(c)}
-                        aria-label={fuente === "mias" && !anfitrion ? "Mandar al jam" : "Agregar a la cola"}>
+                        aria-label={fuente === "mias" && !anfitrion ? t("Mandar al jam") : t("Agregar a la cola")}>
                         {#if subiendo === c.ruta}<span class="girando"></span>
                         {:else}<Icono nombre={fuente === "mias" && !anfitrion ? "subir" : "agregar"} tam={20} />{/if}
                       </button>
                     </div>
                   {:else}
-                    <p class="tenue nota centro">{fuente === "buscar" && !q.trim() ? "Escribe qué quieres escuchar." : "Sin resultados."}</p>
+                    <p class="tenue nota centro">{fuente === "buscar" && !q.trim() ? t("Escribe qué quieres escuchar.") : t("Sin resultados.")}</p>
                   {/each}
                 </div>
               {/if}
@@ -535,40 +536,40 @@
               <div class="grupo">
                 {#if anfitrion}
                   <div class="ajuste">
-                    <span>Dónde suena</span>
+                    <span>{t("Dónde suena")}</span>
                     <div class="fuentes compacto">
-                      <button class:activo={s.modo === "sincronizado"} onclick={() => control("modo", { modo: "sincronizado" })}>En todos</button>
-                      <button class:activo={s.modo === "anfitrion"} onclick={() => control("modo", { modo: "anfitrion" })}>Solo aquí</button>
+                      <button class:activo={s.modo === "sincronizado"} onclick={() => control("modo", { modo: "sincronizado" })}>{t("En todos")}</button>
+                      <button class:activo={s.modo === "anfitrion"} onclick={() => control("modo", { modo: "anfitrion" })}>{t("Solo aquí")}</button>
                     </div>
                   </div>
                   <label class="ajuste">
-                    <span>Invitados pueden agregar canciones</span>
+                    <span>{t("Invitados pueden agregar canciones")}</span>
                     <input type="checkbox" class="interruptor" checked={s.invitados_agregan}
                       onchange={(ev) => control("permisos", { invitados_agregan: ev.target.checked })} />
                   </label>
                 {/if}
                 {#if s.modo === "sincronizado" || anfitrion}
                   <label class="ajuste">
-                    <span>Escuchar en este dispositivo</span>
+                    <span>{t("Escuchar en este dispositivo")}</span>
                     <input type="checkbox" class="interruptor" checked={jam.escuchando} onchange={alternarEscuchar} />
                   </label>
                 {/if}
               </div>
 
-              <div class="sub-cab"><span>En el jam</span></div>
+              <div class="sub-cab"><span>{t("En el jam")}</span></div>
               <div class="grupo">
                 {#each s.participantes as persona}
                   <div class="persona">
                     <span class="avatar" class:anfi={persona.rol === "anfitrion"}>{iniciales(persona.nombre)}</span>
-                    <span class="textos"><b class="cortar">{persona.nombre}</b>{#if persona.rol === "anfitrion"}<small>Anfitrión</small>{/if}</span>
+                    <span class="textos"><b class="cortar">{persona.nombre}</b>{#if persona.rol === "anfitrion"}<small>{t("Anfitrión")}</small>{/if}</span>
                     {#if anfitrion && persona.rol !== "anfitrion"}
-                      <button class="sacar" onclick={() => control("expulsar", { cliente_corto: persona.cliente })}>Sacar</button>
+                      <button class="sacar" onclick={() => control("expulsar", { cliente_corto: persona.cliente })}>{t("Sacar")}</button>
                     {/if}
                   </div>
                 {/each}
               </div>
 
-              <button class="salir" onclick={salir}>{anfitrion ? "Terminar jam" : "Salir del jam"}</button>
+              <button class="salir" onclick={salir}>{anfitrion ? t("Terminar jam") : t("Salir del jam")}</button>
             </div>
           {/if}
         </section>
@@ -579,10 +580,10 @@
 
 {#if invitar && s && anfitrion}
   <div class="fondo-modal" use:aBody transition:fade={{ duration: 180 }} onclick={() => (invitar = false)} role="presentation"></div>
-  <div class="modal" use:aBody transition:scale={{ duration: 220, start: 0.94 }} role="dialog" aria-label="Invitar al jam">
-    <button class="redondo cerrar-modal" onclick={() => (invitar = false)} aria-label="Cerrar"><Icono nombre="cerrar" tam={22} /></button>
-    <h2>Invita a tus amigos</h2>
-    <p class="tenue">Escanean este QR desde <b>Jams → Unirme</b> en su Misiccord</p>
+  <div class="modal" use:aBody transition:scale={{ duration: 220, start: 0.94 }} role="dialog" aria-label={t("Invitar al jam")}>
+    <button class="redondo cerrar-modal" onclick={() => (invitar = false)} aria-label={t("Cerrar")}><Icono nombre="cerrar" tam={22} /></button>
+    <h2>{t("Invita a tus amigos")}</h2>
+    <p class="tenue">{t("Escanean este QR desde Jams → Unirme en su Misiccord")}</p>
     <div class="qr-imagen">
       {#if qr}{@html qr.svg}{:else}<div class="cargando-bloque" style="aspect-ratio:1"></div>{/if}
     </div>
@@ -596,20 +597,20 @@
     {#if jam.conexion.internetDisponible}
       <div class="internet" class:activo={jam.conexion.internet}>
         <div class="internet-texto">
-          <b><Icono nombre="jam" tam={18} /> {jam.conexion.internet ? "Abierto a internet" : "Solo en tu red"}</b>
+          <b><Icono nombre="jam" tam={18} /> {jam.conexion.internet ? t("Abierto a internet") : t("Solo en tu red")}</b>
           <small>
-            {#if abriendo}{pctCloudflared && pctCloudflared < 100 ? `Preparando la conexión (solo la primera vez)… ${pctCloudflared}%` : "Abriendo la conexión…"}
-            {:else if jam.conexion.internet}Pueden unirse desde otra red con el QR o el link. La dirección cambia cada vez.
-            {:else}Para amigos que no están en tu Wi-Fi: el QR y el link funcionarán desde cualquier lugar.{/if}
+            {#if abriendo}{pctCloudflared && pctCloudflared < 100 ? t("Preparando la conexión (solo la primera vez)… {pct}%", { pct: pctCloudflared }) : t("Abriendo la conexión…")}
+            {:else if jam.conexion.internet}{t("Pueden unirse desde otra red con el QR o el link. La dirección cambia cada vez.")}
+            {:else}{t("Para amigos que no están en tu Wi-Fi: el QR y el link funcionarán desde cualquier lugar.")}{/if}
           </small>
         </div>
         <button class="pildora chica {jam.conexion.internet ? 'oscura' : 'cian'}" disabled={abriendo} onclick={alternarInternet}>
-          {abriendo ? "…" : jam.conexion.internet ? "Cerrar" : "Abrir"}
+          {abriendo ? "…" : jam.conexion.internet ? t("Cerrar") : t("Abrir")}
         </button>
       </div>
     {/if}
     {#if qr}
-      <button class="pildora oscura ancho" onclick={() => copiar(qr.texto).then((ok) => aviso(ok ? "Link copiado: mándalo por WhatsApp o donde quieras" : "No se pudo copiar", ok ? "ok" : "error"))}>Copiar link</button>
+      <button class="pildora oscura ancho" onclick={() => copiar(qr.texto).then((ok) => aviso(ok ? t("Link copiado: mándalo por WhatsApp o donde quieras") : t("No se pudo copiar"), ok ? "ok" : "error"))}>{t("Copiar link")}</button>
     {/if}
   </div>
 {/if}

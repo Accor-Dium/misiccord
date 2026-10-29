@@ -1,3 +1,4 @@
+import { t } from "./idioma.svelte.js";
 // Carruseles con mouse (escritorio): la rueda solo mueve la página hacia abajo y la barra de scroll está oculta,
 // así que no había forma de ver lo que sigue a la derecha. Aquí, para todos los .carrusel de la app:
 //   - se pueden arrastrar con el mouse (sin abrir la tarjeta al soltar),
@@ -10,7 +11,7 @@ let actual = null; // carrusel bajo el mouse
 const flechas = [-1, 1].map((direccion) => {
   const b = document.createElement("button");
   b.className = "flecha-carrusel";
-  b.setAttribute("aria-label", direccion < 0 ? "Anteriores" : "Siguientes");
+  b.setAttribute("aria-label", direccion < 0 ? t("Anteriores") : t("Siguientes"));
   b.innerHTML = `<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"
     stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="${direccion < 0 ? "M15 5l-7 7 7 7" : "M9 5l7 7-7 7"}"/></svg>`;
   b.addEventListener("click", () => {

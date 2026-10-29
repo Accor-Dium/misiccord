@@ -1,4 +1,5 @@
 <script>
+  import { canciones as nCanciones, t } from "../lib/idioma.svelte.js";
   import { onMount } from "svelte";
   import { alEvento, py } from "../lib/api.js";
   import { alternarMeGusta, atras, descargar, ui } from "../lib/estado.svelte.js";
@@ -31,31 +32,31 @@
 
 <div class="vista">
   <header>
-    <button class="redondo relleno" onclick={atras} aria-label="Atrás"><Icono nombre="atras" tam={24} /></button>
+    <button class="redondo relleno" onclick={atras} aria-label={t("Atrás")}><Icono nombre="atras" tam={24} /></button>
   </header>
   <div class="cab">
     <div class="tapa"><Icono nombre="corazon" relleno tam={72} /></div>
-    <h1>Me gusta</h1>
+    <h1>{t("Me gusta")}</h1>
     <p class="tenue">
-      {canciones.length} canciones{#if faltan.length} · {faltan.length} sin descargar{/if}
+      {nCanciones(canciones.length)}{#if faltan.length} · {t("{n} sin descargar", { n: faltan.length })}{/if}
     </p>
   </div>
   <div class="acciones">
-    <button class="pildora clara" disabled={!reproducibles.length} onclick={() => reproducir(reproducibles, 0, "Me gusta")}><Icono nombre="play" relleno tam={20} /> Reproducir</button>
-    <button class="pildora oscura" disabled={!reproducibles.length} onclick={() => reproducirAleatorio(reproducibles, "Me gusta")}><Icono nombre="aleatorio" tam={20} /> Aleatorio</button>
+    <button class="pildora clara" disabled={!reproducibles.length} onclick={() => reproducir(reproducibles, 0, t("Me gusta"))}><Icono nombre="play" relleno tam={20} /> {t("Reproducir")}</button>
+    <button class="pildora oscura" disabled={!reproducibles.length} onclick={() => reproducirAleatorio(reproducibles, t("Me gusta"))}><Icono nombre="aleatorio" tam={20} /> {t("Aleatorio")}</button>
   </div>
   {#if faltan.length}
-    <button class="pildora cian descargar" onclick={() => descargar(faltan, "Me gusta")}>
-      <Icono nombre="descargas" tam={18} /> Descargar {faltan.length === 1 ? "la que falta" : `las ${faltan.length} que faltan`}
+    <button class="pildora cian descargar" onclick={() => descargar(faltan, t("Me gusta"))}>
+      <Icono nombre="descargas" tam={18} /> {faltan.length === 1 ? t("Descargar la que falta") : t("Descargar las {n} que faltan", { n: faltan.length })}
     </button>
   {/if}
   {#each canciones as c (c.titulo + "|" + c.artista)}
-    <div class:apagada={!c.local && !c.id} title={!c.local && !c.id ? "Ya no está en tu dispositivo y no se encontró en YouTube Music" : null}>
+    <div class:apagada={!c.local && !c.id} title={!c.local && !c.id ? t("Ya no está en tu dispositivo y no se encontró en YouTube Music") : null}>
       <FilaCancion cancion={c} alTocar={() => tocar(c)}
-        extras={[{ texto: "Quitar de Me gusta", icono: "corazon", accion: () => alternarMeGusta(c) }]} />
+        extras={[{ texto: t("Quitar de Me gusta"), icono: "corazon", accion: () => alternarMeGusta(c) }]} />
     </div>
   {:else}
-    <p class="vacio">Toca el <Icono nombre="corazon" tam={16} /> en el reproductor (o “Me gusta” en el menú ⋯ de cualquier canción) y aquí aparecerá, aunque no la hayas descargado.</p>
+    <p class="vacio">{t("Toca el ♥ en el reproductor (o “Me gusta” en el menú ⋯ de cualquier canción) y aquí aparecerá, aunque no la hayas descargado.")}</p>
   {/each}
 </div>
 

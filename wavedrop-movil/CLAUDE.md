@@ -12,7 +12,7 @@ documentada abajo; si algo no está documentado, pregunta antes de "arreglarlo".
 
 ---
 
-## Estado del proyecto (al 29 de octubre de 2026 · versión publicada: **1.0.8**)
+## Estado del proyecto (al 29 de octubre de 2026 · versión publicada: **1.0.9**)
 
 Resumen para que no tengas que leer todo el código. Actualiza esta sección cuando publiques una versión.
 
@@ -23,6 +23,15 @@ Resumen para que no tengas que leer todo el código. Actualiza esta sección cua
   y cola, mini reproductor. En el cel: notificación de música, pantalla bloqueada, relojes (Wear OS/Galaxy Watch) y audífonos Bluetooth.
 - **En línea (YouTube Music)**: buscador en vivo en **Inicio** (resultados mientras escribes), álbumes y artistas, recomendaciones "Para ti"
   (radio a partir de lo que más escuchas/descargas, caché de 6 h). Lo que no tienes suena **al instante por streaming progresivo** y se guarda en caché si se escucha completo.
+- **Inicio estilo YouTube Music** (sin cuenta): chips de estados de ánimo (sus playlists), "marcación rápida" 3×3 con tus recomendaciones,
+  las secciones generales del inicio de YouTube Music (playlists, selecciones rápidas) y "Explorar" (nuevos lanzamientos, tendencias, estados de ánimo
+  y géneros). En el cel se actualiza **jalando hacia abajo**.
+- **Menú de canción** (dejarla presionada o "⋯", igual en filas, tarjetas y reproductor): Me gusta arriba, botones grandes (Reproducir después,
+  Playlist/Descargar, Compartir) e Iniciar radio, cola, jam, álbum, artista, información, eliminar.
+- **Compartir y exportar**: en Biblioteca (botón compartir) se eligen canciones, álbumes, artistas y playlists. Android: menú Compartir del sistema
+  (WhatsApp, Telegram, Bluetooth…). PC: copiar los archivos al portapapeles (se pegan en WhatsApp/Telegram de escritorio), copiar a una USB conectada
+  o a cualquier carpeta (`Misiccord/<álbum o playlist>/`, con `.m3u8` en las playlists). Lo no descargado se comparte como link de YouTube Music.
+- **Idioma**: español e inglés; por defecto el del dispositivo, se cambia en Ajustes → Idioma (la app se recarga).
 - **Descargas**: canciones sueltas o links de playlists/álbumes de YouTube, YouTube Music, **Spotify** (se lee la lista de la página *embed* de Spotify, que trae unas 100 canciones como máximo, y cada una se busca en YouTube Music) y SoundCloud.
   Metadatos de MusicBrainz, carpetas por artista, 1–4 descargas a la vez, carpeta configurable (en Android: carpeta de la app o la pública
   `Music/Misiccord`, que pide "Acceso a todos los archivos").
@@ -47,13 +56,14 @@ Resumen para que no tengas que leer todo el código. Actualiza esta sección cua
 | 1.0.6 | Links de jam (`https://accor-dium.github.io/misiccord/jam/#…` → `misiccord://`), el QR usa ese link, avisos si un jam no responde. |
 | 1.0.7 | Videos musicales (ver y descargar, opcional) y biblioteca por carpetas (de Omar). |
 | 1.0.8 | Info y edición de etiquetas/carátula, letras con traducción y romanización, estadísticas, Me gusta, ordenar biblioteca, ecualizador, pregunta al reproducir en un jam, mantener para agregar a la cola, descargas en segundo plano en Android (de Omar). |
+| 1.0.9 | Inicio estilo YouTube Music (estados de ánimo, marcación rápida, Explorar), jalar para actualizar, menú de canción al mantener presionada (compartir, radio), compartir/exportar (Android: menú del sistema; PC: portapapeles, USB o carpeta), avisos nuevos, idioma español/inglés. |
 
 ### Qué está probado y dónde
 - **En dispositivos reales** (lo probó quien administra el proyecto): app de Windows, Android en varios teléfonos (Samsung S25 Ultra, Pixel 7 Pro…),
   jams en red local, escáner QR, jam por internet abierto desde el cel.
 - **Solo en el emulador o con scripts**: controles de reloj (con `cmd media_session dispatch`), links en Android, eliminar canciones,
   tiempos de streaming, streaming progresivo (en Chromium con la red frenada).
-- **Sin probar todavía**: links y "una sola ventana" en Windows, panel de medios de Windows, un reloj real, un jam con YouTube Music entre teléfonos reales, videos musicales y carpetas de la biblioteca en el cel, lo de 1.0.8 (segundo plano, ecualizador, editar etiquetas) en teléfonos reales.
+- **Sin probar todavía**: links y "una sola ventana" en Windows, panel de medios de Windows, un reloj real, un jam con YouTube Music entre teléfonos reales, videos musicales y carpetas de la biblioteca en el cel, lo de 1.0.8 (segundo plano, ecualizador, editar etiquetas) en teléfonos reales, y de 1.0.9: exportar a una USB real y todo en la app de Windows (se probó en navegador con el núcleo de Python y en el emulador: menú, compartir de Android, jalar para actualizar, idioma).
 
 ### Dónde guarda las cosas
 | | Windows | Android |
@@ -68,7 +78,7 @@ Resumen para que no tengas que leer todo el código. Actualiza esta sección cua
 - El APK de teléfonos también trae las librerías `x86_64` del emulador (`libqjs.so`, `libcloudflared.so`): unos 12 MB de más.
 - YouTube a veces pide "confirm you're not a bot" en ciertas redes/IPs: hay respaldo de clientes, pero puede volver a pasar si YouTube cambia algo.
 - Android puede dormir la app en segundo plano si no hay nada sonando (con música activa la mantiene viva el servicio de medios).
-- `Buscar.svelte` quedó sin pestaña (la búsqueda está en Inicio); se puede quitar cuando nada la abra.
+- Lo que Python manda como error (`RuntimeError("…")`) y los textos de las notificaciones de Kotlin siguen solo en español.
 - `README.md` todavía es el de la plantilla de Tauri.
 - No hay iOS ni macOS (no se ha intentado).
 
@@ -121,6 +131,8 @@ Todo el trabajo real vive en Python: python/wavedrop/  (el mismo código en las 
 | `musicbrainz.py` | Completa álbum/año/pista/portada al descargar. |
 | `etiquetas.py` | Ver y editar etiquetas y carátula de una canción descargada (mutagen: mp3, m4a, flac, ogg/opus). La interfaz manda la imagen ya pasada a JPG. |
 | `romanizar.py` | Idioma de una letra (por escritura y palabras comunes) y romanización **sin internet**: coreano, kana, cirílico, griego. Kanji y chino no (necesitan diccionario). |
+| `idioma.py` | Idioma de lo que Python le manda a la interfaz (títulos de recomendaciones, avisos de segundo plano): `t("texto")` con su traducción en `_EN`. |
+| `exportar.py` | PC: memorias USB conectadas (`GetDriveTypeW`), copiar canciones a una carpeta (con `.m3u8`), archivos al portapapeles (`CF_HDROP`), mostrar en el Explorador. |
 | `traduccion.py` | Traducción de letras con **MyMemory** (gratis, sin clave, ~5000 caracteres/día por IP): caché en `cache/traducciones`, líneas repetidas una sola vez. |
 
 `python/servicio.py`: el proceso de escritorio (stdin/stdout en UTF-8 forzado; `print` va a stderr).
@@ -132,11 +144,14 @@ Todo el trabajo real vive en Python: python/wavedrop/  (el mismo código en las 
   `lib/jam.svelte.js` (cliente del jam: SSE o sondeo largo, sincronía, agregar desde cualquier lista) ·
   `lib/medios.svelte.js` (notificación/pantalla bloqueada/relojes en Android; Media Session de WebView2 en Windows) ·
   `lib/enlaces.svelte.js` (links de jam: deep link `misiccord://` y la página `https`) ·
-  `lib/eliminar.js` (borrar canciones con confirmación) · `lib/actualizaciones.svelte.js` · `lib/aBody.js`.
-- `vistas/`: `Inicio` (con el buscador en vivo `componentes/Buscador.svelte`), `Biblioteca` (selección múltiple), `Album`, `Artista`,
-  `Playlist`, `Jams`, `Descargas`, `Ajustes`. `Buscar.svelte` sigue registrada en `App.svelte` pero **ya no hay pestaña**: la búsqueda vive en Inicio.
+  `lib/eliminar.js` (borrar canciones con confirmación) · `lib/actualizaciones.svelte.js` · `lib/aBody.js` ·
+  `lib/idioma.svelte.js` (`t()`, idioma del dispositivo o el elegido) + `lib/textos/en.js` (traducción al inglés) ·
+  `lib/menuCancion.js` (el menú de una canción) · `lib/compartir.js` (compartir/exportar) · `lib/jalar.js` (jalar para actualizar).
+- `vistas/`: `Inicio` (con el buscador en vivo `componentes/Buscador.svelte`), `Explorar`, `Biblioteca` (selección para compartir o borrar), `Album`
+  (también playlists de YouTube Music), `Artista`, `Playlist`, `MeGusta`, `Estadisticas`, `Jams`, `Descargas`, `Ajustes`.
 - `componentes/`: `FilaCancion` (menú ⋯, agregar al jam, eliminar), `Hoja` (menú inferior / ventana en escritorio), `MiniReproductor` (también muestra el jam),
-  `Reproductor`, `Letra`, `Tarjeta`, `Portada`, `Icono` (íconos SVG por nombre), `Volumen`, `Navegacion`, `Avisos`, `BotonDescarga`.
+  `Reproductor`, `Letra`, `Tarjeta`, `Portada` (reintenta si una portada falla), `Icono` (íconos SVG por nombre), `Volumen`, `Navegacion`,
+  `Avisos` (abajo, con acción y barra de avance: `aviso(texto, tipo, { id, duracion, accion, avance })`), `BotonDescarga`, `Paginas`, `InfoCancion`.
 - `app.css`: tokens de color, `--margen`, carruseles (`scroll-padding` evita que se "corran"), tamaño de artistas `--artista`.
 
 ### `src-tauri/` — Rust y Android
@@ -162,7 +177,7 @@ Todo el trabajo real vive en Python: python/wavedrop/  (el mismo código en las 
 ## No cambiar (aunque parezca mejora)
 
 - **Identificadores**: `identifier` = `com.wavedrop.movil` (cambiarlo = otra app; se pierden datos y actualizaciones), carpeta de datos `%LOCALAPPDATA%\WaveDrop`,
-  claves de `localStorage` (`wavedrop_nombre`, `wavedrop_volumen`, `misiccord_ultima_revision`), esquema `misiccord://`, URL de la página
+  claves de `localStorage` (`wavedrop_nombre`, `wavedrop_volumen`, `misiccord_ultima_revision`, `misiccord_idioma`, `misiccord_orden`), esquema `misiccord://`, URL de la página
   `https://accor-dium.github.io/misiccord/jam/` (está en `lib/enlaces.svelte.js` y en `api.jam_qr`: cambia las dos o ninguna), repo `Accor-Dium/misiccord`.
 - **Llaves de firma**: si cambia la del APK, Android no deja actualizar encima; si cambia la del updater, las PCs instaladas no aceptan versiones nuevas.
 - **Python 3.14 + Chaquopy 17.2** y **solo ABIs arm64/x86_64** (Chaquopy no compila 3.14 para armeabi-v7a).
@@ -204,11 +219,18 @@ Todo el trabajo real vive en Python: python/wavedrop/  (el mismo código en las 
   WakeLock y notificación de avance) lo muestra. Una tarea nueva se anota **antes** de quitar la anterior (p. ej. el video antes de dar la canción por lista):
   Android 12+ no deja volver a arrancar un servicio en primer plano desde segundo plano, así que un hueco de "0 tareas" lo apagaría para siempre.
   Los permisos (notificaciones, sin límites de batería) se piden con el comando `segundo_plano` y se ven en Ajustes → Segundo plano (solo Android).
+- **YouTube Music en el idioma de la app solo para mostrar** (`explorar._yt_idioma`: inicio, estados de ánimo, explorar, playlists). Las búsquedas
+  usan el cliente sin idioma (`_yt`): ytmusicapi reconoce cada resultado por su texto en inglés y con `language="es"` los filtros (canciones, álbumes) regresan vacíos.
+- **Compartir en Android** pasa por `FileProvider` (`res/xml/file_paths.xml` incluye `/storage` para tarjetas SD) con `ClipData`: sin ella WhatsApp no recibe
+  permiso para leer todos los archivos.
 - **El servicio de Python fuerza UTF-8** en stdin/stdout (`servicio.py`): Windows usaba cp1252 y rompía acentos.
 
 ## Convenciones
 
 - **Todo en español**: nombres de variables y funciones, comentarios, textos de la interfaz y mensajes de commit. Tono cercano en la UI ("tú").
+- **Todo texto visible pasa por `t()`** (`lib/idioma.svelte.js`): se escribe en español, `t("“{titulo}” se agregó", { titulo })`, y se agrega su
+  traducción en `lib/textos/en.js` (la clave es el texto en español exacto). Para contar canciones usa `canciones(n)`. **No** nombres `t` a una variable
+  en un archivo que use `t()`. Para fechas y números: `local()`. Un idioma nuevo = otro archivo en `textos/` y una línea en `IDIOMAS`.
 - Svelte 5 **runes**; nada de stores de Svelte 4. Estado compartido en módulos `*.svelte.js` con `$state` exportado.
 - Comentarios: explican el **porqué** (sobre todo lo no obvio), no el qué. Mantén la densidad del archivo que tocas.
 - Python: funciones de `api.py` reciben/devuelven `dict`; errores para el usuario con `RuntimeError("mensaje claro")`.

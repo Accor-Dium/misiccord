@@ -3,6 +3,7 @@
   import { py, tiempo } from "../lib/api.js";
   import { aBody } from "../lib/aBody.js";
   import { aviso, ui } from "../lib/estado.svelte.js";
+  import { local, t } from "../lib/idioma.svelte.js";
   import { actualizarCancion } from "../lib/reproductor.svelte.js";
   import Icono from "./Icono.svelte";
   import Portada from "./Portada.svelte";
@@ -15,8 +16,8 @@
   let guardando = $state(false);
 
   const ETIQUETAS = [
-    ["titulo", "Título"], ["artista", "Artista"], ["album", "Álbum"], ["artista_album", "Artista del álbum"],
-    ["anio", "Año"], ["pista", "Pista"], ["disco", "Disco"], ["genero", "Género"], ["compositor", "Compositor"],
+    ["titulo", t("Título")], ["artista", t("Artista")], ["album", t("Álbum")], ["artista_album", t("Artista del álbum")],
+    ["anio", t("Año")], ["pista", t("Pista")], ["disco", t("Disco")], ["genero", t("Género")], ["compositor", t("Compositor")],
   ];
 
   $effect(() => {
@@ -53,7 +54,7 @@
       datos = { ...datos, campos: { ...campos } };
       if (r.cancion) actualizarCancion(r.cancion);
       ui.version++;
-      aviso("Etiquetas guardadas", "ok");
+      aviso(t("Etiquetas guardadas"), "ok");
     } catch (e) {
       aviso(e.message, "error");
     } finally {
@@ -82,55 +83,56 @@
       datos = { ...datos, portada: r.cancion?.portada ?? datos.portada };
       if (r.cancion) actualizarCancion(r.cancion);
       ui.version++;
-      aviso("Carátula cambiada", "ok");
+      aviso(t("Carátula cambiada"), "ok");
     } catch (e) {
-      aviso(e.message || "No pude usar esa imagen", "error");
+      aviso(e.message || t("No pude usar esa imagen"), "error");
     } finally {
       guardando = false;
     }
   }
 
-  const fecha = (s) => (s ? new Date(s * 1000).toLocaleDateString("es", { day: "numeric", month: "short", year: "numeric" }) : "—");
+  const fecha = (s) => (s ? new Date(s * 1000).toLocaleDateString(local(), { day: "numeric", month: "short", year: "numeric" }) : "—");
 
   /** Datos técnicos en filas "nombre: valor" (solo los que se conocen). */
   const tecnico = $derived.by(() => {
-    const t = datos?.tecnico;
-    if (!t) return [];
-    const calidad = [t.codec, t.kbps && `${t.kbps} kbps`, t.hz && `${(t.hz / 1000).toFixed(1)} kHz`, t.bits && `${t.bits} bits`,
-                     t.canales && (t.canales === 1 ? "mono" : t.canales === 2 ? "estéreo" : `${t.canales} canales`)].filter(Boolean).join(" · ");
+    const x = datos?.tecnico;
+    if (!x) return [];
+    const calidad = [x.codec, x.kbps && `${x.kbps} kbps`, x.hz && `${(x.hz / 1000).toFixed(1)} kHz`, x.bits && `${x.bits} bits`,
+                     x.canales && (x.canales === 1 ? t("mono") : x.canales === 2 ? t("estéreo") : t("{n} canales", { n: x.canales }))].filter(Boolean).join(" · ");
+    // La tercera columna dice si se puede copiar (ubicación y enlace)
     return [
-      ["Fuente", t.fuente], ["Formato", t.formato], ["Duración", t.duracion ? tiempo(t.duracion) : null], ["Calidad", calidad],
-      ["Tamaño", t.tamano_mb != null ? `${t.tamano_mb} MB` : null],
-      ["Reproducciones", t.reproducciones != null ? String(t.reproducciones) : null],
-      ["Última vez", t.ultima ? fecha(t.ultima) : null], ["En tu biblioteca desde", t.agregada ? fecha(t.agregada) : null],
-      ["Ubicación", t.ruta], ["Enlace", t.enlace],
+      [t("Fuente"), x.fuente], [t("Formato"), x.formato], [t("Duración"), x.duracion ? tiempo(x.duracion) : null], [t("Calidad"), calidad],
+      [t("Tamaño"), x.tamano_mb != null ? `${x.tamano_mb} MB` : null],
+      [t("Reproducciones"), x.reproducciones != null ? String(x.reproducciones) : null],
+      [t("Última vez"), x.ultima ? fecha(x.ultima) : null], [t("En tu biblioteca desde"), x.agregada ? fecha(x.agregada) : null],
+      [t("Ubicación"), x.ruta, true], [t("Enlace"), x.enlace, true],
     ].filter(([, v]) => v);
   });
 
   async function copiar(texto) {
     try {
       await navigator.clipboard.writeText(texto);
-      aviso("Copiado", "ok");
+      aviso(t("Copiado"), "ok");
     } catch {}
   }
 </script>
 
 {#if c}
   <div class="fondo-modal" use:aBody transition:fade={{ duration: 180 }} onclick={cerrar} role="presentation"></div>
-  <div class="modal" use:aBody transition:scale={{ duration: 220, start: 0.94 }} role="dialog" aria-label="Información de la canción">
-    <button class="redondo cerrar-modal" onclick={cerrar} aria-label="Cerrar"><Icono nombre="cerrar" tam={22} /></button>
+  <div class="modal" use:aBody transition:scale={{ duration: 220, start: 0.94 }} role="dialog" aria-label={t("Información de la canción")}>
+    <button class="redondo cerrar-modal" onclick={cerrar} aria-label={t("Cerrar")}><Icono nombre="cerrar" tam={22} /></button>
     <div class="cabeza">
       <div class="tapa">
         <Portada url={datos?.portada ?? c.portada} tam="104px" radio="12px" icono="nota" />
         {#if editable}
           <label class="cambiar" class:ocupado={guardando}>
-            <Icono nombre="camara" tam={16} /> Cambiar
+            <Icono nombre="camara" tam={16} /> {t("Cambiar")}
             <input type="file" accept="image/*" onchange={elegirImagen} disabled={guardando} />
           </label>
         {/if}
       </div>
       <div class="textos">
-        <small class="etiqueta">{editable ? "DESCARGADA" : datos?.descargada ? "DESCARGADA · SOLO LECTURA" : "VISTA PREVIA"}</small>
+        <small class="etiqueta">{editable ? t("DESCARGADA") : datos?.descargada ? t("DESCARGADA · SOLO LECTURA") : t("VISTA PREVIA")}</small>
         <b>{c.titulo}</b>
         <span class="tenue">{c.artista}</span>
       </div>
@@ -153,19 +155,19 @@
           {/if}
         {/each}
         {#if editable}
-          <button class="pildora cian ancho" disabled={!cambiado || guardando}>{guardando ? "Guardando…" : "Guardar etiquetas"}</button>
+          <button class="pildora cian ancho" disabled={!cambiado || guardando}>{guardando ? t("Guardando…") : t("Guardar etiquetas")}</button>
         {:else if !datos.descargada}
-          <p class="tenue nota">Descárgala para poder editar sus etiquetas y su carátula.</p>
+          <p class="tenue nota">{t("Descárgala para poder editar sus etiquetas y su carátula.")}</p>
         {/if}
       </form>
 
-      <h3>Detalles</h3>
+      <h3>{t("Detalles")}</h3>
       <dl>
-        {#each tecnico as [nombre, valor]}
+        {#each tecnico as [nombre, valor, copiable]}
           <dt>{nombre}</dt>
           <dd>
-            {#if nombre === "Ubicación" || nombre === "Enlace"}
-              <button class="copiable" onclick={() => copiar(valor)} title="Copiar">{valor}</button>
+            {#if copiable}
+              <button class="copiable" onclick={() => copiar(valor)} title={t("Copiar")}>{valor}</button>
             {:else}{valor}{/if}
           </dd>
         {/each}

@@ -2,6 +2,7 @@
   import { onMount } from "svelte";
   import { py } from "../lib/api.js";
   import { atras, aviso, ui } from "../lib/estado.svelte.js";
+  import { canciones as nCanciones, t } from "../lib/idioma.svelte.js";
   import { reproducir, reproducirAleatorio } from "../lib/reproductor.svelte.js";
   import FilaCancion from "../componentes/FilaCancion.svelte";
   import Icono from "../componentes/Icono.svelte";
@@ -19,13 +20,13 @@
 
   async function quitar(c) {
     await py("quitar_de_playlist", { id: e.id, db_ids: [c.db_id] });
-    aviso(`Se quitó “${c.titulo}”`);
+    aviso(t("Se quitó “{titulo}”", c));
     cargar();
   }
 
   async function borrar() {
     await py("borrar_playlist", { id: e.id });
-    aviso(`Playlist “${e.nombre}” eliminada`);
+    aviso(t("Playlist “{nombre}” eliminada", e));
     ui.version++;
     atras();
   }
@@ -33,26 +34,26 @@
 
 <div class="vista">
   <header>
-    <button class="redondo relleno" onclick={atras} aria-label="Atrás"><Icono nombre="atras" tam={24} /></button>
+    <button class="redondo relleno" onclick={atras} aria-label={t("Atrás")}><Icono nombre="atras" tam={24} /></button>
   </header>
   <div class="cab">
     <div class="mosaico">
       {#each [0, 1, 2, 3] as i}<Portada url={canciones[i]?.portada} radio="0" icono="nota" />{/each}
     </div>
     <h1>{e.nombre}</h1>
-    <p class="tenue">{canciones.length} canciones</p>
+    <p class="tenue">{nCanciones(canciones.length)}</p>
   </div>
   <div class="acciones">
-    <button class="pildora clara" disabled={!canciones.length} onclick={() => reproducir(canciones, 0, e.nombre)}><Icono nombre="play" relleno tam={20} /> Reproducir</button>
-    <button class="pildora oscura" disabled={!canciones.length} onclick={() => reproducirAleatorio(canciones, e.nombre)}><Icono nombre="aleatorio" tam={20} /> Aleatorio</button>
+    <button class="pildora clara" disabled={!canciones.length} onclick={() => reproducir(canciones, 0, e.nombre)}><Icono nombre="play" relleno tam={20} /> {t("Reproducir")}</button>
+    <button class="pildora oscura" disabled={!canciones.length} onclick={() => reproducirAleatorio(canciones, e.nombre)}><Icono nombre="aleatorio" tam={20} /> {t("Aleatorio")}</button>
   </div>
   {#each canciones as c, i}
     <FilaCancion cancion={c} alTocar={() => reproducir(canciones, i, e.nombre)}
-      extras={[{ texto: "Quitar de esta playlist", icono: "cerrar", accion: () => quitar(c) }]} />
+      extras={[{ texto: t("Quitar de esta playlist"), icono: "cerrar", accion: () => quitar(c) }]} />
   {:else}
-    <p class="vacio">Agrega canciones desde el menú <b>⋯</b> de cualquier canción de tu biblioteca.</p>
+    <p class="vacio">{t("Agrega canciones desde el menú ⋯ de cualquier canción de tu biblioteca.")}</p>
   {/each}
-  <button class="borrar" onclick={borrar}>Eliminar playlist</button>
+  <button class="borrar" onclick={borrar}>{t("Eliminar playlist")}</button>
 </div>
 
 <style>

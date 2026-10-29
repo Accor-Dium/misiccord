@@ -1,4 +1,5 @@
 <script>
+  import { t } from "../lib/idioma.svelte.js";
   import { py } from "../lib/api.js";
   import { ui } from "../lib/estado.svelte.js";
   import { irA, rep } from "../lib/reproductor.svelte.js";
@@ -94,11 +95,11 @@
     <div class="barra-letra">
       {#if info.nombre}<span class="idioma">{info.nombre}</span>{/if}
       {#if info.romanizacion}
-        <button class="interruptor" class:on={verRom} onclick={() => (verRom = !verRom)} aria-pressed={verRom}>Romanización</button>
+        <button class="interruptor" class:on={verRom} onclick={() => (verRom = !verRom)} aria-pressed={verRom}>{t("Romanización")}</button>
       {/if}
       {#if sePuedeTraducir}
         <button class="interruptor" class:on={verTrad} onclick={() => (verTrad = !verTrad)} aria-pressed={verTrad}>
-          {estadoTraduccion === "cargando" && verTrad ? "Traduciendo…" : "Traducción"}
+          {estadoTraduccion === "cargando" && verTrad ? t("Traduciendo…") : t("Traducción")}
         </button>
       {/if}
     </div>
@@ -110,9 +111,9 @@
          caja: con padding en vh la caja crecía más que su lugar y en el cel tapaba la barra para adelantar -->
     <div class="hueco" style:height="{Math.round(alto * 0.4)}px"></div>
     {#if estado === "cargando"}
-      <p class="aviso">Buscando letra…</p>
+      <p class="aviso">{t("Buscando letra…")}</p>
     {:else if estado === "instrumental"}
-      <p class="aviso">♪ Canción instrumental</p>
+      <p class="aviso">♪ {t("Canción instrumental")}</p>
     {:else if estado === "lista"}
       {#each lineas as [ms, texto], i}
         <button
@@ -128,9 +129,9 @@
           {#if verTrad && traduccion?.[i]}<span class="extra trad">{traduccion[i]}</span>{/if}
         </button>
       {/each}
-      {#if info.fuente}<p class="fuente">Letra de {info.fuente}</p>{/if}
+      {#if info.fuente}<p class="fuente">{t("Letra de {fuente}", { fuente: info.fuente })}</p>{/if}
     {:else}
-      <p class="aviso">No encontré la letra de esta canción.</p>
+      <p class="aviso">{t("No encontré la letra de esta canción.")}</p>
     {/if}
     <div class="hueco" style:height="{Math.round(alto * 0.55)}px"></div>
   </div>

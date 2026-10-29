@@ -2,4 +2,7 @@
 <paths xmlns:android="http://schemas.android.com/apk/res/android">
   <external-path name="my_images" path="." />
   <cache-path name="my_cache_images" path="." />
+  <!-- Para compartir canciones de cualquier carpeta de música, también de tarjetas SD (/storage/XXXX-XXXX) -->
+  <external-files-path name="musica_app" path="." />
+  <root-path name="almacenamiento" path="storage" />
 </paths>

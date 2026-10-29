@@ -5,6 +5,7 @@
   import { revisarAlIniciar } from "./lib/actualizaciones.svelte.js";
   import { escucharEnlaces } from "./lib/enlaces.svelte.js";
   import { aplicarAjustesLetra, nav } from "./lib/estado.svelte.js";
+  import { idioma, t } from "./lib/idioma.svelte.js";
   import { jam } from "./lib/jam.svelte.js";
   import "./lib/medios.svelte.js"; // notificación, pantalla bloqueada, relojes y teclas multimedia
   import "./lib/carrusel.js"; // carruseles con mouse: arrastrar y flechas
@@ -19,18 +20,18 @@
   import Ajustes from "./vistas/Ajustes.svelte";
   import Artista from "./vistas/Artista.svelte";
   import Biblioteca from "./vistas/Biblioteca.svelte";
-  import Buscar from "./vistas/Buscar.svelte";
   import Descargas from "./vistas/Descargas.svelte";
   import Estadisticas from "./vistas/Estadisticas.svelte";
+  import Explorar from "./vistas/Explorar.svelte";
   import MeGusta from "./vistas/MeGusta.svelte";
   import Inicio from "./vistas/Inicio.svelte";
   import Jams from "./vistas/Jams.svelte";
   import Playlist from "./vistas/Playlist.svelte";
 
   const vistas = {
-    inicio: Inicio, buscar: Buscar, biblioteca: Biblioteca, descargas: Descargas, jams: Jams,
+    inicio: Inicio, biblioteca: Biblioteca, descargas: Descargas, jams: Jams,
     album: Album, artista: Artista, buscar_artista: Artista, playlist: Playlist, ajustes: Ajustes,
-    biblioteca_albumes: Biblioteca, estadisticas: Estadisticas, me_gusta: MeGusta,
+    biblioteca_albumes: Biblioteca, estadisticas: Estadisticas, me_gusta: MeGusta, explorar: Explorar,
   };
 
   let listo = $state(false);
@@ -40,7 +41,7 @@
 
   onMount(async () => {
     try {
-      const r = await py("iniciar");
+      const r = await py("iniciar", { idioma: idioma.actual });
       rep.fundido = r.ajustes.fundido;
       aplicarAjustesVideo(r.ajustes);
       aplicarAjustesLetra(r.ajustes);
@@ -70,7 +71,7 @@
       <span></span><span></span><span></span><span></span><span></span>
     </div>
     <b>Misiccord</b>
-    {#if error}<p class="error">No se pudo iniciar: {error}</p>{/if}
+    {#if error}<p class="error">{t("No se pudo iniciar: {error}", { error })}</p>{/if}
   </div>
 {:else}
   <main bind:this={principal} class:con-mini={rep.actual || jam.sala}>

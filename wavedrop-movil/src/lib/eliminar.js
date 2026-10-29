@@ -3,9 +3,10 @@
 // historial, cola, jam). Siempre se pide confirmar antes.
 import { py } from "./api.js";
 import { aviso, mostrarHoja, ui } from "./estado.svelte.js";
+import { canciones, t } from "./idioma.svelte.js";
 import { olvidarRutas, soltarSi } from "./reproductor.svelte.js";
 
-const plural = (n) => (n === 1 ? "1 canción" : `${n} canciones`);
+const plural = canciones;
 
 /**
  * @param objetivo  { db_ids: [...] } | { album: { nombre, grupo, artista } } | { artista: "nombre" }
@@ -16,16 +17,16 @@ const plural = (n) => (n === 1 ? "1 canción" : `${n} canciones`);
 export function pedirEliminar({ objetivo, cuantas, titulo, seBorra, alTerminar }) {
   return new Promise((listo) => {
     mostrarHoja({
-      titulo: `¿Eliminar ${titulo}?`,
+      titulo: t("¿Eliminar {que}?", { que: titulo }),
       subtituloLargo: true,
-      subtitulo: `Se borra${cuantas === 1 ? "" : "n"} ${plural(cuantas)} de este dispositivo, de tus playlists y del historial.`,
+      subtitulo: t(cuantas === 1 ? "Se borra {n} de este dispositivo, de tus playlists y del historial." : "Se borran {n} de este dispositivo, de tus playlists y del historial.", { n: plural(cuantas) }),
       opciones: [
-        { texto: `Eliminar ${plural(cuantas)}`, icono: "basura", peligro: true, accion: async () => {
+        { texto: t("Eliminar {n}", { n: plural(cuantas) }), icono: "basura", peligro: true, accion: async () => {
           const r = await eliminar(objetivo, seBorra);
           alTerminar?.(r);
           listo(r);
         } },
-        { texto: "Cancelar", icono: "cerrar", accion: () => listo(null) },
+        { texto: t("Cancelar"), icono: "cerrar", accion: () => listo(null) },
       ],
     });
   });
@@ -37,11 +38,11 @@ async function eliminar(objetivo, seBorra) {
     const r = await py("eliminar_canciones", objetivo);
     olvidarRutas(r.rutas);
     ui.version++; // las vistas abiertas se recargan
-    if (r.fallidas.length) aviso(`No se pudieron borrar ${plural(r.fallidas.length)}: ${r.fallidas[0].error}`, "error");
-    else aviso(`Se eliminó ${plural(r.eliminadas)}`, "ok");
+    if (r.fallidas.length) aviso(t("No se pudieron borrar {n}: {error}", { n: plural(r.fallidas.length), error: r.fallidas[0].error }), "error");
+    else aviso(t("Se eliminó {n}", { n: plural(r.eliminadas) }), "ok");
     return r;
   } catch (e) {
-    aviso(e.message || "No se pudo eliminar", "error");
+    aviso(e.message || t("No se pudo eliminar"), "error");
     return null;
   }
 }

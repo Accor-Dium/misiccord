@@ -6,6 +6,8 @@
   import {
     alternar, alternarAleatorio, alternarVideo, anterior, ciclarRepetir, irA, montarVideo, rep, reproducirDeCola, siguiente,
   } from "../lib/reproductor.svelte.js";
+  import { t } from "../lib/idioma.svelte.js";
+  import { menuCancion } from "../lib/menuCancion.js";
   import BotonDescarga from "./BotonDescarga.svelte";
   import Icono from "./Icono.svelte";
   import Letra from "./Letra.svelte";
@@ -85,23 +87,17 @@
   async function bajarVideo() {
     try {
       const r = await py("descargar_video", { ruta: c.ruta, titulo: c.titulo, artista: c.artista, duracion: c.duracion });
-      if (r.estado === "existe") aviso("Ya tienes el video de esta canción");
-      else aviso("Descargando el video…", "ok");
+      if (r.estado === "existe") aviso(t("Ya tienes el video de esta canción"));
+      else aviso(t("Descargando el video…"), "ok");
     } catch (e) {
       aviso(e.message, "error");
     }
   }
 
+  // El mismo menú que al dejar presionada una canción, más bajar el video si aplica
   function mas() {
-    const ops = [];
-    if (!c.ruta) ops.push({ texto: "Descargar", icono: "descargas", accion: () => descargar([c]) });
-    if (c.ruta && rep.videoDescargar) ops.push({ texto: "Descargar video", icono: "video", accion: bajarVideo });
-    ops.push({ texto: c.ruta ? "Información y etiquetas" : "Información", icono: "info", accion: () => verInfo(c) });
-    ops.push({ texto: `Ir a ${c.artista.split(",")[0]}`, icono: "persona", accion: () => {
-      cerrarReproductor();
-      setTimeout(() => abrir("buscar_artista", { nombre: c.artista.split(",")[0] }), 250);
-    } });
-    mostrarHoja({ titulo: c.titulo, subtitulo: c.artista, portada: c.portada, opciones: ops });
+    const extras = c.ruta && rep.videoDescargar ? [{ texto: t("Descargar video"), icono: "video", accion: bajarVideo }] : [];
+    menuCancion(c, extras);
   }
 </script>
 
@@ -109,7 +105,7 @@
   <div
     class="reproductor"
     role="dialog"
-    aria-label="Reproductor"
+    aria-label={t("Reproductor")}
     style:transform="translateY({arrastre}px)"
     style:transition={inicioY === null ? "transform 0.35s var(--curva)" : "none"}
     transition:fly={{ y: 900, duration: 420, opacity: 1 }}
@@ -124,23 +120,23 @@
     <div class="velo"></div>
 
     <header>
-      <button class="redondo" onclick={cerrarReproductor} aria-label="Cerrar"><Icono nombre="abajo" tam={28} /></button>
+      <button class="redondo" onclick={cerrarReproductor} aria-label={t("Cerrar")}><Icono nombre="abajo" tam={28} /></button>
       <div class="origen">
-        <small>REPRODUCIENDO DESDE</small>
-        <b class="cortar">{rep.origen || "tu música"}</b>
+        <small>{t("REPRODUCIENDO DESDE")}</small>
+        <b class="cortar">{rep.origen || t("tu música")}</b>
       </div>
-      <button class="redondo" onclick={mas} aria-label="Más opciones"><Icono nombre="mas" tam={26} /></button>
+      <button class="redondo" onclick={mas} aria-label={t("Más opciones")}><Icono nombre="mas" tam={26} /></button>
     </header>
 
     <section class="centro">
       {#if panel === "portada" || ui.amplio}
         <div class="pila" in:fade={{ duration: 250 }}>
           {#if rep.videoDisponible}
-            <div class="selector" role="tablist" aria-label="Canción o video">
-              <button role="tab" aria-selected={!rep.verVideo} class:activo={!rep.verVideo} onclick={() => rep.verVideo && alternarVideo()}>Canción</button>
-              <button role="tab" aria-selected={rep.verVideo} class:activo={rep.verVideo} onclick={() => !rep.verVideo && alternarVideo()}>Video</button>
+            <div class="selector" role="tablist" aria-label={t("Canción o video")}>
+              <button role="tab" aria-selected={!rep.verVideo} class:activo={!rep.verVideo} onclick={() => rep.verVideo && alternarVideo()}>{t("Canción")}</button>
+              <button role="tab" aria-selected={rep.verVideo} class:activo={rep.verVideo} onclick={() => !rep.verVideo && alternarVideo()}>{t("Video")}</button>
             </div>
-            {#if rep.verVideo && rep.videoEstado === "error"}<small class="sin-video">Esta canción no tiene video</small>{/if}
+            {#if rep.verVideo && rep.videoEstado === "error"}<small class="sin-video">{t("Esta canción no tiene video")}</small>{/if}
           {/if}
           <div class="portada">
             {#if !enVideo}
@@ -159,7 +155,7 @@
         <div class="lado" in:fade={{ duration: 250 }}><Letra /></div>
       {:else}
         <div class="lado cola" in:fade={{ duration: 250 }}>
-          <h3>A continuación</h3>
+          <h3>{t("A continuación")}</h3>
           {#each rep.cola as item, i}
             <button class="item" class:actual={i === rep.indice} onclick={() => reproducirDeCola(i)}>
               <Portada url={item.portada} tam="42px" radio="6px" />
@@ -179,7 +175,7 @@
         </p>
       </div>
       <button class="redondo corazon" class:gusta onclick={tocarMeGusta} aria-pressed={gusta}
-        aria-label={gusta ? "Quitar de Me gusta" : "Me gusta"} title={gusta ? "Quitar de Me gusta" : "Me gusta"}>
+        aria-label={gusta ? t("Quitar de Me gusta") : t("Me gusta")} title={gusta ? t("Quitar de Me gusta") : t("Me gusta")}>
         <Icono nombre="corazon" relleno={gusta} tam={26} />
       </button>
       {#if !c.local}<BotonDescarga cancion={c} />{/if}
@@ -194,22 +190,22 @@
       />
       <div class="tiempos">
         <span>{tiempo(buscando ?? rep.pos)}</span>
-        {#if !c.ruta}<span class="etiqueta">VISTA PREVIA</span>{/if}
+        {#if !c.ruta}<span class="etiqueta">{t("VISTA PREVIA")}</span>{/if}
         <span>{tiempo(rep.dur || c.duracion)}</span>
       </div>
     </section>
 
     <section class="controles">
-      <button class="redondo" class:encendido={rep.aleatorio} onclick={alternarAleatorio} aria-label="Aleatorio">
+      <button class="redondo" class:encendido={rep.aleatorio} onclick={alternarAleatorio} aria-label={t("Aleatorio")}>
         <Icono nombre="aleatorio" tam={24} />
       </button>
-      <button class="redondo grande" onclick={anterior} aria-label="Anterior"><Icono nombre="anterior" relleno tam={34} /></button>
-      <button class="play" onclick={alternar} aria-label={rep.sonando ? "Pausar" : "Reproducir"}>
+      <button class="redondo grande" onclick={anterior} aria-label={t("Anterior")}><Icono nombre="anterior" relleno tam={34} /></button>
+      <button class="play" onclick={alternar} aria-label={rep.sonando ? t("Pausar") : t("Reproducir")}>
         {#if rep.cargando}<span class="girando"></span>
         {:else}<Icono nombre={rep.sonando ? "pausa" : "play"} relleno tam={36} />{/if}
       </button>
-      <button class="redondo grande" onclick={siguiente} aria-label="Siguiente"><Icono nombre="siguiente" relleno tam={34} /></button>
-      <button class="redondo" class:encendido={rep.repetir > 0} onclick={ciclarRepetir} aria-label="Repetir">
+      <button class="redondo grande" onclick={siguiente} aria-label={t("Siguiente")}><Icono nombre="siguiente" relleno tam={34} /></button>
+      <button class="redondo" class:encendido={rep.repetir > 0} onclick={ciclarRepetir} aria-label={t("Repetir")}>
         <Icono nombre="repetir" tam={24} />
         {#if rep.repetir === 2}<span class="uno">1</span>{/if}
       </button>
@@ -218,13 +214,13 @@
     <div class="vol"><Volumen claro /></div>
 
     <footer>
-      <button class="redondo relleno" class:encendido={vista === "cola"} onclick={() => alternarPanel("cola")} aria-label="Cola">
+      <button class="redondo relleno" class:encendido={vista === "cola"} onclick={() => alternarPanel("cola")} aria-label={t("Cola")}>
         <Icono nombre="cola" tam={22} />
       </button>
-      <button class="redondo relleno" class:encendido={vista === "letra"} onclick={() => alternarPanel("letra")} aria-label="Letra">
+      <button class="redondo relleno" class:encendido={vista === "letra"} onclick={() => alternarPanel("letra")} aria-label={t("Letra")}>
         <Icono nombre="letra" tam={22} />
       </button>
-      <button class="redondo relleno" onclick={irAJams} aria-label="Jams" title="Escuchar en grupo">
+      <button class="redondo relleno" onclick={irAJams} aria-label={t("Jams")} title={t("Escuchar en grupo")}>
         <Icono nombre="jam" tam={22} />
       </button>
     </footer>
@@ -233,8 +229,8 @@
       <!-- En pantalla ancha la letra o la cola siempre están a la derecha -->
       <aside class="derecha">
         <div class="pestanas">
-          <button class:activa={lado === "letra"} onclick={() => (lado = "letra")}>Letra</button>
-          <button class:activa={lado === "cola"} onclick={() => (lado = "cola")}>A continuación</button>
+          <button class:activa={lado === "letra"} onclick={() => (lado = "letra")}>{t("Letra")}</button>
+          <button class:activa={lado === "cola"} onclick={() => (lado = "cola")}>{t("A continuación")}</button>
         </div>
         {#if lado === "letra"}
           <div class="lado" in:fade={{ duration: 250 }}><Letra /></div>

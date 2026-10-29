@@ -6,6 +6,8 @@
   import { reproducir, reproducirAleatorio } from "../lib/reproductor.svelte.js";
   import { aBody } from "../lib/aBody.js";
   import { pedirEliminar } from "../lib/eliminar.js";
+  import { compartir } from "../lib/compartir.js";
+  import { canciones, t } from "../lib/idioma.svelte.js";
   import { agrupar, agruparPorLetra, coincide, ORDENES } from "../lib/ordenar.js";
   import FilaCancion from "../componentes/FilaCancion.svelte";
   import Icono from "../componentes/Icono.svelte";
@@ -35,7 +37,7 @@
   }
   function opcionesOrden() {
     mostrarHoja({
-      titulo: "Ordenar y agrupar canciones",
+      titulo: t("Ordenar y agrupar canciones"),
       opciones: ORDENES.map(([id, nombre]) => ({ texto: nombre, icono: orden === id ? "check" : "ordenar", accion: () => ponerOrden(id) })),
     });
   }
@@ -52,9 +54,9 @@
   let pedidoLinea = 0;
   let esperaLinea;
   $effect(() => {
-    const t = texto;
+    const consultaLinea = texto;
     clearTimeout(esperaLinea);
-    if (t.length < 2) {
+    if (consultaLinea.length < 2) {
       enLinea = [];
       buscandoLinea = false;
       return;
@@ -63,7 +65,7 @@
       const yo = ++pedidoLinea;
       buscandoLinea = true;
       try {
-        const r = await py("buscar", { q: t, tipo: "canciones" });
+        const r = await py("buscar", { q: consultaLinea, tipo: "canciones" });
         // Solo las que no tienes descargadas (las tuyas ya salen arriba)
         if (yo === pedidoLinea) enLinea = (r.canciones ?? []).filter((c) => !c.ruta).slice(0, 8);
       } catch {
@@ -118,12 +120,12 @@
     if (!nombre.trim()) return;
     try {
       await py("crear_playlist", { nombre: nombre.trim() });
-      aviso(`Playlist “${nombre.trim()}” creada`, "ok");
+      aviso(t("Playlist “{nombre}” creada", { nombre: nombre.trim() }), "ok");
       nombre = "";
       creando = false;
       cargar();
     } catch {
-      aviso("Ya existe una playlist con ese nombre", "error");
+      aviso(t("Ya existe una playlist con ese nombre"), "error");
     }
   }
 
@@ -156,7 +158,7 @@
       explorando = null;
       revisadas = 0;
       escaneando = true;
-      aviso("Leyendo tu música…", "ok");
+      aviso(t("Leyendo tu música…"), "ok");
     } catch (err) {
       aviso(err.message, "error");
     }
@@ -164,20 +166,20 @@
   async function elegirCarpetaMusica() {
     if (!carpetas.android) {
       const { open } = await import("@tauri-apps/plugin-dialog");
-      const ruta = await open({ directory: true, title: "¿Dónde está tu música?" });
+      const ruta = await open({ directory: true, title: t("¿Dónde está tu música?") });
       if (ruta) agregarCarpeta(ruta);
       return;
     }
     // Android: leer carpetas públicas pide "Acceso a todos los archivos"
     const { invoke } = await import("@tauri-apps/api/core");
     if (!(await invoke("permiso_archivos", { pedir: false }))) {
-      aviso("Activa “Permitir acceso a todos los archivos” para Misiccord y regresa a la app");
+      aviso(t("Activa “Permitir acceso a todos los archivos” para Misiccord y regresa a la app"));
       await invoke("permiso_archivos", { pedir: true });
       const alVolver = async () => {
         if (document.visibilityState !== "visible") return;
         document.removeEventListener("visibilitychange", alVolver);
         if (await invoke("permiso_archivos", { pedir: false })) irA();
-        else aviso("Sin ese permiso no puedo leer tu música", "error");
+        else aviso(t("Sin ese permiso no puedo leer tu música"), "error");
       };
       document.addEventListener("visibilitychange", alVolver);
       return;
@@ -193,20 +195,68 @@
   }
   async function quitarCarpeta(c) {
     carpetas = await py("quitar_carpeta_biblioteca", { ruta: c.ruta });
-    aviso("Carpeta quitada; tus archivos siguen donde estaban", "ok");
+    aviso(t("Carpeta quitada; tus archivos siguen donde estaban"), "ok");
   }
   const nombreCarpeta = (ruta) => ruta.split(/[\\/]/).filter(Boolean).pop() || ruta;
 
-  const pestanas = [["canciones", "Canciones"], ["albumes", "Álbumes"], ["artistas", "Artistas"], ["playlists", "Playlists"]];
+  const pestanas = [["canciones", t("Canciones")], ["albumes", t("Álbumes")], ["artistas", t("Artistas")], ["playlists", t("Playlists")]];
 
-  // ---------- Selección múltiple para borrar ----------
+  // ---------- Selección múltiple para compartir/exportar o borrar ----------
+  // Se pueden juntar canciones, álbumes, artistas y playlists (cambiando de pestaña sin perder lo elegido).
+  // Borrar solo aplica a canciones sueltas.
   let seleccionando = $state(false);
-  let elegidas = $state(new Set());
-  $effect(() => { if (pestana !== "canciones") salirSeleccion(); });
+  let elegidas = $state(new Set());              // db_id de canciones
+  let elegidos = $state(new Set());              // claves "album:…", "artista:…", "playlist:…"
+  const totalElegido = $derived(elegidas.size + elegidos.size);
 
   function salirSeleccion() {
     seleccionando = false;
     elegidas = new Set();
+    elegidos = new Set();
+  }
+  const claveAlbum = (a) => `album:${a.nombre}|${a.grupo}|${a.artista}`;
+  function alternarElegido(clave) {
+    const s = new Set(elegidos);
+    s.has(clave) ? s.delete(clave) : s.add(clave);
+    elegidos = s;
+  }
+
+  let preparando = $state(false);
+  async function compartirElegidas() {
+    preparando = true;
+    try {
+      const lista = [];
+      const grupos = [];
+      const sueltas = b.canciones.filter((c) => elegidas.has(c.db_id));
+      if (sueltas.length) {
+        lista.push(...sueltas);
+        grupos.push({ carpeta: "", rutas: sueltas.map((c) => c.ruta), lista: false });
+      }
+      for (const a of b.albumes.filter((x) => elegidos.has(claveAlbum(x)))) {
+        const { canciones } = await py("album_local", { nombre: a.nombre, artista: a.artista, grupo: a.grupo });
+        lista.push(...canciones);
+        grupos.push({ carpeta: a.artista ? `${a.artista} - ${a.nombre}` : a.nombre, rutas: canciones.map((c) => c.ruta), lista: false });
+      }
+      for (const a of b.artistas.filter((x) => elegidos.has(`artista:${x.nombre}`))) {
+        const { canciones } = await py("artista_local", { nombre: a.nombre });
+        lista.push(...canciones);
+        grupos.push({ carpeta: a.nombre, rutas: canciones.map((c) => c.ruta), lista: false });
+      }
+      for (const p of b.playlists.filter((x) => elegidos.has(`playlist:${x.id}`))) {
+        const { canciones } = await py("playlist", { id: p.id });
+        const suyas = canciones.filter((c) => c.ruta);
+        lista.push(...suyas);
+        grupos.push({ carpeta: p.nombre, rutas: suyas.map((c) => c.ruta), lista: true });
+      }
+      const titulo = totalElegido === 1 && sueltas.length === 1
+        ? sueltas[0].titulo
+        : t("Compartir {n}", { n: totalElegido === 1 ? t("1 elemento") : t("{n} elementos", { n: totalElegido }) });
+      await compartir(lista, { titulo, grupos: grupos.filter((g) => g.rutas.length) });
+    } catch (err) {
+      aviso(err.message, "error");
+    } finally {
+      preparando = false;
+    }
   }
   function alternarElegida(id) {
     const s = new Set(elegidas);
@@ -221,7 +271,7 @@
     const rutas = new Set(b.canciones.filter((c) => elegidas.has(c.db_id)).map((c) => c.ruta));
     pedirEliminar({
       objetivo: { db_ids: [...elegidas] }, cuantas: elegidas.size,
-      titulo: elegidas.size === 1 ? "la canción elegida" : `${elegidas.size} canciones`,
+      titulo: elegidas.size === 1 ? t("la canción elegida") : canciones(elegidas.size),
       seBorra: (c) => rutas.has(c.ruta),
       alTerminar: (r) => r && salirSeleccion(),
     });
@@ -229,13 +279,13 @@
 
   function opcionesArtista(a) {
     mostrarHoja({
-      titulo: a.nombre, subtitulo: `${a.canciones} canciones descargadas`,
+      titulo: a.nombre, subtitulo: t("{n} descargadas", { n: canciones(a.canciones) }),
       opciones: [
-        { texto: "Reproducir", icono: "play",
+        { texto: t("Reproducir"), icono: "play",
           accion: async () => reproducir((await py("artista_local", { nombre: a.nombre })).canciones, 0, a.nombre) },
-        { texto: "Ver en YouTube Music", icono: "persona", accion: () => abrir("artista", { nombre: a.nombre }) },
-        { texto: "Eliminar todas sus canciones", icono: "basura", peligro: true, accion: () => pedirEliminar({
-            objetivo: { artista: a.nombre }, cuantas: a.canciones, titulo: `todo de ${a.nombre}`,
+        { texto: t("Ver en YouTube Music"), icono: "persona", accion: () => abrir("artista", { nombre: a.nombre }) },
+        { texto: t("Eliminar todas sus canciones"), icono: "basura", peligro: true, accion: () => pedirEliminar({
+            objetivo: { artista: a.nombre }, cuantas: a.canciones, titulo: t("todo de {nombre}", a),
             seBorra: (c) => (c.artista || "").toLowerCase().startsWith(a.nombre.toLowerCase()) }) },
       ],
     });
@@ -244,23 +294,25 @@
 
 <div class="vista">
   <header>
-    <h1 class="titulo-vista">Biblioteca</h1>
+    <h1 class="titulo-vista">{t("Biblioteca")}</h1>
     <div class="botones">
-      <button class="redondo" onclick={() => abrir("estadisticas")} aria-label="Tus estadísticas" title="Tus estadísticas"><Icono nombre="estadisticas" tam={24} /></button>
-      <button class="redondo" onclick={abrirPanel} aria-label="Carpetas de música" title="Carpetas de música"><Icono nombre="carpeta" tam={24} /></button>
+      <button class="redondo" onclick={() => abrir("estadisticas")} aria-label={t("Tus estadísticas")} title={t("Tus estadísticas")}><Icono nombre="estadisticas" tam={24} /></button>
+      <button class="redondo" onclick={abrirPanel} aria-label={t("Carpetas de música")} title={t("Carpetas de música")}><Icono nombre="carpeta" tam={24} /></button>
+      <button class="redondo" class:activo-cian={seleccionando} onclick={() => (seleccionando ? salirSeleccion() : (seleccionando = true))}
+        aria-label={t("Compartir o exportar")} title={t("Compartir o exportar")}><Icono nombre="compartir" tam={22} /></button>
       {#if pestana === "playlists"}
-        <button class="redondo" onclick={() => (creando = !creando)} aria-label="Nueva playlist"><Icono nombre="agregar" tam={26} /></button>
+        <button class="redondo" onclick={() => (creando = !creando)} aria-label={t("Nueva playlist")}><Icono nombre="agregar" tam={26} /></button>
       {/if}
     </div>
   </header>
   <form class="buscador" role="search" onsubmit={(ev) => { ev.preventDefault(); document.activeElement?.blur(); }}>
     <Icono nombre="buscar" tam={19} />
-    <input bind:value={consulta} placeholder="Busca en tu biblioteca y en YouTube Music" enterkeyhint="search" />
+    <input bind:value={consulta} placeholder={t("Busca en tu biblioteca y en YouTube Music")} enterkeyhint="search" />
     {#if buscandoLinea}<span class="girando"></span>{/if}
-    {#if consulta}<button type="button" onclick={() => (consulta = "")} aria-label="Borrar búsqueda"><Icono nombre="cerrar" tam={17} /></button>{/if}
+    {#if consulta}<button type="button" onclick={() => (consulta = "")} aria-label={t("Borrar búsqueda")}><Icono nombre="cerrar" tam={17} /></button>{/if}
   </form>
   {#if escaneando}
-    <p class="tenue leyendo">Leyendo tu música… {revisadas ? `${revisadas} canciones revisadas` : ""}</p>
+    <p class="tenue leyendo">{t("Leyendo tu música…")} {revisadas ? t("{n} canciones revisadas", { n: revisadas }) : ""}</p>
   {/if}
   <div class="chips">
     {#each pestanas as [id, texto]}
@@ -268,8 +320,8 @@
     {/each}
   </div>
   {#if carpetas?.carpetas.length > 1}
-    <div class="chips carpetas" role="group" aria-label="Filtrar por carpeta">
-      <button class="chip" class:activo={!filtro} onclick={() => filtrar("")}>Todas</button>
+    <div class="chips carpetas" role="group" aria-label={t("Filtrar por carpeta")}>
+      <button class="chip" class:activo={!filtro} onclick={() => filtrar("")}>{t("Todas")}</button>
       {#each carpetas.carpetas as c (c.ruta)}
         <button class="chip" class:activo={filtro === c.ruta} onclick={() => filtrar(c.ruta)} title={c.ruta}>
           <Icono nombre="carpeta" tam={14} /> {nombreCarpeta(c.ruta)} <small>{c.canciones}</small>
@@ -285,8 +337,8 @@
       {#if b.canciones.length}
         {#if seleccionando}
           <div class="acciones">
-            <button class="texto-boton" onclick={alternarTodas}>{todas ? "Quitar todas" : "Elegir todas"}</button>
-            <button class="pildora oscura chica" onclick={salirSeleccion}>Listo</button>
+            <button class="texto-boton" onclick={alternarTodas}>{todas ? t("Quitar todas") : t("Elegir todas")}</button>
+            <button class="pildora oscura chica" onclick={salirSeleccion}>{t("Listo")}</button>
           </div>
           {#each plana as c (c.db_id)}
             <button class="fila-eleccion" class:elegida={elegidas.has(c.db_id)} onclick={() => alternarElegida(c.db_id)}>
@@ -297,16 +349,16 @@
           {/each}
         {:else}
           <div class="acciones">
-            <span class="tenue">{texto ? `${plana.length} de ${b.canciones.length}` : plana.length} canciones</span>
+            <span class="tenue">{texto ? t("{n} de {total} canciones", { n: plana.length, total: b.canciones.length }) : canciones(plana.length)}</span>
             <div class="botones">
-              <button class="redondo" onclick={opcionesOrden} aria-label="Ordenar y agrupar" title="Ordenar y agrupar">
+              <button class="redondo" onclick={opcionesOrden} aria-label={t("Ordenar y agrupar")} title={t("Ordenar y agrupar")}>
                 <Icono nombre="ordenar" tam={22} />
               </button>
-              <button class="redondo" onclick={() => (seleccionando = true)} aria-label="Seleccionar canciones" title="Seleccionar">
+              <button class="redondo" onclick={() => (seleccionando = true)} aria-label={t("Seleccionar canciones")} title={t("Seleccionar")}>
                 <Icono nombre="seleccionar" tam={22} />
               </button>
-              <button class="pildora oscura chica" disabled={!plana.length} onclick={() => reproducirAleatorio(plana, "Tu biblioteca")}>
-                <Icono nombre="aleatorio" tam={18} /> Aleatorio
+              <button class="pildora oscura chica" disabled={!plana.length} onclick={() => reproducirAleatorio(plana, t("Tu biblioteca"))}>
+                <Icono nombre="aleatorio" tam={18} /> {t("Aleatorio")}
               </button>
             </div>
           </div>
@@ -316,16 +368,16 @@
               <FilaCancion cancion={c} alTocar={() => reproducir(plana, plana.indexOf(c), "Tu biblioteca")} />
             {/each}
           {:else}
-            <p class="vacio">Nada en tu biblioteca con “{texto}”.</p>
+            <p class="vacio">{t("Nada en tu biblioteca con “{q}”.", { q: texto })}</p>
           {/each}
         {/if}
       {:else}
-        <p class="vacio">Aún no tienes canciones descargadas.</p>
+        <p class="vacio">{t("Aún no tienes canciones descargadas.")}</p>
       {/if}
       {#if !seleccionando && texto.length >= 2 && (enLinea.length || buscandoLinea)}
-        <div class="titulo-seccion">En YouTube Music <small>no las tienes</small></div>
+        <div class="titulo-seccion">{t("En YouTube Music")} <small>{t("no las tienes")}</small></div>
         {#each enLinea as c, i (c.id)}
-          <FilaCancion cancion={c} alTocar={() => reproducir(enLinea, i, `Búsqueda “${texto}”`)} />
+          <FilaCancion cancion={c} alTocar={() => reproducir(enLinea, i, t("Búsqueda “{q}”", { q: texto }))} />
         {:else}
           {#each Array(3) as _}<div class="cargando-bloque" style="height:56px;margin:10px 0"></div>{/each}
         {/each}
@@ -334,9 +386,16 @@
   {:else if pestana === "albumes"}
     <div class="rejilla" in:fade={{ duration: 220 }}>
       {#each albumesVistos as a}
-        <Tarjeta portada={a.portada} titulo={a.nombre} subtitulo={a.artista} ancho="100%" alTocar={() => abrir("album", { local: a })} />
+        {#if seleccionando}
+          <div class="eleccion-tarjeta" class:elegida={elegidos.has(claveAlbum(a))}>
+            <Tarjeta portada={a.portada} titulo={a.nombre} subtitulo={a.artista} ancho="100%" alTocar={() => alternarElegido(claveAlbum(a))} />
+            <span class="casilla">{#if elegidos.has(claveAlbum(a))}<Icono nombre="check" tam={16} />{/if}</span>
+          </div>
+        {:else}
+          <Tarjeta portada={a.portada} titulo={a.nombre} subtitulo={a.artista} ancho="100%" alTocar={() => abrir("album", { local: a })} />
+        {/if}
       {:else}
-        <p class="vacio">{texto ? `Ningún álbum con “${texto}”.` : "Sin álbumes todavía."}</p>
+        <p class="vacio">{texto ? t("Ningún álbum con “{q}”.", { q: texto }) : t("Sin álbumes todavía.")}</p>
       {/each}
     </div>
   {:else if pestana === "artistas"}
@@ -344,45 +403,63 @@
       {#each gruposArtistas as g (g.titulo)}
         <div class="grupo">{g.titulo}</div>
         {#each g.items as a}
+          {#if seleccionando}
+            <button class="fila-eleccion" class:elegida={elegidos.has(`artista:${a.nombre}`)} onclick={() => alternarElegido(`artista:${a.nombre}`)}>
+              <span class="casilla">{#if elegidos.has(`artista:${a.nombre}`)}<Icono nombre="check" tam={16} />{/if}</span>
+              <span class="avatar chico"><Icono nombre="persona" tam={20} /></span>
+              <span class="textos"><b class="cortar">{a.nombre}</b><small>{canciones(a.canciones)}</small></span>
+            </button>
+          {:else}
           <div class="fila-con-menu">
             <button class="fila-artista" onclick={() => abrir("artista", { nombre: a.nombre })}>
               <span class="avatar"><Icono nombre="persona" tam={22} /></span>
-              <span class="textos"><b class="cortar">{a.nombre}</b><small>{a.canciones} canciones</small></span>
+              <span class="textos"><b class="cortar">{a.nombre}</b><small>{canciones(a.canciones)}</small></span>
             </button>
-            <button class="mas" aria-label="Opciones de {a.nombre}" onclick={() => opcionesArtista(a)}><Icono nombre="mas" tam={22} /></button>
+            <button class="mas" aria-label={t("Opciones de {nombre}", a)} onclick={() => opcionesArtista(a)}><Icono nombre="mas" tam={22} /></button>
           </div>
+          {/if}
         {/each}
       {:else}
-        <p class="vacio">{texto ? `Ningún artista con “${texto}”.` : "Sin artistas todavía."}</p>
+        <p class="vacio">{texto ? t("Ningún artista con “{q}”.", { q: texto }) : t("Sin artistas todavía.")}</p>
       {/each}
     </div>
   {:else}
     <div in:fade={{ duration: 220 }}>
       {#if creando}
         <form class="nueva" onsubmit={(ev) => { ev.preventDefault(); crear(); }}>
-          <input bind:value={nombre} placeholder="Nombre de la playlist" />
-          <button class="pildora cian chica">Crear</button>
+          <input bind:value={nombre} placeholder={t("Nombre de la playlist")} />
+          <button class="pildora cian chica">{t("Crear")}</button>
         </form>
       {/if}
       <!-- Me gusta va siempre primero: no es una playlist que se borre, guarda también canciones no descargadas -->
+      {#if !seleccionando}
       <button class="fila-artista" onclick={() => abrir("me_gusta")}>
         <span class="avatar cuadro me-gusta"><Icono nombre="corazon" relleno tam={22} /></span>
-        <span class="textos"><b class="cortar">Me gusta</b><small>{b.me_gusta ?? 0} canciones</small></span>
+        <span class="textos"><b class="cortar">{t("Me gusta")}</b><small>{canciones(b.me_gusta ?? 0)}</small></span>
       </button>
+      {/if}
       {#each playlistsVistas as p}
+        {#if seleccionando}
+          <button class="fila-eleccion" class:elegida={elegidos.has(`playlist:${p.id}`)} onclick={() => alternarElegido(`playlist:${p.id}`)}>
+            <span class="casilla">{#if elegidos.has(`playlist:${p.id}`)}<Icono nombre="check" tam={16} />{/if}</span>
+            <span class="avatar chico cuadro"><Icono nombre="lista" tam={20} /></span>
+            <span class="textos"><b class="cortar">{p.nombre}</b><small>{canciones(p.canciones)}</small></span>
+          </button>
+        {:else}
         <button class="fila-artista" onclick={() => abrir("playlist", { id: p.id, nombre: p.nombre })}>
           <span class="avatar cuadro"><Icono nombre="lista" tam={22} /></span>
-          <span class="textos"><b class="cortar">{p.nombre}</b><small>{p.canciones} canciones</small></span>
+          <span class="textos"><b class="cortar">{p.nombre}</b><small>{canciones(p.canciones)}</small></span>
         </button>
+        {/if}
       {:else}
-        {#if !creando}<p class="vacio">Crea tus playlists con el botón <b>+</b>.</p>{/if}
+        {#if !creando}<p class="vacio">{t("Crea tus playlists con el botón +.")}</p>{/if}
       {/each}
     </div>
   {/if}
 </div>
 
 {#if pestana === "canciones" && !seleccionando && indice.length > 4}
-  <div class="indice" use:aBody role="navigation" aria-label="Saltar a una letra"
+  <div class="indice" use:aBody role="navigation" aria-label={t("Saltar a una letra")}
     onpointerdown={tocarIndice} onpointermove={tocarIndice} onpointerup={() => (enIndice = false)} onpointercancel={() => (enIndice = false)}>
     {#each indice as letra}<span data-letra={letra}>{letra}</span>{/each}
   </div>
@@ -390,55 +467,63 @@
 
 {#if panelCarpetas}
   <div class="fondo-modal" use:aBody transition:fade={{ duration: 180 }} onclick={() => (panelCarpetas = false)} role="presentation"></div>
-  <div class="modal" use:aBody transition:scale={{ duration: 220, start: 0.94 }} role="dialog" aria-label="Carpetas de música">
-    <button class="redondo cerrar-modal" onclick={() => (panelCarpetas = false)} aria-label="Cerrar"><Icono nombre="cerrar" tam={22} /></button>
+  <div class="modal" use:aBody transition:scale={{ duration: 220, start: 0.94 }} role="dialog" aria-label={t("Carpetas de música")}>
+    <button class="redondo cerrar-modal" onclick={() => (panelCarpetas = false)} aria-label={t("Cerrar")}><Icono nombre="cerrar" tam={22} /></button>
     {#if explorando}
-      <h2>Elige tu carpeta de música</h2>
+      <h2>{t("Elige tu carpeta de música")}</h2>
       <!-- ruta "" = la lista de almacenamientos (interno y tarjetas SD) -->
-      <p class="tenue ruta-actual">{explorando.ruta || "¿En qué almacenamiento está tu música?"}</p>
+      <p class="tenue ruta-actual">{explorando.ruta || t("¿En qué almacenamiento está tu música?")}</p>
       <div class="lista-carpetas">
         {#if explorando.padre != null}
-          <button class="fila-carpeta" onclick={() => irA(explorando.padre)}><Icono nombre="atras" tam={20} /><span>Subir</span></button>
+          <button class="fila-carpeta" onclick={() => irA(explorando.padre)}><Icono nombre="atras" tam={20} /><span>{t("Subir")}</span></button>
         {/if}
         {#each explorando.carpetas as c}
           <button class="fila-carpeta" onclick={() => irA(c.ruta)}><Icono nombre="carpeta" tam={20} /><span class="cortar">{c.nombre}</span></button>
         {:else}
-          <p class="tenue">No hay más carpetas aquí.</p>
+          <p class="tenue">{t("No hay más carpetas aquí.")}</p>
         {/each}
       </div>
       {#if explorando.ruta}
-        <button class="pildora cian ancho" onclick={() => agregarCarpeta(explorando.ruta)}>Usar esta carpeta</button>
+        <button class="pildora cian ancho" onclick={() => agregarCarpeta(explorando.ruta)}>{t("Usar esta carpeta")}</button>
       {/if}
     {:else}
-      <h2>Carpetas de música</h2>
-      <p class="tenue">Misiccord escucha estas carpetas, con todas sus subcarpetas, para armar tu biblioteca.</p>
-      {#if escaneando}<p class="leyendo">Leyendo… {revisadas ? `${revisadas} canciones` : ""}</p>{/if}
+      <h2>{t("Carpetas de música")}</h2>
+      <p class="tenue">{t("Misiccord escucha estas carpetas, con todas sus subcarpetas, para armar tu biblioteca.")}</p>
+      {#if escaneando}<p class="leyendo">{t("Leyendo…")} {revisadas ? canciones(revisadas) : ""}</p>{/if}
       <div class="lista-carpetas">
         {#each carpetas?.carpetas ?? [] as c (c.ruta)}
           <div class="fila-carpeta quieta">
             <Icono nombre="carpeta" tam={20} />
             <span class="textos">
               <b class="cortar">{nombreCarpeta(c.ruta)}</b>
-              <small class="cortar">{c.existe ? `${c.canciones} canciones` : "No se encuentra"}{c.descargas ? " · descargas" : ""}</small>
+              <small class="cortar">{c.existe ? canciones(c.canciones) : t("No se encuentra")}{c.descargas ? ` · ${t("descargas")}` : ""}</small>
               <small class="cortar ruta">{c.ruta}</small>
             </span>
             {#if !c.descargas}
-              <button class="redondo" onclick={() => quitarCarpeta(c)} aria-label="Quitar {nombreCarpeta(c.ruta)}"><Icono nombre="cerrar" tam={18} /></button>
+              <button class="redondo" onclick={() => quitarCarpeta(c)} aria-label={t("Quitar {nombre}", { nombre: nombreCarpeta(c.ruta) })}><Icono nombre="cerrar" tam={18} /></button>
             {/if}
           </div>
         {/each}
       </div>
-      <button class="pildora cian ancho" disabled={!carpetas} onclick={elegirCarpetaMusica}><Icono nombre="agregar" tam={18} /> Agregar carpeta…</button>
+      <button class="pildora cian ancho" disabled={!carpetas} onclick={elegirCarpetaMusica}><Icono nombre="agregar" tam={18} /> {t("Agregar carpeta…")}</button>
     {/if}
   </div>
 {/if}
 
 {#if seleccionando}
   <div class="barra-seleccion" use:aBody>
-    <b>{elegidas.size === 1 ? "1 elegida" : `${elegidas.size} elegidas`}</b>
-    <button class="pildora rojo chica" disabled={!elegidas.size} onclick={eliminarElegidas}>
-      <Icono nombre="basura" tam={18} /> Eliminar
-    </button>
+    <div class="cuenta">
+      <b>{totalElegido === 1 ? t("1 elegido") : t("{n} elegidos", { n: totalElegido })}</b>
+      <small class="tenue">{t("Canciones, álbumes, artistas o playlists")}</small>
+    </div>
+    <div class="botones">
+      {#if elegidas.size && !elegidos.size}
+        <button class="redondo rojo-texto" onclick={eliminarElegidas} aria-label={t("Eliminar")} title={t("Eliminar")}><Icono nombre="basura" tam={20} /></button>
+      {/if}
+      <button class="pildora cian chica" disabled={!totalElegido || preparando} onclick={compartirElegidas}>
+        <Icono nombre="compartir" tam={18} /> {preparando ? t("Preparando…") : t("Compartir")}
+      </button>
+    </div>
   </div>
 {/if}
 
@@ -501,8 +586,16 @@
     height: var(--mini); display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 0 12px 0 18px;
     border-radius: 18px; background: rgba(28, 42, 53, 0.98); backdrop-filter: blur(22px); box-shadow: 0 10px 30px rgba(0, 0, 0, 0.45);
   }
-  .rojo { background: var(--rojo); color: #fff; }
-  .rojo:disabled { opacity: 0.4; }
+  .rojo-texto { color: var(--rojo); }
+  .cian:disabled { opacity: 0.45; }
+  .cuenta { display: flex; flex-direction: column; min-width: 0; }
+  .cuenta small { font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .activo-cian { color: var(--cian); background: rgba(34, 211, 238, 0.12); }
+  .avatar.chico { width: 46px; height: 46px; }
+  .eleccion-tarjeta { position: relative; border-radius: 14px; transition: opacity 0.15s; }
+  .eleccion-tarjeta .casilla { position: absolute; z-index: 2; top: 8px; right: 8px; background: rgba(0, 0, 0, 0.45); border-color: #fff; pointer-events: none; }
+  .eleccion-tarjeta.elegida .casilla { background: var(--cian); border-color: var(--cian); }
+  .eleccion-tarjeta:not(.elegida) { opacity: 0.85; }
   @media (min-width: 900px) {
     .barra-seleccion { left: calc(var(--lateral) + 16px); right: 16px; bottom: 16px; }
   }

@@ -1,24 +1,25 @@
 <script>
+  import { t } from "../lib/idioma.svelte.js";
   import { descargar, estadoDescarga } from "../lib/estado.svelte.js";
   import Icono from "./Icono.svelte";
 
   // Botón de descarga con anillo de progreso. Si ya la tienes, muestra una palomita.
   let { cancion } = $props();
-  const t = $derived(estadoDescarga(cancion));
-  const pct = $derived(t?.pct ?? 0);
-  const ocupado = $derived(t && ["cola", "buscando", "descargando", "etiquetando"].includes(t.estado));
+  const trabajo = $derived(estadoDescarga(cancion));
+  const pct = $derived(trabajo?.pct ?? 0);
+  const ocupado = $derived(trabajo && ["cola", "buscando", "descargando", "etiquetando"].includes(trabajo.estado));
 </script>
 
 <button
   class="boton"
-  class:listo={t?.estado === "listo" || t?.estado === "existe"}
-  aria-label="Descargar"
+  class:listo={trabajo?.estado === "listo" || trabajo?.estado === "existe"}
+  aria-label={t("Descargar")}
   onclick={(e) => {
     e.stopPropagation();
-    if (!t || t.estado === "error" || t.estado === "cancelado") descargar([cancion]);
+    if (!trabajo || trabajo.estado === "error" || trabajo.estado === "cancelado") descargar([cancion]);
   }}
 >
-  {#if t?.estado === "listo" || t?.estado === "existe"}
+  {#if trabajo?.estado === "listo" || trabajo?.estado === "existe"}
     <Icono nombre="check" tam={20} />
   {:else if ocupado}
     <svg width="28" height="28" viewBox="0 0 36 36" class="anillo">

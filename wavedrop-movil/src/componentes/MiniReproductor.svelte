@@ -1,4 +1,5 @@
 <script>
+  import { t } from "../lib/idioma.svelte.js";
   import { fly } from "svelte/transition";
   import { abrirReproductor, irPestana, nav, ui } from "../lib/estado.svelte.js";
   import { control, jam, pistaActual, posicionJam, soyAnfitrion, urlJam, votar } from "../lib/jam.svelte.js";
@@ -18,8 +19,8 @@
   $effect(() => {
     if (!enJam) return;
     posJam = posicionJam();
-    const t = setInterval(() => (posJam = posicionJam()), 500);
-    return () => clearInterval(t);
+    const reloj = setInterval(() => (posJam = posicionJam()), 500);
+    return () => clearInterval(reloj);
   });
 
   const avance = $derived(
@@ -37,17 +38,17 @@
       </span>
       <div class="textos">
         <small class="etiqueta"><i class:caido={!jam.conectado}></i> JAM · {jam.sala.nombre}</small>
-        <b class="cortar">{pista ? pista.titulo : "La cola está vacía"}</b>
-        <small class="cortar">{pista ? `${pista.artista} · la puso ${pista.agregada_por}` : "Toca para agregar canciones"}</small>
+        <b class="cortar">{pista ? pista.titulo : t("La cola está vacía")}</b>
+        <small class="cortar">{pista ? t("{artista} · la puso {quien}", { artista: pista.artista, quien: pista.agregada_por }) : t("Toca para agregar canciones")}</small>
       </div>
     </button>
     {#if anfitrion}
-      <button class="redondo play" onclick={() => control(jam.sala.sonando ? "pausa" : "play")} aria-label={jam.sala.sonando ? "Pausar" : "Reproducir"}>
+      <button class="redondo play" onclick={() => control(jam.sala.sonando ? "pausa" : "play")} aria-label={jam.sala.sonando ? t("Pausar") : t("Reproducir")}>
         <Icono nombre={jam.sala.sonando ? "pausa" : "play"} relleno tam={22} />
       </button>
-      <button class="redondo" onclick={() => control("siguiente")} aria-label="Siguiente"><Icono nombre="siguiente" relleno tam={22} /></button>
+      <button class="redondo" onclick={() => control("siguiente")} aria-label={t("Siguiente")}><Icono nombre="siguiente" relleno tam={22} /></button>
     {:else if pista}
-      <button class="redondo saltar" onclick={() => votar()} aria-label="Votar para saltar">
+      <button class="redondo saltar" onclick={() => votar()} aria-label={t("Votar para saltar")}>
         <Icono nombre="siguiente" relleno tam={20} /><small>{jam.sala.votos}/{jam.sala.votos_necesarios}</small>
       </button>
     {/if}
@@ -60,14 +61,14 @@
       <Portada url={rep.actual.portada} tam="46px" radio="8px" />
       <div class="textos">
         <b class="cortar">{rep.actual.titulo}</b>
-        <small class="cortar">{rep.actual.artista}{#if !rep.actual.ruta} · vista previa{/if}</small>
+        <small class="cortar">{rep.actual.artista}{#if !rep.actual.ruta} · {t("vista previa")}{/if}</small>
       </div>
     </button>
-    <button class="redondo play" onclick={alternar} aria-label={rep.sonando ? "Pausar" : "Reproducir"}>
+    <button class="redondo play" onclick={alternar} aria-label={rep.sonando ? t("Pausar") : t("Reproducir")}>
       {#if rep.cargando}<span class="girando"></span>
       {:else}<Icono nombre={rep.sonando ? "pausa" : "play"} relleno tam={22} />{/if}
     </button>
-    <button class="redondo" onclick={siguiente} aria-label="Siguiente"><Icono nombre="siguiente" relleno tam={22} /></button>
+    <button class="redondo" onclick={siguiente} aria-label={t("Siguiente")}><Icono nombre="siguiente" relleno tam={22} /></button>
     {#if ui.amplio}<div class="vol"><Volumen ancho="190px" /></div>{/if}
     <div class="avance" style:width="{avance}%"></div>
   </div>

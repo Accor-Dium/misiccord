@@ -58,6 +58,13 @@ class ArgsMedios {
 }
 
 @InvokeArg
+class ArgsCompartir {
+    var rutas: Array<String> = arrayOf()
+    var texto: String? = null  // un link (canciones que no tienes descargadas)
+    var titulo: String = ""    // título del menú de compartir
+}
+
+@InvokeArg
 class ArgsFondo {
     var pedir: String = "" // "notificaciones" | "bateria" | "" (solo consultar)
 }
@@ -176,6 +183,65 @@ class PythonPlugin(private val activity: Activity) : Plugin(activity) {
         }
         activity.startActivity(intento)
         invoke.resolve(JSObject().put("abierto", true))
+    }
+
+    /**
+     * Menú "Compartir" del sistema (WhatsApp, Telegram, Drive, Bluetooth, guardar en una USB con Archivos…)
+     * con los archivos de las canciones, o con un texto/link si no hay archivos.
+     */
+    @Command
+    fun compartir(invoke: Invoke) {
+        val a = invoke.parseArgs(ArgsCompartir::class.java)
+        val app = activity.applicationContext
+        val uris = ArrayList<Uri>()
+        for (ruta in a.rutas) {
+            val archivo = File(ruta)
+            if (!archivo.exists()) continue
+            try {
+                uris.add(FileProvider.getUriForFile(app, "${app.packageName}.fileprovider", archivo))
+            } catch (e: IllegalArgumentException) {
+                // fuera de las rutas de file_paths.xml: no se puede compartir ese
+            }
+        }
+        val intento = when {
+            uris.size == 1 -> Intent(Intent.ACTION_SEND).apply {
+                type = tipoDe(a.rutas.first { File(it).exists() })
+                putExtra(Intent.EXTRA_STREAM, uris[0])
+            }
+            uris.size > 1 -> Intent(Intent.ACTION_SEND_MULTIPLE).apply {
+                type = if (a.rutas.all { tipoDe(it).startsWith("audio/") }) "audio/*" else "*/*"
+                putParcelableArrayListExtra(Intent.EXTRA_STREAM, uris)
+            }
+            !a.texto.isNullOrEmpty() -> Intent(Intent.ACTION_SEND).apply {
+                type = "text/plain"
+                putExtra(Intent.EXTRA_TEXT, a.texto)
+            }
+            else -> {
+                invoke.reject("No hay nada que compartir")
+                return
+            }
+        }
+        if (uris.isNotEmpty()) {
+            // Sin ClipData, algunas apps (WhatsApp) no reciben el permiso de lectura de todos los archivos
+            val clip = android.content.ClipData.newUri(app.contentResolver, a.titulo, uris[0])
+            for (u in uris.drop(1)) clip.addItem(android.content.ClipData.Item(u))
+            intento.clipData = clip
+            intento.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        }
+        activity.startActivity(Intent.createChooser(intento, a.titulo.ifEmpty { null }))
+        invoke.resolve(JSObject().put("compartidas", uris.size))
+    }
+
+    private fun tipoDe(ruta: String): String = when (ruta.substringAfterLast('.', "").lowercase()) {
+        "mp3" -> "audio/mpeg"
+        "m4a", "aac" -> "audio/mp4"
+        "opus", "ogg" -> "audio/ogg"
+        "webm" -> "audio/webm"
+        "flac" -> "audio/flac"
+        "wav" -> "audio/wav"
+        "mp4" -> "video/mp4"
+        "m3u8", "m3u" -> "audio/x-mpegurl"
+        else -> "application/octet-stream"
     }
 
     /**

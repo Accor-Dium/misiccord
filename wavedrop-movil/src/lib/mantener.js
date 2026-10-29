@@ -41,6 +41,10 @@ export function mantener(nodo, fn) {
     if (espera || disparado) e.preventDefault();
   };
 
+  // Sin esto Android selecciona el texto (título) con el dedo largo, encima del menú
+  nodo.style.userSelect = "none";
+  nodo.style.webkitUserSelect = "none";
+  nodo.style.webkitTouchCallout = "none";
   nodo.addEventListener("pointerdown", abajo);
   nodo.addEventListener("pointermove", mover);
   nodo.addEventListener("pointerup", cancelar);

@@ -1,4 +1,5 @@
 <script>
+  import { t } from "../lib/idioma.svelte.js";
   import { onMount } from "svelte";
   import { fade } from "svelte/transition";
   import { py, src } from "../lib/api.js";
@@ -30,13 +31,13 @@
       }
       e.datos = (await py("artista", { browse_id: id })).artista;
     } catch (err) {
-      aviso(`No encontré a ${e.nombre ?? "este artista"}`, "error");
+      aviso(t("No encontré a {nombre}", { nombre: e.nombre ?? t("este artista") }), "error");
     }
   });
 </script>
 
 <div class="vista">
-  <button class="redondo relleno volver" onclick={atras} aria-label="Atrás"><Icono nombre="atras" tam={24} /></button>
+  <button class="redondo relleno volver" onclick={atras} aria-label={t("Atrás")}><Icono nombre="atras" tam={24} /></button>
   <div class="hero" style:background-image={a?.portada ? `url("${src(a.portada)}")` : "none"}>
     <div class="degradado"></div>
     <div class="nombre">
@@ -52,19 +53,19 @@
         <button class="ver" onclick={() => (verMas = !verMas)}>{verMas ? "Ver menos" : "Ver más"}</button>
       {/if}
       <div class="acciones">
-        <button class="pildora clara" onclick={() => reproducir(a.canciones, 0, a.nombre)}><Icono nombre="play" relleno tam={20} /> Reproducir</button>
-        <button class="pildora oscura" onclick={() => reproducirAleatorio(a.canciones, a.nombre)}><Icono nombre="aleatorio" tam={20} /> Aleatorio</button>
+        <button class="pildora clara" onclick={() => reproducir(a.canciones, 0, a.nombre)}><Icono nombre="play" relleno tam={20} /> {t("Reproducir")}</button>
+        <button class="pildora oscura" onclick={() => reproducirAleatorio(a.canciones, a.nombre)}><Icono nombre="aleatorio" tam={20} /> {t("Aleatorio")}</button>
       </div>
 
       {#if a.canciones.length}
-        <div class="titulo-seccion">Populares</div>
+        <div class="titulo-seccion">{t("Populares")}</div>
         {#each a.canciones as c, i}
           <FilaCancion cancion={c} alTocar={() => reproducir(a.canciones, i, a.nombre)} />
         {/each}
       {/if}
 
       {#if a.albumes.length}
-        <div class="titulo-seccion">Álbumes y sencillos</div>
+        <div class="titulo-seccion">{t("Álbumes y sencillos")}</div>
         <div class="carrusel">
           {#each a.albumes as al}
             <Tarjeta portada={al.miniatura} titulo={al.titulo} subtitulo={[al.tipo, al.anio].filter(Boolean).join(" · ")}
@@ -74,7 +75,7 @@
       {/if}
 
       {#if a.parecidos.length}
-        <div class="titulo-seccion">Artistas parecidos</div>
+        <div class="titulo-seccion">{t("Artistas parecidos")}</div>
         <div class="carrusel">
           {#each a.parecidos as p}
             <Tarjeta portada={p.miniatura} titulo={p.nombre} redonda icono="persona" ancho="var(--artista)"

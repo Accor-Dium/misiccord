@@ -18,7 +18,8 @@ from concurrent.futures import ThreadPoolExecutor
 from dataclasses import asdict
 from pathlib import Path
 
-from . import biblioteca, descargas, etiquetas, explorar, letras, musicbrainz, plataforma, romanizar, traduccion
+from . import biblioteca, descargas, etiquetas, explorar, idioma, letras, musicbrainz, plataforma, romanizar, traduccion
+from .idioma import t as _t
 
 _estado = {"db": None, "emisor": None, "ajustes": None}
 _candado = threading.RLock()
@@ -78,21 +79,21 @@ def _resumen_fondo() -> dict:
     pct = sum(conocidos) // len(conocidos) if conocidos else -1
     if len(tareas) == 1:
         t = tareas[0]
-        return {"activas": 1, "titulo": t["texto"], "texto": t["detalle"] or (f"{t['pct']}%" if t["pct"] >= 0 else "En curso…"),
+        return {"activas": 1, "titulo": t["texto"], "texto": t["detalle"] or (f"{t['pct']}%" if t["pct"] >= 0 else _t("En curso…")),
                 "pct": pct, "fin": ""}
     nombres = ", ".join(t["texto"] for t in tareas[:2]) + ("…" if len(tareas) > 2 else "")
-    return {"activas": len(tareas), "titulo": f"{len(tareas)} tareas en segundo plano", "texto": nombres, "pct": pct, "fin": ""}
+    return {"activas": len(tareas), "titulo": _t("{n} tareas en segundo plano", n=len(tareas)), "texto": nombres, "pct": pct, "fin": ""}
 
 
 def _mensaje_fin() -> str:
     """Lo que se avisa al quedar sin trabajo pendiente (y se vacía la cuenta)."""
     hechas, _fondo["hechas"] = _fondo["hechas"], []
     if "actualizacion" in hechas:
-        return "Actualización lista: ábrela para instalarla"
+        return _t("Actualización lista: ábrela para instalarla")
     canciones = hechas.count("cancion")
     if canciones:
-        return "1 canción descargada" if canciones == 1 else f"{canciones} canciones descargadas"
-    return "Video descargado" if "video" in hechas else ""
+        return _t("1 canción descargada") if canciones == 1 else _t("{n} canciones descargadas", n=canciones)
+    return _t("Video descargado") if "video" in hechas else ""
 
 
 # ---------- Utilidades ----------
@@ -194,6 +195,7 @@ def _album_local(a: biblioteca.Album) -> dict:
 # ---------- Arranque y ajustes ----------
 
 def iniciar(d: dict) -> dict:
+    idioma.poner(d.get("idioma", "es"))
     with _candado:
         _estado["musica_app"] = d["musica"]
         _estado["volumenes"] = d.get("volumenes") or []  # Android: raíz del almacenamiento interno y de cada tarjeta SD
@@ -218,11 +220,11 @@ def _escanear(visible: bool = False):
     def progreso(n):
         emitir("escaneo", {"revisadas": n})
         if visible:
-            _fondo_actualizar("escaneo", f"Leyendo tu música ({n})")
+            _fondo_actualizar("escaneo", _t("Leyendo tu música ({n})", n=n))
 
     try:
         if visible:
-            _fondo_actualizar("escaneo", "Leyendo tu música")
+            _fondo_actualizar("escaneo", _t("Leyendo tu música"))
         nuevas, quitadas = _db().escanear(progreso=progreso)
         emitir("biblioteca", {"nuevas": nuevas, "quitadas": quitadas, "total": _db().total()})
     except Exception as e:
@@ -323,6 +325,98 @@ def recomendaciones(d: dict) -> dict:
     return {"cargando": True}
 
 
+def poner_idioma(d: dict) -> dict:
+    """La interfaz avisa su idioma ("es", "en") al arrancar y al cambiarlo en Ajustes."""
+    idioma.poner(d.get("idioma", "es"))
+    return {"idioma": idioma.actual()}
+
+
+def _seccion_yt(s: dict) -> dict:
+    return {**s, "canciones": [_en_linea(c) for c in s["canciones"]]}
+
+
+def inicio_en_linea(d: dict) -> dict:
+    """Lo general de YouTube Music para Inicio: sus secciones y los estados de ánimo (para los chips de arriba)."""
+    forzar = bool(d.get("forzar"))
+    res: dict = {"secciones": [], "estados": []}
+    try:
+        res["secciones"] = [_seccion_yt(s) for s in explorar.inicio_yt(forzar)]
+    except Exception as e:
+        res["error"] = str(e)
+    try:
+        res["estados"] = explorar.estados(forzar)
+    except Exception:
+        pass
+    return res
+
+
+def estado_animo(d: dict) -> dict:
+    """Playlists de un estado de ánimo o género (los `params` vienen de `inicio_en_linea`)."""
+    return {"tarjetas": explorar.playlists_de_estado(d["params"])}
+
+
+def explorar_(d: dict) -> dict:
+    e = explorar.explorar()
+    return {**e, "tendencia": [_en_linea(c) for c in e["tendencia"]], "estados": explorar.estados()}
+
+
+def playlist_yt(d: dict) -> dict:
+    p = explorar.playlist(d["id"])
+    p["canciones"] = [_en_linea(c) for c in p["canciones"]]
+    return {"album": p}
+
+
+def radio(d: dict) -> dict:
+    """Canciones parecidas a una (su "radio" en YouTube Music). Si es tuya y no trae id, se busca por nombre."""
+    vid = d.get("id")
+    if not vid:
+        base = explorar.buscar_id(d.get("artista", ""), d.get("titulo", ""))
+        if base is None:
+            raise RuntimeError("No encontré esa canción en YouTube Music")
+        vid = base.video_id
+    return {"canciones": [_en_linea(c) for c in explorar.radio(vid)]}
+
+
+# ---------- Compartir y exportar (PC) ----------
+
+def destinos_exportar(d: dict) -> dict:
+    from . import exportar
+    return {"destinos": exportar.destinos()}
+
+
+def exportar_canciones(d: dict) -> dict:
+    """Copia canciones a una USB o carpeta en segundo plano. Avisa el avance con el evento "exportar"."""
+    from . import exportar
+    grupos, destino = d["grupos"], d["destino"]
+    if not Path(destino).is_dir():
+        raise RuntimeError("No encuentro esa carpeta o memoria")
+    nombre = d.get("nombre") or destino
+
+    def trabajo():
+        def avance(hechas, total):
+            emitir("exportar", {"estado": "copiando", "hechas": hechas, "total": total, "destino": nombre})
+        try:
+            r = exportar.copiar(grupos, destino, avance)
+            emitir("exportar", {"estado": "listo", "destino": nombre, **r})
+        except OSError as e:
+            emitir("exportar", {"estado": "error", "destino": nombre, "error": e.strerror or str(e)})
+
+    threading.Thread(target=trabajo, daemon=True).start()
+    return {"total": sum(len(g["rutas"]) for g in grupos)}
+
+
+def copiar_archivos(d: dict) -> dict:
+    from . import exportar
+    exportar.al_portapapeles(d["rutas"])
+    return {}
+
+
+def mostrar_archivo(d: dict) -> dict:
+    from . import exportar
+    exportar.mostrar(d["ruta"])
+    return {}
+
+
 # ---------- Buscar, álbum y artista (YouTube Music) ----------
 
 def buscar(d: dict) -> dict:
@@ -383,7 +477,7 @@ def agregar_carpeta_biblioteca(d: dict) -> dict:
     except OSError as e:
         raise RuntimeError(f"No se puede leer esa carpeta ({e.strerror or e})") from e
     _db().agregar_carpeta(ruta)
-    _fondo_actualizar("escaneo", "Leyendo tu música")  # antes de volver: la app sigue en primer plano
+    _fondo_actualizar("escaneo", _t("Leyendo tu música"))  # antes de volver: la app sigue en primer plano
     threading.Thread(target=_escanear, kwargs={"visible": True}, daemon=True).start()
     return carpetas_biblioteca({})
 
@@ -709,7 +803,7 @@ def descargar_video(d: dict) -> dict:
         return {"estado": "existe"}
 
     clave = f"video:{ruta}"
-    _fondo_actualizar(clave, f"Video de “{d.get('titulo', '')}”")  # antes de volver: la app sigue en primer plano
+    _fondo_actualizar(clave, _t("Video de “{titulo}”", titulo=d.get("titulo", "")))  # antes de volver: la app sigue en primer plano
 
     def trabajo():
         terminado = None
@@ -768,7 +862,7 @@ class _Gestor:
         t.update(cambios)
         emitir("descarga", {"trabajo": t})
         if t["estado"] in ("cola", "buscando", "descargando", "etiquetando"):
-            _fondo_actualizar(f"descarga:{tid}", f"Descargando “{t['titulo']}”", t["pct"] if t["estado"] == "descargando" else -1)
+            _fondo_actualizar(f"descarga:{tid}", _t("Descargando “{titulo}”", titulo=t["titulo"]), t["pct"] if t["estado"] == "descargando" else -1)
         else:
             _fondo_actualizar(f"descarga:{tid}", None, listo="cancion" if t["estado"] == "listo" else None)
 
@@ -813,7 +907,7 @@ class _Gestor:
                 _db().registrar("descarga", ruta, c.artista, c.titulo)
             if aj.get("video_descargar"):
                 # Se anota antes de dar la canción por lista: así el servicio en segundo plano no se apaga entre las dos
-                _fondo_actualizar(f"video:{tid}", f"Video de “{entrada.titulo}”")
+                _fondo_actualizar(f"video:{tid}", _t("Video de “{titulo}”", titulo=entrada.titulo))
             self._avisar(tid, estado="listo", pct=100, ruta=str(ruta), cancion=_local(c) if c else None)
             if aj.get("video_descargar"):
                 # La canción ya suena; el video se baja después y avisa aparte (si falla, la canción no se pierde)
@@ -874,7 +968,7 @@ def jam_crear(d: dict) -> dict:
     import sys
     from . import jam
     r = jam.crear(d.get("nombre") or "Misiccord", d.get("modo", "anfitrion"), sys.modules[__name__])
-    _fondo_actualizar("jam", "Jam abierto", detalle="Tus invitados siguen conectados")
+    _fondo_actualizar("jam", _t("Jam abierto"), detalle=_t("Tus invitados siguen conectados"))
     return r
 
 
@@ -946,7 +1040,7 @@ def actualizacion_descargar(d: dict) -> dict:
     import requests
     destino = plataforma.carpeta_cache() / "actualizacion" / "Misiccord.apk"
     destino.parent.mkdir(parents=True, exist_ok=True)
-    _fondo_actualizar("actualizacion", "Descargando la actualización", 0)
+    _fondo_actualizar("actualizacion", _t("Descargando la actualización"), 0)
     terminado = None
     try:
         with requests.get(d["url"], stream=True, timeout=60, allow_redirects=True) as r:
@@ -961,7 +1055,7 @@ def actualizacion_descargar(d: dict) -> dict:
                         ultimo = time.monotonic()
                         pct = int(bajado * 100 / total) if total else 0
                         emitir("actualizacion", {"pct": pct})
-                        _fondo_actualizar("actualizacion", "Descargando la actualización", pct if total else -1)
+                        _fondo_actualizar("actualizacion", _t("Descargando la actualización"), pct if total else -1)
         terminado = "actualizacion"
     finally:
         _fondo_actualizar("actualizacion", None, listo=terminado)
@@ -989,6 +1083,10 @@ FUNCIONES = {
     "limpiar_descargas": limpiar_descargas,
     "jam_crear": jam_crear, "jam_cerrar": jam_cerrar, "jam_buscar": jam_buscar, "jam_qr": jam_qr,
     "jam_subir": jam_subir, "jam_internet": jam_internet, "actualizacion_descargar": actualizacion_descargar,
+    "poner_idioma": poner_idioma, "inicio_en_linea": inicio_en_linea, "estado_animo": estado_animo,
+    "explorar": explorar_, "playlist_yt": playlist_yt, "radio": radio,
+    "destinos_exportar": destinos_exportar, "exportar_canciones": exportar_canciones,
+    "copiar_archivos": copiar_archivos, "mostrar_archivo": mostrar_archivo,
 }
 
 

@@ -5,6 +5,7 @@
   import { abrir, atras, aviso } from "../lib/estado.svelte.js";
   import { reproducir } from "../lib/reproductor.svelte.js";
   import Icono from "../componentes/Icono.svelte";
+  import { local, t } from "../lib/idioma.svelte.js";
   import Portada from "../componentes/Portada.svelte";
 
   // Lo que escuchaste en el último mes o los últimos 3 meses, con porcentajes.
@@ -20,7 +21,7 @@
     try {
       datos = e.datos = await py("estadisticas", { dias });
     } catch (err) {
-      aviso("No pude calcular tus estadísticas", "error");
+      aviso(t("No pude calcular tus estadísticas"), "error");
     }
   }
   onMount(() => { if (!datos || datos.dias !== dias) cargar(); });
@@ -31,7 +32,7 @@
     cargar();
   }
 
-  const numero = (n) => new Intl.NumberFormat("es").format(n);
+  const numero = (n) => new Intl.NumberFormat(local()).format(n);
   /** "+12 %" / "−30 %" contra el periodo anterior del mismo largo (null si antes no había nada). */
   function cambio(actual, anterior) {
     if (!anterior) return null;
@@ -39,10 +40,10 @@
     return { texto: `${p > 0 ? "+" : p < 0 ? "−" : ""}${Math.abs(p)} %`, sube: p > 0, baja: p < 0 };
   }
   const tiles = $derived(datos ? [
-    ["Reproducciones", datos.actual.reproducciones, datos.anterior.reproducciones],
-    ["Minutos", datos.actual.minutos, datos.anterior.minutos],
-    ["Canciones distintas", datos.actual.canciones, datos.anterior.canciones],
-    ["Artistas", datos.actual.artistas, datos.anterior.artistas],
+    [t("Reproducciones"), datos.actual.reproducciones, datos.anterior.reproducciones],
+    [t("Minutos"), datos.actual.minutos, datos.anterior.minutos],
+    [t("Canciones distintas"), datos.actual.canciones, datos.anterior.canciones],
+    [t("Artistas"), datos.actual.artistas, datos.anterior.artistas],
   ] : []);
 
   const maxDia = $derived(Math.max(1, ...(datos?.por_dia ?? [])));
@@ -51,9 +52,9 @@
 
   function fechaDia(i) {
     const d = new Date(Date.now() - (dias - 1 - i) * 86400000);
-    return d.toLocaleDateString("es", { day: "numeric", month: "short" });
+    return d.toLocaleDateString(local(), { day: "numeric", month: "short" });
   }
-  const veces = (n) => (n === 1 ? "1 vez" : `${n} veces`);
+  const veces = (n) => (n === 1 ? t("1 vez") : t("{n} veces", { n }));
   const etiquetaHover = $derived.by(() => {
     if (!hover || !datos) return "";
     if (hover.tipo === "dia") return `${fechaDia(hover.i)}: ${veces(datos.por_dia[hover.i])}`;
@@ -61,26 +62,26 @@
   });
 
   function tocarCancion(c) {
-    if (c.local || c.id) reproducir([c], 0, "Tus estadísticas");
+    if (c.local || c.id) reproducir([c], 0, t("Tus estadísticas"));
   }
 </script>
 
 <div class="vista">
   <header>
-    <button class="redondo relleno" onclick={atras} aria-label="Atrás"><Icono nombre="atras" tam={24} /></button>
-    <h1>Tus estadísticas</h1>
+    <button class="redondo relleno" onclick={atras} aria-label={t("Atrás")}><Icono nombre="atras" tam={24} /></button>
+    <h1>{t("Tus estadísticas")}</h1>
   </header>
 
   <div class="chips">
-    <button class="chip" class:activo={dias === 30} onclick={() => cambiar(30)}>Último mes</button>
-    <button class="chip" class:activo={dias === 90} onclick={() => cambiar(90)}>Últimos 3 meses</button>
+    <button class="chip" class:activo={dias === 30} onclick={() => cambiar(30)}>{t("Último mes")}</button>
+    <button class="chip" class:activo={dias === 90} onclick={() => cambiar(90)}>{t("Últimos 3 meses")}</button>
   </div>
 
   {#if !datos}
     <div class="tiles">{#each Array(4) as _}<div class="cargando-bloque" style="height:92px"></div>{/each}</div>
     {#each Array(5) as _}<div class="cargando-bloque" style="height:40px;margin:12px 0"></div>{/each}
   {:else if !datos.actual.reproducciones}
-    <p class="vacio">Todavía no hay nada que contar en este periodo. Escucha un rato y vuelve.</p>
+    <p class="vacio">{t("Todavía no hay nada que contar en este periodo. Escucha un rato y vuelve.")}</p>
   {:else}
     <div in:fade={{ duration: 220 }}>
       <div class="tiles">
@@ -89,12 +90,12 @@
           <div class="tile">
             <small>{nombre}</small>
             <b>{numero(valor)}</b>
-            {#if c}<span class="delta" class:sube={c.sube} class:baja={c.baja}>{c.texto} <em>vs. periodo anterior</em></span>{/if}
+            {#if c}<span class="delta" class:sube={c.sube} class:baja={c.baja}>{c.texto} <em>{t("vs. periodo anterior")}</em></span>{/if}
           </div>
         {/each}
       </div>
 
-      <h2>Tus artistas</h2>
+      <h2>{t("Tus artistas")}</h2>
       <ol class="barras">
         {#each datos.artistas as a, i}
           <li>
@@ -109,7 +110,7 @@
         {/each}
       </ol>
 
-      <h2>Tus canciones</h2>
+      <h2>{t("Tus canciones")}</h2>
       <ol class="barras">
         {#each datos.canciones as c, i}
           <li>
@@ -126,8 +127,8 @@
       </ol>
 
       {#if datos.generos.length}
-        <h2>Géneros</h2>
-        <p class="tenue nota">De tus canciones descargadas (las vistas previas no traen género).</p>
+        <h2>{t("Géneros")}</h2>
+        <p class="tenue nota">{t("De tus canciones descargadas (las vistas previas no traen género).")}</p>
         <ol class="barras">
           {#each datos.generos as g}
             <li>
@@ -141,9 +142,9 @@
         </ol>
       {/if}
 
-      <h2>Cuándo escuchas</h2>
-      <p class="tenue nota">{horaPico >= 0 ? `Tu hora favorita: de ${horaPico}:00 a ${horaPico + 1}:00` : ""}</p>
-      <div class="columnas horas" role="img" aria-label="Reproducciones por hora del día" onpointerleave={() => (hover = null)}>
+      <h2>{t("Cuándo escuchas")}</h2>
+      <p class="tenue nota">{horaPico >= 0 ? t("Tu hora favorita: de {a}:00 a {b}:00", { a: horaPico, b: horaPico + 1 }) : ""}</p>
+      <div class="columnas horas" role="img" aria-label={t("Reproducciones por hora del día")} onpointerleave={() => (hover = null)}>
         {#each datos.por_hora as n, i}
           <span class="col" class:activa={hover?.tipo === "hora" && hover.i === i}
             onpointerenter={() => (hover = { tipo: "hora", i })} onpointerdown={() => (hover = { tipo: "hora", i })}
@@ -154,9 +155,9 @@
       </div>
       <div class="eje"><span>0 h</span><span>6 h</span><span>12 h</span><span>18 h</span><span>23 h</span></div>
 
-      <h2>Día a día</h2>
-      <p class="tenue nota">{datos.descargas ? `${numero(datos.descargas)} descargas en este periodo` : ""}</p>
-      <div class="columnas dias" role="img" aria-label="Reproducciones por día" onpointerleave={() => (hover = null)}>
+      <h2>{t("Día a día")}</h2>
+      <p class="tenue nota">{datos.descargas ? t("{n} descargas en este periodo", { n: numero(datos.descargas) }) : ""}</p>
+      <div class="columnas dias" role="img" aria-label={t("Reproducciones por día")} onpointerleave={() => (hover = null)}>
         {#each datos.por_dia as n, i}
           <span class="col" class:activa={hover?.tipo === "dia" && hover.i === i}
             onpointerenter={() => (hover = { tipo: "dia", i })} onpointerdown={() => (hover = { tipo: "dia", i })}
@@ -165,7 +166,7 @@
           </span>
         {/each}
       </div>
-      <div class="eje"><span>{fechaDia(0)}</span><span>hoy</span></div>
+      <div class="eje"><span>{fechaDia(0)}</span><span>{t("hoy")}</span></div>
       <p class="etiqueta-hover" aria-live="polite">{etiquetaHover || " "}</p>
     </div>
   {/if}

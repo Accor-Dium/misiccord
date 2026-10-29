@@ -6,11 +6,12 @@
   import { getVersion } from "@tauri-apps/api/app";
   import { aplicarAjustesVideo, aplicarEcualizador, BANDAS_EQ, rep } from "../lib/reproductor.svelte.js";
   import Icono from "../componentes/Icono.svelte";
+  import { idioma, idiomaElegido, IDIOMAS as IDIOMAS_APP, ponerIdioma, t } from "../lib/idioma.svelte.js";
 
   let aj = $state(null);
   const PRESETS = [
-    ["Plano", [0, 0, 0, 0, 0]], ["Graves", [6, 3, 0, 0, 0]], ["Voces", [-2, 0, 3, 3, 1]], ["Agudos", [0, 0, 0, 3, 6]],
-    ["Rock", [4, 2, -1, 2, 4]], ["Pop", [-1, 2, 4, 2, -1]], ["Electrónica", [5, 2, 0, 1, 4]],
+    [t("Plano"), [0, 0, 0, 0, 0]], [t("Graves"), [6, 3, 0, 0, 0]], [t("Voces"), [-2, 0, 3, 3, 1]], [t("Agudos"), [0, 0, 0, 3, 6]],
+    ["Rock", [4, 2, -1, 2, 4]], ["Pop", [-1, 2, 4, 2, -1]], [t("Electrónica"), [5, 2, 0, 1, 4]],
   ];
   const presetActual = $derived(aj ? PRESETS.find(([, b]) => b.every((v, i) => v === Number(aj.eq_bandas[i])))?.[0] : null);
   const hz = (f) => (f >= 1000 ? `${f / 1000}k` : String(f));
@@ -19,8 +20,8 @@
     aj.eq_bandas[i] = valor;
     aplicarEcualizador(aj.eq_activo, aj.eq_bandas);
   }
-  const IDIOMAS = [["", "No traducir"], ["es", "Español"], ["en", "Inglés"], ["pt", "Portugués"], ["fr", "Francés"],
-                   ["it", "Italiano"], ["de", "Alemán"], ["ja", "Japonés"], ["ko", "Coreano"], ["zh", "Chino"]];
+  const IDIOMAS = [["", t("No traducir")], ["es", t("Español")], ["en", t("Inglés")], ["pt", t("Portugués")], ["fr", t("Francés")],
+                   ["it", t("Italiano")], ["de", t("Alemán")], ["ja", t("Japonés")], ["ko", t("Coreano")], ["zh", t("Chino")]];
   let info = $state(null); // carpeta actual, carpetas sugeridas y si es Android
 
   let fondo = $state(null); // Android: { notificaciones, bateria } (permisos para trabajar en segundo plano)
@@ -58,7 +59,7 @@
     try {
       info = await py("guardar_ajustes", cambios);
       aj = info.ajustes;
-      if ("carpeta" in cambios) aviso("Las descargas nuevas se guardarán ahí", "ok");
+      if ("carpeta" in cambios) aviso(t("Las descargas nuevas se guardarán ahí"), "ok");
     } catch (e) {
       aviso(e.message, "error");
       info = await py("ajustes");
@@ -73,14 +74,14 @@
     if (!publica) return guardar({ carpeta: c.ruta });
     const { invoke } = await import("@tauri-apps/api/core");
     if (await invoke("permiso_archivos", { pedir: false })) return guardar({ carpeta: c.ruta });
-    aviso("Activa “Permitir acceso a todos los archivos” para Misiccord y regresa a la app");
+    aviso(t("Activa “Permitir acceso a todos los archivos” para Misiccord y regresa a la app"));
     await invoke("permiso_archivos", { pedir: true });
     // Al volver de Ajustes de Android se revisa otra vez y, si ya hay permiso, se aplica la carpeta
     const alVolver = async () => {
       if (document.visibilityState !== "visible") return;
       document.removeEventListener("visibilitychange", alVolver);
       if (await invoke("permiso_archivos", { pedir: false })) guardar({ carpeta: c.ruta });
-      else aviso("Sin ese permiso las canciones se quedan en la carpeta de la app", "error");
+      else aviso(t("Sin ese permiso las canciones se quedan en la carpeta de la app"), "error");
     };
     document.addEventListener("visibilitychange", alVolver);
   }
@@ -88,24 +89,37 @@
   async function elegirCarpeta() {
     // Escritorio: el selector de carpetas del sistema
     const { open } = await import("@tauri-apps/plugin-dialog");
-    const ruta = await open({ directory: true, title: "¿Dónde guardar las canciones?", defaultPath: info.carpeta_actual });
+    const ruta = await open({ directory: true, title: t("¿Dónde guardar las canciones?"), defaultPath: info.carpeta_actual });
     if (ruta) guardar({ carpeta: ruta });
   }
 </script>
 
 <div class="vista">
   <header>
-    <button class="redondo relleno" onclick={atras} aria-label="Atrás"><Icono nombre="atras" tam={24} /></button>
-    <h1>Ajustes</h1>
+    <button class="redondo relleno" onclick={atras} aria-label={t("Atrás")}><Icono nombre="atras" tam={24} /></button>
+    <h1>{t("Ajustes")}</h1>
   </header>
 
   {#if aj}
     <section>
-      <h2>Reproducción</h2>
+      <h2>{t("Idioma")}</h2>
       <div class="opcion">
         <div class="texto">
-          <b><Icono nombre="fundido" tam={18} /> Fundido entre canciones</b>
-          <small>{aj.fundido ? `${aj.fundido} s: la siguiente entra mientras la actual se desvanece` : "Sin fundido: una canción tras otra"}</small>
+          <b><Icono nombre="idioma" tam={18} /> {t("Idioma de la app")}</b>
+          <small>{t("Automático usa el del dispositivo. Al cambiarlo la app se recarga.")}</small>
+        </div>
+        <select class="selector" value={idiomaElegido()} onchange={(e) => ponerIdioma(e.target.value)} aria-label={t("Idioma de la app")}>
+          {#each IDIOMAS_APP as [cod, nombre]}<option value={cod}>{cod ? nombre : t(nombre)}</option>{/each}
+        </select>
+      </div>
+    </section>
+
+    <section>
+      <h2>{t("Reproducción")}</h2>
+      <div class="opcion">
+        <div class="texto">
+          <b><Icono nombre="fundido" tam={18} /> {t("Fundido entre canciones")}</b>
+          <small>{aj.fundido ? t("{s} s: la siguiente entra mientras la actual se desvanece", { s: aj.fundido }) : t("Sin fundido: una canción tras otra")}</small>
         </div>
         <span class="valor">{aj.fundido} s</span>
       </div>
@@ -115,11 +129,11 @@
     </section>
 
     <section>
-      <h2>Ecualizador</h2>
+      <h2>{t("Ecualizador")}</h2>
       <label class="opcion">
         <div class="texto">
-          <b>Ecualizador</b>
-          <small>Para la música que suena en este dispositivo (no en los jams)</small>
+          <b>{t("Ecualizador")}</b>
+          <small>{t("Para la música que suena en este dispositivo (no en los jams)")}</small>
         </div>
         <input type="checkbox" class="interruptor" checked={aj.eq_activo} onchange={(e) => guardar({ eq_activo: e.target.checked })} />
       </label>
@@ -143,11 +157,11 @@
     </section>
 
     <section>
-      <h2>Letras</h2>
+      <h2>{t("Letras")}</h2>
       <div class="opcion">
         <div class="texto">
-          <b>Traducir las letras a</b>
-          <small>Se ve debajo de cada línea. Traducción gratis de MyMemory: alcanza para unas 3 o 4 canciones nuevas al día (las que ya tradujo se guardan)</small>
+          <b>{t("Traducir las letras a")}</b>
+          <small>{t("Se ve debajo de cada línea. Traducción gratis de MyMemory: alcanza para unas 3 o 4 canciones nuevas al día (las que ya tradujo se guardan)")}</small>
         </div>
         <select class="selector" value={aj.letra_traducir_a} onchange={(e) => guardar({ letra_traducir_a: e.target.value })}>
           {#each IDIOMAS as [cod, nombre]}<option value={cod}>{nombre}</option>{/each}
@@ -155,40 +169,40 @@
       </div>
       <label class="opcion">
         <div class="texto">
-          <b>Romanización</b>
-          <small>Coreano, japonés (kana), ruso, ucraniano y griego en letras latinas, debajo del original</small>
+          <b>{t("Romanización")}</b>
+          <small>{t("Coreano, japonés (kana), ruso, ucraniano y griego en letras latinas, debajo del original")}</small>
         </div>
         <input type="checkbox" class="interruptor" checked={aj.letra_romanizar} onchange={(e) => guardar({ letra_romanizar: e.target.checked })} />
       </label>
     </section>
 
     <section>
-      <h2>Video</h2>
+      <h2>{t("Video")}</h2>
       <label class="opcion">
         <div class="texto">
-          <b>Ver el video con la canción</b>
-          <small>Pone un interruptor sobre la carátula del reproductor. El video va mudo y sigue al audio; si no lo tienes descargado se transmite de YouTube y gasta datos</small>
+          <b>{t("Ver el video con la canción")}</b>
+          <small>{t("Pone un interruptor sobre la carátula del reproductor. El video va mudo y sigue al audio; si no lo tienes descargado se transmite de YouTube y gasta datos")}</small>
         </div>
         <input type="checkbox" class="interruptor" checked={aj.video_ver} onchange={(e) => guardar({ video_ver: e.target.checked })} />
       </label>
       <label class="opcion">
         <div class="texto">
-          <b>Descargar también el video</b>
-          <small>Al descargar una canción se guarda su videoclip (mp4, hasta 720p) en la misma carpeta. Ocupa bastante más espacio</small>
+          <b>{t("Descargar también el video")}</b>
+          <small>{t("Al descargar una canción se guarda su videoclip (mp4, hasta 720p) en la misma carpeta. Ocupa bastante más espacio")}</small>
         </div>
         <input type="checkbox" class="interruptor" checked={aj.video_descargar} onchange={(e) => guardar({ video_descargar: e.target.checked })} />
       </label>
     </section>
 
     <section>
-      <h2>Descargas</h2>
+      <h2>{t("Descargas")}</h2>
       <div class="opcion">
         <div class="texto">
-          <b><Icono nombre="descargas" tam={18} /> Carpeta de descargas</b>
+          <b><Icono nombre="descargas" tam={18} /> {t("Carpeta de descargas")}</b>
           <small class="ruta">{info.carpeta_actual}</small>
         </div>
         {#if !info.android}
-          <button class="pildora oscura chica" onclick={elegirCarpeta}>Cambiar…</button>
+          <button class="pildora oscura chica" onclick={elegirCarpeta}>{t("Cambiar…")}</button>
         {/if}
       </div>
       {#if info.android}
@@ -199,26 +213,26 @@
           </button>
         {/each}
       {:else if info.carpeta_actual !== info.carpetas[0]?.ruta}
-        <button class="restaurar" onclick={() => guardar({ carpeta: info.carpetas[0].ruta })}>Volver a la carpeta por defecto</button>
+        <button class="restaurar" onclick={() => guardar({ carpeta: info.carpetas[0].ruta })}>{t("Volver a la carpeta por defecto")}</button>
       {/if}
       <label class="opcion">
         <div class="texto">
-          <b>Completar datos con MusicBrainz</b>
-          <small>Álbum, año, número de pista y portada oficiales</small>
+          <b>{t("Completar datos con MusicBrainz")}</b>
+          <small>{t("Álbum, año, número de pista y portada oficiales")}</small>
         </div>
         <input type="checkbox" class="interruptor" checked={aj.musicbrainz} onchange={(e) => guardar({ musicbrainz: e.target.checked })} />
       </label>
       <label class="opcion">
         <div class="texto">
-          <b>Carpetas por artista</b>
-          <small>Si lo apagas, cada playlist va en su propia carpeta</small>
+          <b>{t("Carpetas por artista")}</b>
+          <small>{t("Si lo apagas, cada playlist va en su propia carpeta")}</small>
         </div>
         <input type="checkbox" class="interruptor" checked={aj.por_artista} onchange={(e) => guardar({ por_artista: e.target.checked })} />
       </label>
       <div class="opcion">
         <div class="texto">
-          <b>Descargas simultáneas</b>
-          <small>Se aplica al reiniciar la app</small>
+          <b>{t("Descargas simultáneas")}</b>
+          <small>{t("Se aplica al reiniciar la app")}</small>
         </div>
         <div class="segmentos">
           {#each [1, 2, 3, 4] as n}
@@ -230,60 +244,58 @@
 
     {#if info.android}
       <section>
-        <h2>Segundo plano</h2>
+        <h2>{t("Segundo plano")}</h2>
         <p class="tenue acerca">
-          Para que las descargas, las actualizaciones y los jams sigan con la pantalla apagada o en otra app.
-          Mientras trabajan, una notificación muestra el avance.
+          {t("Para que las descargas, las actualizaciones y los jams sigan con la pantalla apagada o en otra app. Mientras trabajan, una notificación muestra el avance.")}
         </p>
         <div class="opcion">
           <div class="texto">
-            <b>Notificación de avance</b>
-            <small>{fondo?.notificaciones ? "Activada" : "Apagada: la descarga sigue, pero no verás el avance"}</small>
+            <b>{t("Notificación de avance")}</b>
+            <small>{fondo?.notificaciones ? t("Activada") : t("Apagada: la descarga sigue, pero no verás el avance")}</small>
           </div>
           {#if fondo && !fondo.notificaciones}
-            <button class="pildora cian chica" onclick={() => revisarFondo("notificaciones")}>Permitir</button>
+            <button class="pildora cian chica" onclick={() => revisarFondo("notificaciones")}>{t("Permitir")}</button>
           {/if}
         </div>
         <div class="opcion">
           <div class="texto">
-            <b>Sin límites de batería</b>
-            <small>{fondo?.bateria ? "Permitido: Android no pausará la app" : "Android puede pausar la app si pasa mucho rato en segundo plano"}</small>
+            <b>{t("Sin límites de batería")}</b>
+            <small>{fondo?.bateria ? t("Permitido: Android no pausará la app") : t("Android puede pausar la app si pasa mucho rato en segundo plano")}</small>
           </div>
           {#if fondo && !fondo.bateria}
-            <button class="pildora cian chica" onclick={() => revisarFondo("bateria")}>Permitir</button>
+            <button class="pildora cian chica" onclick={() => revisarFondo("bateria")}>{t("Permitir")}</button>
           {/if}
         </div>
       </section>
     {/if}
 
     <section>
-      <h2>Acerca de</h2>
+      <h2>{t("Acerca de")}</h2>
       <div class="opcion">
         <div class="texto">
           <b>Misiccord {act.actual || ""}</b>
           <small>
-            {#if act.estado === "buscando"}Buscando versiones nuevas…
-            {:else if act.estado === "al_dia"}Tienes la versión más reciente
-            {:else if act.estado === "disponible"}Hay una versión nueva: {act.version}
-            {:else if act.estado === "descargando"}Descargando la actualización… {act.pct}%
-            {:else if act.estado === "instalando"}Instalando…
-            {:else if act.estado === "error"}No se pudo revisar: {act.error}
-            {:else}Las versiones nuevas se publican en github.com/{REPO}{/if}
+            {#if act.estado === "buscando"}{t("Buscando versiones nuevas…")}
+            {:else if act.estado === "al_dia"}{t("Tienes la versión más reciente")}
+            {:else if act.estado === "disponible"}{t("Hay una versión nueva: {version}", act)}
+            {:else if act.estado === "descargando"}{t("Descargando la actualización…")} {act.pct}%
+            {:else if act.estado === "instalando"}{t("Instalando…")}
+            {:else if act.estado === "error"}{t("No se pudo revisar: {error}", act)}
+            {:else}{t("Las versiones nuevas se publican en github.com/{repo}", { repo: REPO })}{/if}
           </small>
         </div>
         {#if act.estado === "disponible"}
-          <button class="pildora cian chica" onclick={instalarActualizacion}>Actualizar</button>
+          <button class="pildora cian chica" onclick={instalarActualizacion}>{t("Actualizar")}</button>
         {:else}
           <button class="pildora oscura chica" disabled={act.estado === "buscando" || act.estado === "descargando"}
-            onclick={() => buscarActualizacion({ avisar: false, manual: true })}>Buscar</button>
+            onclick={() => buscarActualizacion({ avisar: false, manual: true })}>{t("Buscar")}</button>
         {/if}
       </div>
       {#if act.estado === "descargando"}
         <div class="progreso"><div style:width="{act.pct}%"></div></div>
       {/if}
       <p class="tenue acerca">
-        Misiccord · música de YouTube Music, recomendaciones y letras de LRCLIB, datos de MusicBrainz.
-        Descarga solo contenido que tengas permiso de guardar.
+        {t("Misiccord · música de YouTube Music, recomendaciones y letras de LRCLIB, datos de MusicBrainz. Descarga solo contenido que tengas permiso de guardar.")}
       </p>
     </section>
   {/if}

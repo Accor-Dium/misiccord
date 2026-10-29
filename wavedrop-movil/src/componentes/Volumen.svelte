@@ -1,4 +1,5 @@
 <script>
+  import { t } from "../lib/idioma.svelte.js";
   import { alternarSilencio, ponerVolumen, rep } from "../lib/reproductor.svelte.js";
   import Icono from "./Icono.svelte";
 
@@ -8,11 +9,11 @@
 </script>
 
 <div class="volumen" style:width={ancho} class:claro>
-  <button class="bocina" onclick={alternarSilencio} aria-label={rep.silencio ? "Quitar silencio" : "Silenciar"}>
+  <button class="bocina" onclick={alternarSilencio} aria-label={rep.silencio ? t("Quitar silencio") : t("Silenciar")}>
     <Icono nombre={valor === 0 ? "silencio" : "volumen"} tam={20} />
   </button>
   <input
-    type="range" min="0" max="1" step="0.01" value={valor} aria-label="Volumen"
+    type="range" min="0" max="1" step="0.01" value={valor} aria-label={t("Volumen")}
     style:--avance="{valor * 100}%"
     oninput={(e) => ponerVolumen(+e.target.value)}
     onwheel={(e) => { e.preventDefault(); ponerVolumen(rep.volumen + (e.deltaY < 0 ? 0.05 : -0.05)); }}

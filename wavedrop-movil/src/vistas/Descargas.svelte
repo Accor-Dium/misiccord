@@ -1,4 +1,5 @@
 <script>
+  import { t } from "../lib/idioma.svelte.js";
   import { onMount } from "svelte";
   import { fade, slide } from "svelte/transition";
   import { py } from "../lib/api.js";
@@ -11,13 +12,13 @@
   let leyendo = $state(false);
   const lista = $derived(Object.values(descargas.trabajos).sort((a, b) => b.creado - a.creado));
   const textos = {
-    cola: "En cola", buscando: "Buscando…", descargando: "Descargando", etiquetando: "Completando datos",
-    listo: "Listo", existe: "Ya la tienes", error: "Error", cancelado: "Cancelada",
+    cola: t("En cola"), buscando: t("Buscando…"), descargando: t("Descargando"), etiquetando: t("Completando datos"),
+    listo: t("Listo"), existe: t("Ya la tienes"), error: t("Error"), cancelado: t("Cancelada"),
   };
 
   onMount(async () => {
     const r = await py("descargas");
-    for (const t of r.trabajos) descargas.trabajos[t.id] = t;
+    for (const x of r.trabajos) descargas.trabajos[x.id] = x;
   });
 
   async function bajarLink() {
@@ -27,7 +28,7 @@
       await descargarLink(link.trim());
       link = "";
     } catch {
-      aviso("No pude leer ese link", "error");
+      aviso(t("No pude leer ese link"), "error");
     } finally {
       leyendo = false;
     }
@@ -43,37 +44,37 @@
 
 <div class="vista">
   <header>
-    <h1 class="titulo-vista">Descargas</h1>
-    {#if lista.some((t) => ["listo", "existe", "error", "cancelado"].includes(t.estado))}
-      <button class="limpiar" onclick={limpiar}>Limpiar</button>
+    <h1 class="titulo-vista">{t("Descargas")}</h1>
+    {#if lista.some((x) => ["listo", "existe", "error", "cancelado"].includes(x.estado))}
+      <button class="limpiar" onclick={limpiar}>{t("Limpiar")}</button>
     {/if}
   </header>
 
   <form class="caja" onsubmit={(ev) => { ev.preventDefault(); bajarLink(); }}>
     <Icono nombre="link" tam={20} />
-    <input bind:value={link} placeholder="Pega un link de playlist o álbum" />
-    <button class="pildora cian chica" disabled={leyendo || !link.trim()}>{leyendo ? "Leyendo…" : "Descargar"}</button>
+    <input bind:value={link} placeholder={t("Pega un link de playlist o álbum")} />
+    <button class="pildora cian chica" disabled={leyendo || !link.trim()}>{leyendo ? t("Leyendo…") : t("Descargar")}</button>
   </form>
-  <p class="nota">YouTube, YT Music, Spotify o SoundCloud. Las que ya tienes no se vuelven a bajar.</p>
+  <p class="nota">{t("YouTube, YT Music, Spotify o SoundCloud. Las que ya tienes no se vuelven a bajar.")}</p>
 
-  {#each lista as t (t.id)}
+  {#each lista as tr (tr.id)}
     <div class="trabajo" transition:slide={{ duration: 250 }}>
-      <Portada url={t.portada} tam="50px" radio="8px" />
+      <Portada url={tr.portada} tam="50px" radio="8px" />
       <div class="textos">
-        <b class="cortar">{t.titulo}</b>
-        <small class="cortar {t.estado}">{textos[t.estado] ?? t.estado}{#if t.estado === "descargando"} · {t.pct}%{/if}{#if t.error} · {t.error}{/if}</small>
-        {#if ["descargando", "buscando", "etiquetando", "cola"].includes(t.estado)}
-          <div class="barra"><div style:width="{t.estado === 'etiquetando' ? 100 : t.pct}%"></div></div>
+        <b class="cortar">{tr.titulo}</b>
+        <small class="cortar {tr.estado}">{textos[tr.estado] ?? tr.estado}{#if tr.estado === "descargando"} · {tr.pct}%{/if}{#if tr.error} · {tr.error}{/if}</small>
+        {#if ["descargando", "buscando", "etiquetando", "cola"].includes(tr.estado)}
+          <div class="barra"><div style:width="{tr.estado === 'etiquetando' ? 100 : tr.pct}%"></div></div>
         {/if}
       </div>
-      {#if t.estado === "listo" && t.cancion}
-        <button class="redondo" onclick={() => reproducir([t.cancion], 0, "Descargas")} aria-label="Escuchar"><Icono nombre="play" relleno tam={20} /></button>
-      {:else if ["cola", "buscando", "descargando"].includes(t.estado)}
-        <button class="redondo" onclick={() => py("cancelar_descarga", { id: t.id })} aria-label="Cancelar"><Icono nombre="cerrar" tam={20} /></button>
+      {#if tr.estado === "listo" && tr.cancion}
+        <button class="redondo" onclick={() => reproducir([tr.cancion], 0, t("Descargas"))} aria-label={t("Escuchar")}><Icono nombre="play" relleno tam={20} /></button>
+      {:else if ["cola", "buscando", "descargando"].includes(tr.estado)}
+        <button class="redondo" onclick={() => py("cancelar_descarga", { id: tr.id })} aria-label={t("Cancelar")}><Icono nombre="cerrar" tam={20} /></button>
       {/if}
     </div>
   {:else}
-    <p class="vacio" in:fade>No hay descargas. Busca música o pega un link de playlist.</p>
+    <p class="vacio" in:fade>{t("No hay descargas. Busca música o pega un link de playlist.")}</p>
   {/each}
 </div>
 

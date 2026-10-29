@@ -1,6 +1,7 @@
 // Estado global de la interfaz: navegación, avisos, hojas de opciones y descargas.
 import { flushSync } from "svelte";
 import { alEvento, py } from "./api.js";
+import { t } from "./idioma.svelte.js";
 
 /** Pila de vistas por pestaña. Cada entrada: { vista: "album", ...parámetros }. */
 export const nav = $state({ pestana: "inicio", pila: [{ vista: "inicio" }] });
@@ -57,25 +58,13 @@ export function abrir(vista, parametros = {}) {
   history.pushState({ wavedrop: true }, "");
 }
 
-/**
- * Dejar presionada una canción: en un jam (si puedes agregar) va a la cola del jam; si no, a tu cola.
- * Se importa aquí para que filas y tarjetas hagan lo mismo.
- */
-export async function aColaPorMantener(c) {
-  const { agregarAlJam, puedoAgregar } = await import("./jam.svelte.js");
-  if (puedoAgregar()) return agregarAlJam(c);
-  const { agregarACola } = await import("./reproductor.svelte.js");
-  agregarACola(c);
-  aviso(`“${c.titulo}” se agregó a la cola`, "ok");
-}
-
 /** Pone o quita "Me gusta" (descargada o vista previa). Devuelve si quedó con Me gusta. */
 export async function alternarMeGusta(c) {
   try {
     const { gusta } = await py("me_gusta_alternar", {
       titulo: c.titulo, artista: c.artista, album: c.album, duracion: c.duracion, portada: c.portada, id: c.id,
     });
-    aviso(gusta ? `“${c.titulo}” está en tus Me gusta` : `Se quitó “${c.titulo}” de tus Me gusta`, gusta ? "ok" : "info");
+    aviso(t(gusta ? "“{titulo}” está en tus Me gusta" : "Se quitó “{titulo}” de tus Me gusta", { titulo: c.titulo }), gusta ? "ok" : "info");
     return gusta;
   } catch (e) {
     aviso(e.message, "error");
@@ -92,6 +81,13 @@ export function abrirAlbumDe(c) {
     return abrir("album", { local: { nombre: c.album, artista: c.artista_album || c.artista, grupo: c.artista_album || "", portada: c.portada } });
   }
   abrir("album", { buscar: `${c.album} ${c.artista.split(",")[0]}`, nombre: c.album });
+}
+
+/** Abre una tarjeta de YouTube Music (álbum, playlist o artista) de Inicio o Explorar. */
+export function abrirTarjeta(x) {
+  if (x.tipo === "album") abrir("album", { id: x.id });
+  else if (x.tipo === "playlist") abrir("album", { playlist: x.id, nombre: x.titulo });
+  else if (x.tipo === "artista") abrir("artista", { id: x.id, nombre: x.titulo });
 }
 
 export function atras() {
@@ -119,10 +115,33 @@ window.addEventListener("popstate", () => {
   else atras();
 });
 
-export function aviso(texto, tipo = "info") {
-  const id = Math.random().toString(36).slice(2);
-  ui.avisos.push({ id, texto, tipo });
-  setTimeout(() => (ui.avisos = ui.avisos.filter((a) => a.id !== id)), 3200);
+const relojes = {};
+
+/**
+ * Aviso flotante (componentes/Avisos.svelte). tipo: "info" | "ok" | "error".
+ * extra.id: un aviso con el mismo id se reemplaza en su lugar (p. ej. el avance de una copia).
+ * extra.duracion: ms en pantalla (0 = hasta que se reemplace o se toque). extra.accion: { texto, f }.
+ * extra.avance: 0–1 para una barrita de progreso.
+ */
+export function aviso(texto, tipo = "info", extra = {}) {
+  const id = extra.id ?? Math.random().toString(36).slice(2);
+  const duracion = extra.duracion ?? (extra.accion ? 5000 : tipo === "error" ? 4500 : 3000);
+  const nuevo = { id, texto, tipo, accion: extra.accion ?? null, avance: extra.avance ?? null };
+  const i = ui.avisos.findIndex((a) => a.id === id);
+  if (i >= 0) ui.avisos[i] = nuevo;
+  else {
+    ui.avisos.push(nuevo);
+    if (ui.avisos.length > 3) quitarAviso(ui.avisos[0].id); // no se apilan más de 3
+  }
+  clearTimeout(relojes[id]);
+  if (duracion) relojes[id] = setTimeout(() => quitarAviso(id), duracion);
+  return id;
+}
+
+export function quitarAviso(id) {
+  clearTimeout(relojes[id]);
+  delete relojes[id];
+  ui.avisos = ui.avisos.filter((a) => a.id !== id);
 }
 
 export function mostrarHoja(hoja) {
@@ -140,14 +159,14 @@ alEvento("descarga", ({ trabajo }) => {
   descargas.trabajos[trabajo.id] = trabajo;
   if (trabajo.estado === "listo") {
     ui.version++;
-    aviso(`“${trabajo.titulo}” ya está en tu biblioteca`, "ok");
+    aviso(t("“{titulo}” ya está en tu biblioteca", { titulo: trabajo.titulo }), "ok");
   } else if (trabajo.estado === "error") {
-    aviso(`No se pudo descargar “${trabajo.titulo}”`, "error");
+    aviso(t("No se pudo descargar “{titulo}”", { titulo: trabajo.titulo }), "error");
   }
 });
 alEvento("video_descarga", (d) => {
-  if (d.estado === "listo") aviso(`Video de “${d.titulo}” descargado`, "ok");
-  else if (d.estado === "error") aviso(`No se pudo bajar el video de “${d.titulo}”: ${d.error}`, "error");
+  if (d.estado === "listo") aviso(t("Video de “{titulo}” descargado", d), "ok");
+  else if (d.estado === "error") aviso(t("No se pudo bajar el video de “{titulo}”: {error}", d), "error");
 });
 alEvento("biblioteca", () => ui.version++);
 
@@ -171,14 +190,14 @@ export async function descargar(canciones, coleccion = "") {
   await pedirAvisosUnaVez();
   const r = await py("descargar", { canciones: lista, coleccion });
   for (const t of r.trabajos) descargas.trabajos[t.id] = t;
-  aviso(lista.length === 1 ? `Descargando “${lista[0].titulo}”` : `${lista.length} canciones en la cola`);
+  aviso(lista.length === 1 ? t("Descargando “{titulo}”", { titulo: lista[0].titulo }) : t("{n} canciones en la cola", { n: lista.length }));
 }
 
 export async function descargarLink(url) {
   await pedirAvisosUnaVez();
   const r = await py("descargar", { url });
   for (const t of r.trabajos) descargas.trabajos[t.id] = t;
-  aviso(`${r.trabajos.length} canciones de “${r.coleccion}” en la cola`);
+  aviso(t("{n} canciones de “{coleccion}” en la cola", { n: r.trabajos.length, coleccion: r.coleccion }));
 }
 
 /** Estado de descarga de una canción de YouTube Music, buscándola por título y artista. */

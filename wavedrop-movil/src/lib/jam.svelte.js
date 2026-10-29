@@ -3,6 +3,7 @@
 import { py } from "./api.js";
 import { aviso, mostrarHoja } from "./estado.svelte.js";
 import { alternar, preguntarAlReproducirEnJam, rep } from "./reproductor.svelte.js";
+import { t } from "./idioma.svelte.js";
 
 export const jam = $state({
   sala: null, // estado que manda el servidor
@@ -50,8 +51,8 @@ async function pedir(ruta, datos) {
     });
   } catch {
     throw new Error(jam.conexion.base.startsWith("https://")
-      ? "No se pudo conectar con el jam. ¿El anfitrión lo sigue teniendo abierto a internet?"
-      : "No se pudo conectar con el jam. Conéctate a la misma red Wi-Fi que el anfitrión.");
+      ? t("No se pudo conectar con el jam. ¿El anfitrión lo sigue teniendo abierto a internet?")
+      : t("No se pudo conectar con el jam. Conéctate a la misma red Wi-Fi que el anfitrión."));
   }
   const cuerpo = await r.json();
   if (!r.ok) throw new Error(cuerpo.error || `Error ${r.status}`);
@@ -81,8 +82,8 @@ async function sondear(conexion) {
       if (jam.conexion !== conexion) return;
       const d = await r.json();
       jam.conectado = r.ok;
-      if (d.evento === "expulsado") return terminar("El anfitrión te sacó del jam");
-      if (d.evento === "cerrada") return terminar("El anfitrión terminó el jam");
+      if (d.evento === "expulsado") return terminar(t("El anfitrión te sacó del jam"));
+      if (d.evento === "cerrada") return terminar(t("El anfitrión terminó el jam"));
       if (d.estado) aplicar(d.estado);
       if (!r.ok) await new Promise((ok) => setTimeout(ok, 3000));
     } catch {
@@ -104,8 +105,8 @@ function escucharEventos() {
   eventos.onopen = () => (jam.conectado = true);
   eventos.onerror = () => (jam.conectado = false); // EventSource reintenta solo
   eventos.onmessage = (e) => aplicar(JSON.parse(e.data));
-  eventos.addEventListener("expulsado", () => terminar("El anfitrión te sacó del jam"));
-  eventos.addEventListener("cerrada", () => terminar("El anfitrión terminó el jam"));
+  eventos.addEventListener("expulsado", () => terminar(t("El anfitrión te sacó del jam")));
+  eventos.addEventListener("cerrada", () => terminar(t("El anfitrión terminó el jam")));
 }
 
 async function conectar(conexion) {
@@ -241,15 +242,15 @@ export const puedoAgregar = () => !!jam.sala && (soyAnfitrion() || jam.sala.invi
 export async function agregarAlJam(c) {
   try {
     if (c.ruta) {
-      if (!soyAnfitrion()) aviso(`Mandando “${c.titulo}” al jam…`);
+      if (!soyAnfitrion()) aviso(t("Mandando “{titulo}” al jam…", { titulo: c.titulo }));
       await agregarPropia(c);
-      aviso(`“${c.titulo}” a la cola del jam`, "ok");
+      aviso(t("“{titulo}” a la cola del jam", { titulo: c.titulo }), "ok");
     } else {
       await agregar(c);
-      aviso(`“${c.titulo}” a la cola del jam`, "ok");
+      aviso(t("“{titulo}” a la cola del jam", { titulo: c.titulo }), "ok");
     }
   } catch (err) {
-    aviso(err.message || "No se pudo agregar al jam", "error");
+    aviso(err.message || t("No se pudo agregar al jam"), "error");
   }
 }
 
@@ -259,23 +260,23 @@ preguntarAlReproducirEnJam((c, reproducirAqui) => {
   if (!jam.sala) return false;
   const anfitrion = soyAnfitrion();
   const opciones = [];
-  if (puedoAgregar()) opciones.push({ texto: "Mandarla al jam", icono: "jam", accion: () => agregarAlJam(c) });
+  if (puedoAgregar()) opciones.push({ texto: t("Mandarla al jam"), icono: "jam", accion: () => agregarAlJam(c) });
   opciones.push({
-    texto: anfitrion ? "Cerrar el jam y escucharla aquí" : "Salir del jam y escucharla aquí",
+    texto: anfitrion ? t("Cerrar el jam y escucharla aquí") : t("Salir del jam y escucharla aquí"),
     icono: "play", peligro: anfitrion,
     accion: async () => {
       await salir();
       reproducirAqui();
     },
   });
-  opciones.push({ texto: "Cancelar", icono: "cerrar", accion: () => {} });
+  opciones.push({ texto: t("Cancelar"), icono: "cerrar", accion: () => {} });
   mostrarHoja({
-    titulo: "Estás en un jam", subtituloLargo: true, portada: c.portada,
+    titulo: t("Estás en un jam"), subtituloLargo: true, portada: c.portada,
     subtitulo: anfitrion
-      ? `¿Mandas “${c.titulo}” a la cola del jam o cierras el jam (para todos) y la escuchas aquí?`
+      ? t("¿Mandas “{titulo}” a la cola del jam o cierras el jam (para todos) y la escuchas aquí?", { titulo: c.titulo })
       : puedoAgregar()
-        ? `¿Mandas “${c.titulo}” a la cola del jam o sales del jam y la escuchas aquí?`
-        : `El anfitrión no deja agregar canciones. ¿Sales del jam para escuchar “${c.titulo}” aquí?`,
+        ? t("¿Mandas “{titulo}” a la cola del jam o sales del jam y la escuchas aquí?", { titulo: c.titulo })
+        : t("El anfitrión no deja agregar canciones. ¿Sales del jam para escuchar “{titulo}” aquí?", { titulo: c.titulo }),
     opciones,
   });
   return true;
