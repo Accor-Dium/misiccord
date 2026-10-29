@@ -12,7 +12,7 @@ documentada abajo; si algo no está documentado, pregunta antes de "arreglarlo".
 
 ---
 
-## Estado del proyecto (al 29 de octubre de 2026 · versión publicada: **1.0.6**)
+## Estado del proyecto (al 29 de octubre de 2026 · versión publicada: **1.0.7**)
 
 Resumen para que no tengas que leer todo el código. Actualiza esta sección cuando publiques una versión.
 
@@ -31,6 +31,8 @@ Resumen para que no tengas que leer todo el código. Actualiza esta sección cua
     invitados mandan canciones de su teléfono o de YouTube Music (suenan al momento, sin esperar descarga), agregar desde cualquier lista.
   - Unirse: QR (escáner de la app o cámara normal), **link** que abre la app y entra solo, jams cercanos (UDP en la red) o IP + código.
   - **Por internet**: el anfitrión (PC o cel) toca "Abrir" en Invitar; túnel de Cloudflare, sin cuenta ni configurar el módem.
+- **Videos musicales** (apagado por defecto, en Ajustes): ver el clip en el reproductor (sigue al audio, sin sonido propio) y descargarlo junto a la canción.
+- **Biblioteca por carpetas**: agregar o quitar carpetas de música y filtrar canciones, álbumes y artistas por carpeta.
 - **Actualizaciones automáticas** desde GitHub Releases (Windows instala solo; Android baja el APK y abre el instalador).
 
 ### Historial de versiones
@@ -43,13 +45,14 @@ Resumen para que no tengas que leer todo el código. Actualiza esta sección cua
 | 1.0.4 | Eliminar canciones, primer streaming, controles de medios/relojes, jam por internet desde el cel (`cloudflared` para Android). |
 | 1.0.5 | Streaming progresivo real (cliente `android_music` sin JS: de ~11 s a ~2 s en el cel) y precarga, YouTube en jams al instante, buscador en Inicio. |
 | 1.0.6 | Links de jam (`https://accor-dium.github.io/misiccord/jam/#…` → `misiccord://`), el QR usa ese link, avisos si un jam no responde. |
+| 1.0.7 | Videos musicales (ver y descargar, opcional) y biblioteca por carpetas (de Omar). |
 
 ### Qué está probado y dónde
 - **En dispositivos reales** (lo probó quien administra el proyecto): app de Windows, Android en varios teléfonos (Samsung S25 Ultra, Pixel 7 Pro…),
   jams en red local, escáner QR, jam por internet abierto desde el cel.
 - **Solo en el emulador o con scripts**: controles de reloj (con `cmd media_session dispatch`), links en Android, eliminar canciones,
   tiempos de streaming, streaming progresivo (en Chromium con la red frenada).
-- **Sin probar todavía**: links y "una sola ventana" en Windows, panel de medios de Windows, un reloj real, un jam con YouTube Music entre teléfonos reales.
+- **Sin probar todavía**: links y "una sola ventana" en Windows, panel de medios de Windows, un reloj real, un jam con YouTube Music entre teléfonos reales, videos musicales y carpetas de la biblioteca en el cel.
 
 ### Dónde guarda las cosas
 | | Windows | Android |
