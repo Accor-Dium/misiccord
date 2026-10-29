@@ -14,7 +14,7 @@ Cualquier Misiccord (Windows o Android) puede ser anfitrión. Este módulo levan
   POST /agregar               {cliente, cancion}
   POST /votar                 {cliente}  votar para saltar
   POST /reaccion              {cliente, emoji}
-  POST /control               {cliente, accion, ...}  solo el anfitrión (play, pausa, siguiente...)
+  POST /control               {cliente, accion, ...}  solo el anfitrión (play, pausa, siguiente, mover...)
   POST /salir                 {cliente}
 
 Todas menos /info piden el código de 4 dígitos (cabecera X-Codigo o ?codigo=).
@@ -468,6 +468,13 @@ class _Manejador(BaseHTTPRequestHandler):
                         sala.indice -= 1
                     elif i == sala.indice:
                         sala._empezar(sala.indice)
+            elif accion == "mover":
+                # Reordenar lo que falta por sonar (arrastrando en la cola); lo que ya sonó y la actual no se mueven
+                i = next((k for k, p in enumerate(sala.cola) if p["pid"] == d.get("pid")), None)
+                destino = int(d.get("a", -1))
+                primero = sala.indice + 1
+                if i is not None and i >= primero and primero <= destino < len(sala.cola):
+                    sala.cola.insert(destino, sala.cola.pop(i))
             elif accion == "modo" and d.get("modo") in ("anfitrion", "sincronizado"):
                 sala.modo = d["modo"]
             elif accion == "permisos":

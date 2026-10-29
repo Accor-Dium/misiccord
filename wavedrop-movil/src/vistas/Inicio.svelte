@@ -2,7 +2,7 @@
   import { onMount } from "svelte";
   import { fade } from "svelte/transition";
   import { alEvento, py } from "../lib/api.js";
-  import { abrir, ui } from "../lib/estado.svelte.js";
+  import { abrir, aColaPorMantener, ui } from "../lib/estado.svelte.js";
   import { reproducir } from "../lib/reproductor.svelte.js";
   import Buscador from "../componentes/Buscador.svelte";
   import FilaCancion from "../componentes/FilaCancion.svelte";
@@ -91,14 +91,14 @@
             <!-- La primera sección en rejilla grande, como portada de la app -->
             <div class="rejilla">
               {#each s.canciones.slice(0, 4) as c, i}
-                <Tarjeta portada={c.portada} titulo={c.titulo} subtitulo={c.artista} ancho="100%" icono="nota"
+                <Tarjeta portada={c.portada} titulo={c.titulo} subtitulo={c.artista} ancho="100%" icono="nota" alMantener={() => aColaPorMantener(c)}
                   alTocar={() => reproducir(s.canciones, i, s.titulo)} />
               {/each}
             </div>
             {#if s.canciones.length > 4}
               <div class="carrusel" style="margin-top:18px">
                 {#each s.canciones.slice(4) as c, i}
-                  <Tarjeta portada={c.portada} titulo={c.titulo} subtitulo={c.artista} icono="nota"
+                  <Tarjeta portada={c.portada} titulo={c.titulo} subtitulo={c.artista} icono="nota" alMantener={() => aColaPorMantener(c)}
                     alTocar={() => reproducir(s.canciones, i + 4, s.titulo)} />
                 {/each}
               </div>
@@ -106,7 +106,7 @@
           {:else}
             <div class="carrusel">
               {#each s.canciones as c, i}
-                <Tarjeta portada={c.portada} titulo={c.titulo} subtitulo={c.artista} icono="nota"
+                <Tarjeta portada={c.portada} titulo={c.titulo} subtitulo={c.artista} icono="nota" alMantener={() => aColaPorMantener(c)}
                   alTocar={() => reproducir(s.canciones, i, s.titulo)} />
               {/each}
             </div>
@@ -123,7 +123,7 @@
         <div class="titulo-seccion">Escuchado recientemente</div>
         <div class="carrusel">
           {#each d.recientes as c, i}
-            <Tarjeta portada={c.portada} titulo={c.titulo} subtitulo={c.artista} icono="nota"
+            <Tarjeta portada={c.portada} titulo={c.titulo} subtitulo={c.artista} icono="nota" alMantener={() => aColaPorMantener(c)}
               alTocar={() => reproducir(d.recientes, i, "Escuchado recientemente")} />
           {/each}
         </div>

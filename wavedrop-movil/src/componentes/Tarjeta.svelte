@@ -1,11 +1,13 @@
 <script>
+  import { mantener } from "../lib/mantener.js";
   import Portada from "./Portada.svelte";
 
   // Tarjeta de álbum, canción o artista (redonda) para carruseles y rejillas.
-  let { portada, titulo, subtitulo = "", ancho = "148px", redonda = false, icono = "disco", alTocar } = $props();
+  // alMantener: dejarla presionada (en canciones: agregar a la cola).
+  let { portada, titulo, subtitulo = "", ancho = "148px", redonda = false, icono = "disco", alTocar, alMantener = null } = $props();
 </script>
 
-<button class="tarjeta" style:width={ancho} onclick={alTocar} class:redonda>
+<button class="tarjeta" style:width={ancho} onclick={alTocar} class:redonda use:mantener={alMantener}>
   <Portada url={portada} {redonda} {icono} radio="12px" />
   <b class="cortar">{titulo}</b>
   {#if subtitulo}<small class="cortar">{subtitulo}</small>{/if}

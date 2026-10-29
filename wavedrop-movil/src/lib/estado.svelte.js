@@ -14,7 +14,18 @@ export const ui = $state({
   avisos: [],
   version: 0, // sube cuando cambia la biblioteca, para que las vistas recarguen
   alAtras: null, // qué hacer con el próximo "atrás" (p. ej. cerrar la cámara del QR)
+  info: null, // canción abierta en la ventana de información y etiquetas (InfoCancion.svelte)
+  letra: { traducirA: "", romanizar: true }, // ajustes de las letras (se cargan al iniciar y desde Ajustes)
 });
+
+export function aplicarAjustesLetra(aj) {
+  ui.letra = { traducirA: aj.letra_traducir_a || "", romanizar: aj.letra_romanizar !== false };
+}
+
+/** Abre la ventana de información de una canción (en descargadas también se editan etiquetas y carátula). */
+export function verInfo(c) {
+  ui.info = c;
+}
 
 pantallaAmplia.addEventListener("change", (e) => (ui.amplio = e.matches));
 
@@ -44,6 +55,43 @@ export function irPestana(pestana) {
 export function abrir(vista, parametros = {}) {
   transicion(() => nav.pila.push({ vista, ...parametros }), "adelante");
   history.pushState({ wavedrop: true }, "");
+}
+
+/**
+ * Dejar presionada una canción: en un jam (si puedes agregar) va a la cola del jam; si no, a tu cola.
+ * Se importa aquí para que filas y tarjetas hagan lo mismo.
+ */
+export async function aColaPorMantener(c) {
+  const { agregarAlJam, puedoAgregar } = await import("./jam.svelte.js");
+  if (puedoAgregar()) return agregarAlJam(c);
+  const { agregarACola } = await import("./reproductor.svelte.js");
+  agregarACola(c);
+  aviso(`“${c.titulo}” se agregó a la cola`, "ok");
+}
+
+/** Pone o quita "Me gusta" (descargada o vista previa). Devuelve si quedó con Me gusta. */
+export async function alternarMeGusta(c) {
+  try {
+    const { gusta } = await py("me_gusta_alternar", {
+      titulo: c.titulo, artista: c.artista, album: c.album, duracion: c.duracion, portada: c.portada, id: c.id,
+    });
+    aviso(gusta ? `“${c.titulo}” está en tus Me gusta` : `Se quitó “${c.titulo}” de tus Me gusta`, gusta ? "ok" : "info");
+    return gusta;
+  } catch (e) {
+    aviso(e.message, "error");
+    return null;
+  }
+}
+
+/** El álbum de una canción: el de tu biblioteca si la tienes, si no el de YouTube Music (por id o buscándolo). */
+export function abrirAlbumDe(c) {
+  if (!c?.album) return;
+  if (c.album_id) return abrir("album", { id: c.album_id });
+  if (c.db_id) {
+    // Así agrupa la biblioteca: nombre del álbum + "artista del álbum" tal cual viene en el archivo ("" si no trae)
+    return abrir("album", { local: { nombre: c.album, artista: c.artista_album || c.artista, grupo: c.artista_album || "", portada: c.portada } });
+  }
+  abrir("album", { buscar: `${c.album} ${c.artista.split(",")[0]}`, nombre: c.album });
 }
 
 export function atras() {

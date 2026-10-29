@@ -86,6 +86,14 @@ img { display: block; }
 .carrusel::-webkit-scrollbar { display: none; }
 .carrusel > * { scroll-snap-align: start; flex-shrink: 0; min-width: 0; }
 .carrusel::after { content: ""; flex: 0 0 1px; } /* respeta el margen derecho al final del scroll */
+/* Flechas de los carruseles con mouse (lib/carrusel.js las pone y las coloca) */
+.flecha-carrusel {
+  position: fixed; z-index: 25; width: 40px; height: 40px; border-radius: 50%; display: grid; place-items: center;
+  background: rgba(10, 15, 20, 0.88); color: #fff; border: 1px solid var(--borde-fuerte);
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.45); opacity: 0; pointer-events: none; transition: opacity 0.2s, background 0.2s;
+}
+.flecha-carrusel.visible { opacity: 1; pointer-events: auto; }
+.flecha-carrusel:hover { background: var(--tarjeta-2); }
 /* Artistas: caben 3 y medio en el teléfono para que se note que hay más */
 :root { --artista: clamp(78px, calc((100vw - 2 * var(--margen) - 3 * 14px) / 3.5), 112px); }
 .vacio { color: var(--tenue); text-align: center; padding: 48px 24px; line-height: 1.5; }

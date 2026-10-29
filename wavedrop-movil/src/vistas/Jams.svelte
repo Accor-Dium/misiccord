@@ -1,5 +1,6 @@
 <script>
   import { onMount, untrack } from "svelte";
+  import { flip } from "svelte/animate";
   import { fade, fly, scale, slide } from "svelte/transition";
   import { py, tiempo } from "../lib/api.js";
   import { aviso, ui } from "../lib/estado.svelte.js";
@@ -117,6 +118,40 @@
   });
   const duracion = $derived(p?.duracion || 0);
   const pendientes = $derived(s ? s.cola.length - s.indice - 1 : 0);
+
+  // ---------- Reordenar la cola arrastrando (anfitrión) ----------
+  // Con la agarradera ≡ de cada canción que falta por sonar. Funciona igual con el dedo y con el mouse.
+  let arrastre = $state(null); // { pid, desde, sobre, y0, dy, alto }
+
+  function empezarArrastre(ev, i) {
+    ev.preventDefault();
+    ev.currentTarget.setPointerCapture(ev.pointerId);
+    const fila = ev.currentTarget.closest(".pista");
+    arrastre = { pid: s.cola[i].pid, desde: i, sobre: i, y0: ev.clientY, dy: 0, alto: fila.offsetHeight + 4 };
+  }
+  function moverArrastre(ev) {
+    if (!arrastre) return;
+    arrastre.dy = ev.clientY - arrastre.y0;
+    const destino = arrastre.desde + Math.round(arrastre.dy / arrastre.alto);
+    arrastre.sobre = Math.max(s.indice + 1, Math.min(s.cola.length - 1, destino));
+  }
+  function soltarArrastre() {
+    if (!arrastre) return;
+    const { pid, desde, sobre } = arrastre;
+    arrastre = null;
+    if (sobre === desde || s.cola[desde]?.pid !== pid) return;
+    s.cola.splice(sobre, 0, s.cola.splice(desde, 1)[0]); // se ve al instante; el anfitrión confirma con el próximo aviso
+    control("mover", { pid, a: sobre }).catch(() => aviso("No se pudo mover la canción", "error"));
+  }
+  /** Cuánto se corre cada fila mientras arrastras: la tuya sigue al dedo y las demás le hacen espacio. */
+  function desplazamiento(i) {
+    const a = arrastre;
+    if (!a) return 0;
+    if (i === a.desde) return a.dy;
+    if (a.desde < a.sobre && i > a.desde && i <= a.sobre) return -a.alto;
+    if (a.desde > a.sobre && i < a.desde && i >= a.sobre) return a.alto;
+    return 0;
+  }
 
   let pestana = $state("cola"); // cola | agregar | sala
   let fuente = $state("biblioteca");
@@ -428,7 +463,18 @@
           {#if pestana === "cola"}
             <div class="lista" in:fade={{ duration: 160 }}>
               {#each s.cola as pista, i (pista.pid)}
-                <div class="pista" class:actual={i === s.indice} class:pasada={i < s.indice} transition:slide={{ duration: 200 }}>
+                <div class="pista" class:actual={i === s.indice} class:pasada={i < s.indice} class:levantada={arrastre?.desde === i}
+                  style:transform={desplazamiento(i) ? `translateY(${desplazamiento(i)}px)` : null}
+                  style:transition={arrastre && arrastre.desde !== i ? "transform 0.15s" : null}
+                  transition:slide={{ duration: 200 }} animate:flip={{ duration: arrastre ? 0 : 200 }}>
+                  {#if anfitrion && i > s.indice}
+                    <!-- Agarradera: arrastrar para cambiar el orden de lo que falta por sonar -->
+                    <span class="agarrar" aria-label="Arrastrar para reordenar" role="button" tabindex="-1"
+                      onpointerdown={(e) => empezarArrastre(e, i)} onpointermove={moverArrastre} onpointerup={soltarArrastre}
+                      onpointercancel={() => (arrastre = null)}>
+                      <Icono nombre="arrastrar" tam={20} />
+                    </span>
+                  {/if}
                   <div class="pista-tapa">
                     <Portada url={urlJam(pista.portada)} tam="46px" radio="8px" />
                     {#if i === s.indice && s.sonando}<span class="ecualizador"><i></i><i></i><i></i></span>{/if}
@@ -693,6 +739,9 @@
   .pista.actual { background: var(--tarjeta); }
   .pista.actual b { color: var(--cian); }
   .pista.pasada { opacity: 0.45; }
+  .pista.levantada { position: relative; z-index: 2; background: var(--tarjeta-2); box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45); }
+  .agarrar { width: 28px; height: 40px; margin: 0 -6px 0 -4px; display: grid; place-items: center; color: var(--tenue); cursor: grab; touch-action: none; flex-shrink: 0; }
+  .levantada .agarrar { cursor: grabbing; color: var(--cian); }
   .pista-tapa { position: relative; flex-shrink: 0; }
   .ecualizador { position: absolute; inset: 0; border-radius: 8px; background: rgba(0, 0, 0, 0.55); display: flex; align-items: flex-end; justify-content: center; gap: 3px; padding-bottom: 12px; }
   .ecualizador i { width: 4px; border-radius: 2px; background: var(--cian); animation: barra 0.9s infinite ease-in-out; }

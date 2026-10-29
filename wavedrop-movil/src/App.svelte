@@ -4,12 +4,14 @@
   import { py } from "./lib/api.js";
   import { revisarAlIniciar } from "./lib/actualizaciones.svelte.js";
   import { escucharEnlaces } from "./lib/enlaces.svelte.js";
-  import { nav } from "./lib/estado.svelte.js";
+  import { aplicarAjustesLetra, nav } from "./lib/estado.svelte.js";
   import { jam } from "./lib/jam.svelte.js";
   import "./lib/medios.svelte.js"; // notificación, pantalla bloqueada, relojes y teclas multimedia
-  import { aplicarAjustesVideo, rep } from "./lib/reproductor.svelte.js";
+  import "./lib/carrusel.js"; // carruseles con mouse: arrastrar y flechas
+  import { aplicarAjustesVideo, aplicarEcualizador, rep } from "./lib/reproductor.svelte.js";
   import Avisos from "./componentes/Avisos.svelte";
   import Hoja from "./componentes/Hoja.svelte";
+  import InfoCancion from "./componentes/InfoCancion.svelte";
   import MiniReproductor from "./componentes/MiniReproductor.svelte";
   import Navegacion from "./componentes/Navegacion.svelte";
   import Reproductor from "./componentes/Reproductor.svelte";
@@ -19,6 +21,8 @@
   import Biblioteca from "./vistas/Biblioteca.svelte";
   import Buscar from "./vistas/Buscar.svelte";
   import Descargas from "./vistas/Descargas.svelte";
+  import Estadisticas from "./vistas/Estadisticas.svelte";
+  import MeGusta from "./vistas/MeGusta.svelte";
   import Inicio from "./vistas/Inicio.svelte";
   import Jams from "./vistas/Jams.svelte";
   import Playlist from "./vistas/Playlist.svelte";
@@ -26,7 +30,7 @@
   const vistas = {
     inicio: Inicio, buscar: Buscar, biblioteca: Biblioteca, descargas: Descargas, jams: Jams,
     album: Album, artista: Artista, buscar_artista: Artista, playlist: Playlist, ajustes: Ajustes,
-    biblioteca_albumes: Biblioteca,
+    biblioteca_albumes: Biblioteca, estadisticas: Estadisticas, me_gusta: MeGusta,
   };
 
   let listo = $state(false);
@@ -39,6 +43,8 @@
       const r = await py("iniciar");
       rep.fundido = r.ajustes.fundido;
       aplicarAjustesVideo(r.ajustes);
+      aplicarAjustesLetra(r.ajustes);
+      aplicarEcualizador(r.ajustes.eq_activo, r.ajustes.eq_bandas);
       listo = true;
       revisarAlIniciar();
       escucharEnlaces(); // links de jam con los que se abre la app
@@ -77,6 +83,7 @@
   <Navegacion />
   <Reproductor />
   <Hoja />
+  <InfoCancion />
 {/if}
 <Avisos />
 

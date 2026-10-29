@@ -118,6 +118,9 @@ Todo el trabajo real vive en Python: python/wavedrop/  (el mismo código en las 
 | `tunel.py` | Jam por internet: túnel rápido de Cloudflare (`cloudflared`). Windows lo baja la primera vez; Android lo trae en el APK. Job Object en Windows para que muera con el servicio. |
 | `letras.py` | LRCLIB (letra sincronizada) con `.lrc` junto al archivo. **Nunca** imprimas ni registres letras en logs/salidas. |
 | `musicbrainz.py` | Completa álbum/año/pista/portada al descargar. |
+| `etiquetas.py` | Ver y editar etiquetas y carátula de una canción descargada (mutagen: mp3, m4a, flac, ogg/opus). La interfaz manda la imagen ya pasada a JPG. |
+| `romanizar.py` | Idioma de una letra (por escritura y palabras comunes) y romanización **sin internet**: coreano, kana, cirílico, griego. Kanji y chino no (necesitan diccionario). |
+| `traduccion.py` | Traducción de letras con **MyMemory** (gratis, sin clave, ~5000 caracteres/día por IP): caché en `cache/traducciones`, líneas repetidas una sola vez. |
 
 `python/servicio.py`: el proceso de escritorio (stdin/stdout en UTF-8 forzado; `print` va a stderr).
 
@@ -178,6 +181,22 @@ Todo el trabajo real vive en Python: python/wavedrop/  (el mismo código en las 
   `explorar.buscar_video` porque el id de la canción en YT Music suele ser audio con la portada. El video descargado es `<canción>.mp4` junto al audio
   (`.mp4` no está en `biblioteca.EXTENSIONES`: así no se toma por canción) y `eliminar_canciones` lo borra también. Para **transmitir** solo sirve el cliente
   `android` de yt-dlp (mp4 360p por rangos); tv/web dan más calidad pero YouTube responde 403 sin token (`flujo._extraer_video` prueba cada candidato).
+- **Letra (`Letra.svelte`)**: el espacio arriba y abajo de la letra son divs medidos en px con el alto real de la caja. Con `padding` en vh la caja
+  crecía más que su lugar y en el cel tapaba la barra para adelantar (tocabas una línea en vez de la barra). Y `scrollTo` en la caja, no `scrollIntoView`
+  (ese movía al reproductor entero).
+- **Biblioteca**: buscar, ordenar y agrupar es todo en la interfaz (`lib/ordenar.js`, sin acentos, "The" ignorado); solo lo que no tienes se pide a
+  YouTube Music. El orden elegido vive en `localStorage` (`misiccord_orden`).
+- **Reproducir estando en un jam pregunta primero** (mandarla al jam o salir/cerrar el jam y escucharla aquí): todo pasa por `reproducir()`,
+  y `jam.svelte.js` registra la pregunta con `preguntarAlReproducirEnJam` (el reproductor no importa al jam: el jam ya importa al reproductor).
+  Si agregas otra forma de empezar a sonar, que pase por `reproducir()` o respete `{ aunEnJam }`.
+- **Me gusta** (tabla `me_gusta`): por `clave` artista+título normalizados, así sirve para descargadas y vistas previas. Guarda el id de YouTube Music
+  (si es tuya y no lo trae, se busca en segundo plano) para poder escucharla o descargarla aunque borres el archivo.
+- **Ecualizador (Web Audio)**: el grafo se arma solo la primera vez que se prende (`aplicarEcualizador`); entonces los `<audio>` llevan `crossOrigin`
+  y todo lo que suena **debe mandar CORS**: el protocolo asset de Tauri ya lo hace y `flujo.py` manda `Access-Control-Allow-Origin: *`. Si agregas otra
+  fuente de audio sin CORS, con el ecualizador prendido sonará en silencio. Los jams usan su propio `<audio>` y no pasan por él.
+- **Traducción de letras**: el endpoint no oficial de Google (`translate_a/single`, cliente `gtx`) respondía 429 con captcha: no lo uses. Se usa MyMemory (`traduccion.py`).
+- **Historial (`eventos`)**: las vistas previas también se cuentan, con ruta `yt:<id>` (y `duracion`/`portada`, columnas agregadas por migración). Las
+  consultas que hacen JOIN con `canciones` (recientes, más escuchadas) las excluyen solas; `estadisticas()` y `semillas()` sí las usan.
 - **Segundo plano en Android**: sin un servicio en primer plano Android congela la app al apagar la pantalla (`ServicioMedios` solo la cubre mientras suena música).
   Python anota los trabajos largos (descargas, video, APK de actualización, leer una carpeta, jam abierto) con `api._fondo_actualizar` y manda un resumen
   con el evento `"fondo"`; `PythonPlugin.Emisor` lo lee **directo** (no por la interfaz, que Android pausa) y `ServicioTareas.kt` (tipo `dataSync`, con

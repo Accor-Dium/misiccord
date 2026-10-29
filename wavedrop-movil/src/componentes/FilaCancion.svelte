@@ -1,9 +1,10 @@
 <script>
   import { py, tiempo } from "../lib/api.js";
-  import { abrir, aviso, descargar, mostrarHoja, ui } from "../lib/estado.svelte.js";
+  import { abrir, abrirAlbumDe, aColaPorMantener, alternarMeGusta, aviso, descargar, mostrarHoja, ui, verInfo } from "../lib/estado.svelte.js";
   import { pedirEliminar } from "../lib/eliminar.js";
   import { agregarAlJam, puedoAgregar } from "../lib/jam.svelte.js";
-  import { rep } from "../lib/reproductor.svelte.js";
+  import { mantener } from "../lib/mantener.js";
+  import { agregarACola, rep } from "../lib/reproductor.svelte.js";
   import BotonDescarga from "./BotonDescarga.svelte";
   import Icono from "./Icono.svelte";
   import Portada from "./Portada.svelte";
@@ -26,12 +27,25 @@
     });
   }
 
-  function opciones() {
+  async function opciones() {
     const ops = [];
+    const { gusta } = await py("me_gusta_es", { titulo: cancion.titulo, artista: cancion.artista }).catch(() => ({ gusta: false }));
+    ops.push({ texto: gusta ? "Quitar de Me gusta" : "Me gusta", icono: "corazon", accion: () => { alternarMeGusta(cancion).then(() => ui.version++); } });
     if (puedoAgregar()) ops.push({ texto: "Agregar al jam", icono: "jam", accion: () => agregarAlJam(cancion) });
+    if (rep.actual) {
+      ops.push({ texto: "Reproducir a continuación", icono: "siguiente", accion: () => {
+        agregarACola(cancion, true);
+        aviso(`“${cancion.titulo}” suena después de esta`, "ok");
+      } });
+    }
+    ops.push({ texto: "Agregar a la cola", icono: "cola", accion: () => {
+      agregarACola(cancion);
+      aviso(`“${cancion.titulo}” se agregó a la cola`, "ok");
+    } });
     if (cancion.db_id) ops.push({ texto: "Agregar a playlist", icono: "lista", accion: aPlaylist });
     if (!cancion.local && !cancion.ruta) ops.push({ texto: "Descargar", icono: "descargas", accion: () => descargar([cancion]) });
-    if (cancion.album_id) ops.push({ texto: "Ver álbum", icono: "disco", accion: () => abrir("album", { id: cancion.album_id }) });
+    if (cancion.album) ops.push({ texto: "Ver álbum", icono: "disco", accion: () => abrirAlbumDe(cancion) });
+    ops.push({ texto: cancion.ruta ? "Información y etiquetas" : "Información", icono: "info", accion: () => verInfo(cancion) });
     ops.push({ texto: `Buscar más de ${cancion.artista.split(",")[0]}`, icono: "persona",
                accion: () => abrir("buscar_artista", { nombre: cancion.artista.split(",")[0] }) });
     if (cancion.db_id) ops.push({ texto: "Eliminar de la biblioteca", icono: "basura", peligro: true, accion: () =>
@@ -41,7 +55,8 @@
   }
 </script>
 
-<div class="fila" class:sonando role="button" tabindex="0" onclick={alTocar} onkeydown={(e) => e.key === "Enter" && alTocar?.()}>
+<div class="fila" class:sonando role="button" tabindex="0" onclick={alTocar} onkeydown={(e) => e.key === "Enter" && alTocar?.()}
+  use:mantener={() => aColaPorMantener(cancion)}>
   {#if numero !== null}
     <span class="numero">{#if sonando}<span class="barras"><i></i><i></i><i></i></span>{:else}{numero}{/if}</span>
   {/if}

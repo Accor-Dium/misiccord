@@ -35,6 +35,13 @@ CREATE TABLE IF NOT EXISTS eventos (
     ruta TEXT, artista TEXT, titulo TEXT, fecha REAL
 );
 CREATE INDEX IF NOT EXISTS idx_eventos ON eventos(tipo, fecha);
+-- "Me gusta": por artista+título normalizados (clave), así vale para descargadas y vistas previas
+CREATE TABLE IF NOT EXISTS me_gusta (
+    clave TEXT PRIMARY KEY,
+    titulo TEXT, artista TEXT, album TEXT, duracion REAL, portada TEXT,
+    video_id TEXT,  -- para poder escucharla en línea o descargarla aunque no la tengas
+    fecha REAL
+);
 CREATE TABLE IF NOT EXISTS playlist_canciones (
     playlist_id INTEGER REFERENCES playlists(id) ON DELETE CASCADE,
     cancion_id INTEGER REFERENCES canciones(id) ON DELETE CASCADE,
@@ -57,6 +64,7 @@ class Cancion:
     genero: str
     duracion: float | None
     mbid: str
+    agregada: float | None = None  # cuándo llegó a la biblioteca (para ordenar por recientes)
 
 
 @dataclass
@@ -161,6 +169,11 @@ class Biblioteca:
             self.con.execute("ALTER TABLE canciones ADD COLUMN artista_ppal TEXT")
             self.con.execute("UPDATE canciones SET mtime = 0")  # forzar relectura en el próximo escaneo
             self.con.commit()
+        de_eventos = {r[1] for r in self.con.execute("PRAGMA table_info(eventos)")}
+        if "duracion" not in de_eventos:  # para las estadísticas: minutos escuchados y portada de las vistas previas
+            self.con.execute("ALTER TABLE eventos ADD COLUMN duracion REAL")
+            self.con.execute("ALTER TABLE eventos ADD COLUMN portada TEXT")
+            self.con.commit()
         self.candado = threading.RLock()
 
     def _q(self, sql: str, params=()) -> list[sqlite3.Row]:
@@ -177,7 +190,7 @@ class Biblioteca:
     def _cancion(r: sqlite3.Row) -> Cancion:
         return Cancion(r["id"], Path(r["ruta"]), r["titulo"] or "", r["artista"] or "", r["album"] or "",
                        r["artista_album"] or "", r["anio"] or "", r["pista"], r["genero"] or "", r["duracion"],
-                       r["mbid"] or "")
+                       r["mbid"] or "", r["agregada"] if "agregada" in r.keys() else None)
 
     # --- Carpetas ---
 
@@ -358,9 +371,70 @@ class Biblioteca:
 
     # --- Historial (para recomendaciones) ---
 
-    def registrar(self, tipo: str, ruta: Path, artista: str, titulo: str):
-        self._w("INSERT INTO eventos(tipo, ruta, artista, titulo, fecha) VALUES (?,?,?,?,?)",
-                (tipo, str(ruta), artista, titulo, time.time()))
+    def registrar(self, tipo: str, ruta: Path | str, artista: str, titulo: str,
+                  duracion: float | None = None, portada: str | None = None):
+        """ruta es el archivo, o "yt:<id>" para una vista previa de YouTube Music (también cuenta en el historial)."""
+        self._w("INSERT INTO eventos(tipo, ruta, artista, titulo, fecha, duracion, portada) VALUES (?,?,?,?,?,?,?)",
+                (tipo, str(ruta), artista, titulo, time.time(), duracion, portada))
+
+    def estadisticas(self, dias: int, ahora: float | None = None) -> dict:
+        """Lo que escuchaste en los últimos `dias` (y cuánto cambió contra el periodo anterior del mismo largo)."""
+        ahora = ahora or time.time()
+        desde, antes = ahora - dias * 86400, ahora - 2 * dias * 86400
+        filas = self._q(
+            """SELECT e.ruta, e.artista, e.titulo, e.fecha, e.portada, c.id AS cid, c.genero,
+                      COALESCE(e.duracion, c.duracion, 0) AS segundos
+               FROM eventos e LEFT JOIN canciones c ON c.ruta = e.ruta
+               WHERE e.tipo = 'reproduccion' AND e.fecha >= ? AND e.fecha <= ?""", (antes, ahora))
+        actuales = [r for r in filas if r["fecha"] >= desde]
+        previas = [r for r in filas if r["fecha"] < desde]
+
+        def resumen(rs) -> dict:
+            return {"reproducciones": len(rs), "minutos": round(sum(r["segundos"] or 0 for r in rs) / 60),
+                    "canciones": len({clave(r["artista"] or "", r["titulo"] or "") for r in rs}),
+                    "artistas": len({normalizar(artista_principal(r["artista"] or "")) for r in rs if r["artista"]})}
+
+        total = len(actuales) or 1
+        canciones: dict[str, dict] = {}
+        artistas: dict[str, dict] = {}
+        generos: dict[str, int] = {}
+        por_dia = [0] * dias
+        por_hora = [0] * 24
+        for r in actuales:
+            k = clave(r["artista"] or "", r["titulo"] or "")
+            c = canciones.setdefault(k, {"titulo": r["titulo"], "artista": r["artista"], "veces": 0, "ruta": None,
+                                         "portada": None})
+            c["veces"] += 1
+            if r["cid"]:
+                c["ruta"] = r["ruta"]
+            elif r["portada"]:
+                c["portada"] = r["portada"]
+            nombre = artista_principal(r["artista"] or "")
+            if nombre:
+                a = artistas.setdefault(normalizar(nombre), {"nombre": nombre, "veces": 0})
+                a["veces"] += 1
+            if r["genero"] and r["genero"].lower() != "music":
+                generos[r["genero"]] = generos.get(r["genero"], 0) + 1
+            por_dia[min(dias - 1, int((r["fecha"] - desde) // 86400))] += 1
+            por_hora[time.localtime(r["fecha"]).tm_hour] += 1
+
+        def con_porcentaje(items, n):
+            orden = sorted(items, key=lambda x: -x["veces"])[:n]
+            for x in orden:
+                x["pct"] = round(x["veces"] * 100 / total, 1)
+            return orden
+
+        con_genero = sum(generos.values()) or 1
+        return {
+            "dias": dias, "actual": resumen(actuales), "anterior": resumen(previas),
+            "canciones": con_porcentaje(canciones.values(), 10),
+            "artistas": con_porcentaje(artistas.values(), 8),
+            # Los géneros solo los traen las canciones descargadas: su porcentaje es sobre esas
+            "generos": [{"nombre": g, "veces": n, "pct": round(n * 100 / con_genero, 1)}
+                        for g, n in sorted(generos.items(), key=lambda x: -x[1])[:6]],
+            "por_dia": por_dia, "por_hora": por_hora,
+            "descargas": self._q("SELECT COUNT(*) AS n FROM eventos WHERE tipo = 'descarga' AND fecha >= ?", (desde,))[0]["n"],
+        }
 
     def semillas(self, n: int = 3, dias: int = 60) -> list[tuple[str, str, str]]:
         """Canciones base para recomendar: (artista, título, motivo). Una por artista.
@@ -401,6 +475,13 @@ class Biblioteca:
                                GROUP BY artista_ppal ORDER BY n DESC LIMIT 1""")
         return filas[0]["a"] if filas else None
 
+    def historial_de(self, ruta: Path) -> dict:
+        """Cuántas veces sonó, la última vez y cuándo llegó a la biblioteca (para la hoja de información)."""
+        r = self._q("""SELECT COUNT(*) AS veces, MAX(fecha) AS ultima FROM eventos
+                       WHERE tipo = 'reproduccion' AND ruta = ?""", (str(ruta),))[0]
+        c = self._q("SELECT agregada FROM canciones WHERE ruta = ?", (str(ruta),))
+        return {"reproducciones": r["veces"], "ultima": r["ultima"], "agregada": c[0]["agregada"] if c else None}
+
     def mas_escuchadas(self, n: int = 12) -> list[tuple[Cancion, int]]:
         return [(self._cancion(r), r["veces"]) for r in self._q(
             """SELECT c.*, COUNT(*) AS veces FROM eventos e JOIN canciones c ON c.ruta = e.ruta
@@ -410,6 +491,26 @@ class Biblioteca:
         return [self._cancion(r) for r in self._q(
             """SELECT c.* FROM eventos e JOIN canciones c ON c.ruta = e.ruta
                WHERE e.tipo = 'reproduccion' GROUP BY c.id ORDER BY MAX(e.fecha) DESC LIMIT ?""", (n,))]
+
+    # --- Me gusta ---
+
+    def me_gusta(self, artista: str, titulo: str) -> bool:
+        return bool(self._q("SELECT 1 FROM me_gusta WHERE clave = ?", (clave(artista, titulo),)))
+
+    def poner_me_gusta(self, c: dict) -> None:
+        """c: titulo, artista y lo que se sepa (album, duracion, portada, video_id). Si ya estaba, completa lo que falte."""
+        self._w(
+            """INSERT INTO me_gusta(clave, titulo, artista, album, duracion, portada, video_id, fecha) VALUES (?,?,?,?,?,?,?,?)
+               ON CONFLICT(clave) DO UPDATE SET video_id = COALESCE(me_gusta.video_id, excluded.video_id),
+                 portada = COALESCE(me_gusta.portada, excluded.portada)""",
+            (clave(c.get("artista") or "", c.get("titulo") or ""), c.get("titulo"), c.get("artista"), c.get("album"),
+             c.get("duracion"), c.get("portada"), c.get("video_id"), time.time()))
+
+    def quitar_me_gusta(self, artista: str, titulo: str) -> None:
+        self._w("DELETE FROM me_gusta WHERE clave = ?", (clave(artista, titulo),))
+
+    def lista_me_gusta(self) -> list[sqlite3.Row]:
+        return self._q("SELECT * FROM me_gusta ORDER BY fecha DESC")
 
     # --- Playlists ---
 

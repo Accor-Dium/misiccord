@@ -1,13 +1,26 @@
 <script>
   import { onMount } from "svelte";
   import { py } from "../lib/api.js";
-  import { atras, aviso } from "../lib/estado.svelte.js";
+  import { aplicarAjustesLetra, atras, aviso } from "../lib/estado.svelte.js";
   import { act, buscarActualizacion, instalarActualizacion, REPO } from "../lib/actualizaciones.svelte.js";
   import { getVersion } from "@tauri-apps/api/app";
-  import { aplicarAjustesVideo, rep } from "../lib/reproductor.svelte.js";
+  import { aplicarAjustesVideo, aplicarEcualizador, BANDAS_EQ, rep } from "../lib/reproductor.svelte.js";
   import Icono from "../componentes/Icono.svelte";
 
   let aj = $state(null);
+  const PRESETS = [
+    ["Plano", [0, 0, 0, 0, 0]], ["Graves", [6, 3, 0, 0, 0]], ["Voces", [-2, 0, 3, 3, 1]], ["Agudos", [0, 0, 0, 3, 6]],
+    ["Rock", [4, 2, -1, 2, 4]], ["Pop", [-1, 2, 4, 2, -1]], ["Electrónica", [5, 2, 0, 1, 4]],
+  ];
+  const presetActual = $derived(aj ? PRESETS.find(([, b]) => b.every((v, i) => v === Number(aj.eq_bandas[i])))?.[0] : null);
+  const hz = (f) => (f >= 1000 ? `${f / 1000}k` : String(f));
+  /** Mientras mueves una banda suena al instante; se guarda al soltar. */
+  function moverBanda(i, valor) {
+    aj.eq_bandas[i] = valor;
+    aplicarEcualizador(aj.eq_activo, aj.eq_bandas);
+  }
+  const IDIOMAS = [["", "No traducir"], ["es", "Español"], ["en", "Inglés"], ["pt", "Portugués"], ["fr", "Francés"],
+                   ["it", "Italiano"], ["de", "Alemán"], ["ja", "Japonés"], ["ko", "Coreano"], ["zh", "Chino"]];
   let info = $state(null); // carpeta actual, carpetas sugeridas y si es Android
 
   let fondo = $state(null); // Android: { notificaciones, bateria } (permisos para trabajar en segundo plano)
@@ -40,6 +53,8 @@
     aj = { ...aj, ...cambios };
     if ("fundido" in cambios) rep.fundido = cambios.fundido;
     if ("video_ver" in cambios || "video_descargar" in cambios) aplicarAjustesVideo(aj);
+    if ("letra_traducir_a" in cambios || "letra_romanizar" in cambios) aplicarAjustesLetra(aj);
+    if ("eq_activo" in cambios || "eq_bandas" in cambios) aplicarEcualizador(aj.eq_activo, aj.eq_bandas);
     try {
       info = await py("guardar_ajustes", cambios);
       aj = info.ajustes;
@@ -53,7 +68,8 @@
 
   /** Android: las carpetas públicas (Música) piden "Acceso a todos los archivos" antes de poder escribir. */
   async function elegirCarpetaAndroid(c) {
-    const publica = c.ruta.startsWith("/storage/emulated/0/") && !c.ruta.includes("/Android/data/");
+    // Fuera de la carpeta propia de la app (en el interno o en una tarjeta SD) hace falta el permiso
+    const publica = c.ruta.startsWith("/storage/") && !c.ruta.includes("/Android/data/");
     if (!publica) return guardar({ carpeta: c.ruta });
     const { invoke } = await import("@tauri-apps/api/core");
     if (await invoke("permiso_archivos", { pedir: false })) return guardar({ carpeta: c.ruta });
@@ -96,6 +112,54 @@
       <input class="deslizador" type="range" min="0" max="12" step="1" value={aj.fundido}
         style:--avance="{(aj.fundido / 12) * 100}%"
         oninput={(e) => (aj.fundido = +e.target.value)} onchange={(e) => guardar({ fundido: +e.target.value })} />
+    </section>
+
+    <section>
+      <h2>Ecualizador</h2>
+      <label class="opcion">
+        <div class="texto">
+          <b>Ecualizador</b>
+          <small>Para la música que suena en este dispositivo (no en los jams)</small>
+        </div>
+        <input type="checkbox" class="interruptor" checked={aj.eq_activo} onchange={(e) => guardar({ eq_activo: e.target.checked })} />
+      </label>
+      {#if aj.eq_activo}
+        <div class="presets">
+          {#each PRESETS as [nombre, bandas]}
+            <button class="chip" class:activo={presetActual === nombre} onclick={() => guardar({ eq_bandas: [...bandas] })}>{nombre}</button>
+          {/each}
+        </div>
+        <div class="bandas">
+          {#each BANDAS_EQ as f, i}
+            <label class="banda">
+              <span class="db">{Number(aj.eq_bandas[i]) > 0 ? "+" : ""}{aj.eq_bandas[i]}</span>
+              <input type="range" min="-12" max="12" step="1" value={aj.eq_bandas[i]} aria-label="{hz(f)} Hz"
+                oninput={(e) => moverBanda(i, +e.target.value)} onchange={() => guardar({ eq_bandas: [...aj.eq_bandas] })} />
+              <small>{hz(f)}</small>
+            </label>
+          {/each}
+        </div>
+      {/if}
+    </section>
+
+    <section>
+      <h2>Letras</h2>
+      <div class="opcion">
+        <div class="texto">
+          <b>Traducir las letras a</b>
+          <small>Se ve debajo de cada línea. Traducción gratis de MyMemory: alcanza para unas 3 o 4 canciones nuevas al día (las que ya tradujo se guardan)</small>
+        </div>
+        <select class="selector" value={aj.letra_traducir_a} onchange={(e) => guardar({ letra_traducir_a: e.target.value })}>
+          {#each IDIOMAS as [cod, nombre]}<option value={cod}>{nombre}</option>{/each}
+        </select>
+      </div>
+      <label class="opcion">
+        <div class="texto">
+          <b>Romanización</b>
+          <small>Coreano, japonés (kana), ruso, ucraniano y griego en letras latinas, debajo del original</small>
+        </div>
+        <input type="checkbox" class="interruptor" checked={aj.letra_romanizar} onchange={(e) => guardar({ letra_romanizar: e.target.checked })} />
+      </label>
     </section>
 
     <section>
@@ -243,6 +307,15 @@
   .interruptor::after { content: ""; position: absolute; top: 3px; left: 3px; width: 24px; height: 24px; border-radius: 50%; background: #fff; transition: transform 0.25s var(--curva); }
   .interruptor:checked { background: var(--cian); }
   .interruptor:checked::after { transform: translateX(20px); }
+  .selector { height: 40px; border-radius: 10px; border: 1px solid var(--borde-fuerte); background: var(--tarjeta-2); color: inherit; padding: 0 10px; font: inherit; flex-shrink: 0; max-width: 46%; }
+  .presets { display: flex; gap: 8px; overflow-x: auto; scrollbar-width: none; padding: 12px 0 4px; }
+  .presets .chip { height: 34px; padding: 0 14px; font-size: 13.5px; flex-shrink: 0; }
+  .bandas { display: flex; justify-content: space-between; gap: 6px; padding: 14px 4px 6px; max-width: 420px; }
+  .banda { display: flex; flex-direction: column; align-items: center; gap: 8px; flex: 1; }
+  .banda .db { font-size: 12.5px; font-weight: 700; font-variant-numeric: tabular-nums; color: var(--cian); min-height: 1em; }
+  .banda small { color: var(--tenue); font-size: 12px; }
+  /* Deslizadores verticales (Chromium 124+, como WebView2 y el WebView de Android actuales) */
+  .banda input { writing-mode: vertical-lr; direction: rtl; height: 140px; width: 30px; accent-color: var(--cian); }
   .segmentos { display: flex; gap: 6px; }
   .segmentos button { width: 38px; height: 38px; border-radius: 10px; background: var(--tarjeta-2); font-weight: 700; }
   .segmentos .activo { background: var(--cian); color: #04121a; }

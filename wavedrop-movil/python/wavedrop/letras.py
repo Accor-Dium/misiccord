@@ -1,4 +1,4 @@
-"""Letras de canciones: archivo .lrc local o búsqueda en LRCLIB (https://lrclib.net).
+"""Letras de canciones: archivo .lrc local, LRCLIB (https://lrclib.net) o, de respaldo, la de YouTube Music.
 
 La letra encontrada se guarda junto a la canción (mismo nombre, extensión .lrc), así la
 siguiente vez no hace falta internet y otros reproductores también la usan.
@@ -28,7 +28,7 @@ _RUIDO = re.compile(
 class Letra:
     tipo: str  # "sincronizada", "simple", "instrumental" o "ninguna"
     lineas: list[tuple[int | None, str]] = field(default_factory=list)  # (milisegundo, texto)
-    fuente: str = ""  # "archivo" o "LRCLIB"
+    fuente: str = ""  # "archivo", "LRCLIB" o "YouTube Music"
 
 
 def parsear_lrc(texto: str) -> list[tuple[int | None, str]]:
@@ -136,6 +136,31 @@ def buscar_en_linea(titulo: str, artista: str, album: str, duracion: float | Non
     return Letra("ninguna"), ""
 
 
+def buscar_en_youtube(video_id: str) -> tuple[Letra, str]:
+    """Respaldo cuando LRCLIB no la tiene: la letra que muestra YouTube Music (a veces con tiempos)."""
+    from . import explorar
+    try:
+        yt = explorar._yt()
+        lista = yt.get_watch_playlist(video_id, limit=1)
+        if not lista.get("lyrics"):
+            return Letra("ninguna"), ""
+        d = yt.get_lyrics(lista["lyrics"], timestamps=True) or {}
+    except Exception:
+        return Letra("ninguna"), ""
+    crudas = d.get("lyrics")
+    if d.get("hasTimestamps") and isinstance(crudas, list):
+        lrc = []
+        for linea in crudas:
+            texto = linea.get("text") if isinstance(linea, dict) else getattr(linea, "text", "")
+            inicio = linea.get("start_time") if isinstance(linea, dict) else getattr(linea, "start_time", None)
+            if inicio is not None:
+                lrc.append(f"[{int(inicio) // 60000:02d}:{int(inicio) % 60000 / 1000:05.2f}]{texto or ''}")
+        original = "\n".join(lrc)
+    else:
+        original = crudas if isinstance(crudas, str) else ""
+    return (_desde_texto(original, "YouTube Music") if original else Letra("ninguna")), original
+
+
 def duracion_de(ruta: Path) -> float | None:
     try:
         f = mutagen.File(ruta)
@@ -144,15 +169,29 @@ def duracion_de(ruta: Path) -> float | None:
         return None
 
 
-def obtener_letra(ruta: Path, titulo: str, artista: str, album: str, duracion: float | None = None) -> Letra:
-    """Primero el .lrc junto a la canción; si no hay, LRCLIB (y se guarda el .lrc)."""
+def obtener_letra(ruta: Path, titulo: str, artista: str, album: str, duracion: float | None = None,
+                  video_id: str | None = None) -> Letra:
+    """Primero el .lrc junto a la canción; si no hay, LRCLIB y luego YouTube Music (y se guarda el .lrc)."""
     local = ruta.with_suffix(".lrc")
     if local.exists():
         letra = _desde_texto(local.read_text(encoding="utf-8", errors="replace"), "archivo")
         if letra.tipo != "ninguna":
             return letra
 
-    letra, original = buscar_en_linea(titulo, artista, album, duracion or (duracion_de(ruta) if ruta.exists() else None))
+    try:
+        letra, original = buscar_en_linea(titulo, artista, album, duracion or (duracion_de(ruta) if ruta.exists() else None))
+    except requests.RequestException:
+        letra, original = Letra("ninguna"), ""  # LRCLIB caído: se intenta con YouTube Music
+    if letra.tipo == "ninguna":
+        if not video_id:
+            from . import explorar
+            try:
+                encontrada = explorar.buscar_id(artista, limpiar_titulo(titulo, artista))
+                video_id = encontrada.video_id if encontrada else None
+            except Exception:
+                video_id = None
+        if video_id:
+            letra, original = buscar_en_youtube(video_id)
     if original and letra.tipo in ("sincronizada", "simple"):
         try:
             local.write_text(original, encoding="utf-8")

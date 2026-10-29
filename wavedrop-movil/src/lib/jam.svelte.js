@@ -1,8 +1,8 @@
 // Cliente de jams: la interfaz habla directo con el servidor del anfitrión (HTTP + eventos SSE).
 // El anfitrión usa este mismo cliente contra su propio servidor (127.0.0.1).
 import { py } from "./api.js";
-import { aviso } from "./estado.svelte.js";
-import { alternar, rep } from "./reproductor.svelte.js";
+import { aviso, mostrarHoja } from "./estado.svelte.js";
+import { alternar, preguntarAlReproducirEnJam, rep } from "./reproductor.svelte.js";
 
 export const jam = $state({
   sala: null, // estado que manda el servidor
@@ -252,6 +252,34 @@ export async function agregarAlJam(c) {
     aviso(err.message || "No se pudo agregar al jam", "error");
   }
 }
+
+// Tocar una canción para reproducirla estando en un jam: se pregunta en vez de sonar encima del jam.
+// El anfitrión que "sale" cierra el jam para todos, así que se le dice.
+preguntarAlReproducirEnJam((c, reproducirAqui) => {
+  if (!jam.sala) return false;
+  const anfitrion = soyAnfitrion();
+  const opciones = [];
+  if (puedoAgregar()) opciones.push({ texto: "Mandarla al jam", icono: "jam", accion: () => agregarAlJam(c) });
+  opciones.push({
+    texto: anfitrion ? "Cerrar el jam y escucharla aquí" : "Salir del jam y escucharla aquí",
+    icono: "play", peligro: anfitrion,
+    accion: async () => {
+      await salir();
+      reproducirAqui();
+    },
+  });
+  opciones.push({ texto: "Cancelar", icono: "cerrar", accion: () => {} });
+  mostrarHoja({
+    titulo: "Estás en un jam", subtituloLargo: true, portada: c.portada,
+    subtitulo: anfitrion
+      ? `¿Mandas “${c.titulo}” a la cola del jam o cierras el jam (para todos) y la escuchas aquí?`
+      : puedoAgregar()
+        ? `¿Mandas “${c.titulo}” a la cola del jam o sales del jam y la escuchas aquí?`
+        : `El anfitrión no deja agregar canciones. ¿Sales del jam para escuchar “${c.titulo}” aquí?`,
+    opciones,
+  });
+  return true;
+});
 
 /** QR del jam (SVG) para que otros se unan escaneándolo. */
 export async function qrDelJam() {

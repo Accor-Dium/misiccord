@@ -1,7 +1,8 @@
 <script>
+  import { onMount } from "svelte";
   import { fade, fly } from "svelte/transition";
-  import { py, src, tiempo } from "../lib/api.js";
-  import { abrir, aviso, cerrarReproductor, descargar, irPestana, mostrarHoja, ui } from "../lib/estado.svelte.js";
+  import { alEvento, py, src, tiempo } from "../lib/api.js";
+  import { abrir, abrirAlbumDe, alternarMeGusta, aviso, cerrarReproductor, descargar, irPestana, mostrarHoja, ui, verInfo } from "../lib/estado.svelte.js";
   import {
     alternar, alternarAleatorio, alternarVideo, anterior, ciclarRepetir, irA, montarVideo, rep, reproducirDeCola, siguiente,
   } from "../lib/reproductor.svelte.js";
@@ -23,6 +24,36 @@
   function alternarPanel(cual) {
     if (ui.amplio) lado = cual;
     else panel = panel === cual ? "portada" : cual;
+  }
+
+  // ---------- Me gusta ----------
+  let gusta = $state(false);
+  $effect(() => {
+    const actual = c;
+    if (!actual) return;
+    py("me_gusta_es", { titulo: actual.titulo, artista: actual.artista })
+      .then((r) => { if (c === actual) gusta = r.gusta; })
+      .catch(() => {});
+  });
+  // Si lo cambias desde otro lado (el ⋯ de una lista) mientras suena, el corazón se entera
+  onMount(() => alEvento("me_gusta", (d) => {
+    if (c && d.titulo === c.titulo && d.artista === c.artista) gusta = d.gusta;
+  }));
+  async function tocarMeGusta() {
+    gusta = !gusta; // al instante; si falla se regresa
+    const r = await alternarMeGusta(c);
+    if (r === null) gusta = !gusta;
+  }
+
+  // Tocar el artista o el álbum lleva a su vista (se cierra el reproductor primero, como en "Ir a…")
+  function verArtista(nombre) {
+    cerrarReproductor();
+    setTimeout(() => abrir("artista", { nombre }), 250);
+  }
+  function verAlbum() {
+    const actual = c;
+    cerrarReproductor();
+    setTimeout(() => abrirAlbumDe(actual), 250);
   }
 
   function irAJams() {
@@ -65,6 +96,7 @@
     const ops = [];
     if (!c.ruta) ops.push({ texto: "Descargar", icono: "descargas", accion: () => descargar([c]) });
     if (c.ruta && rep.videoDescargar) ops.push({ texto: "Descargar video", icono: "video", accion: bajarVideo });
+    ops.push({ texto: c.ruta ? "Información y etiquetas" : "Información", icono: "info", accion: () => verInfo(c) });
     ops.push({ texto: `Ir a ${c.artista.split(",")[0]}`, icono: "persona", accion: () => {
       cerrarReproductor();
       setTimeout(() => abrir("buscar_artista", { nombre: c.artista.split(",")[0] }), 250);
@@ -141,8 +173,15 @@
     <section class="datos">
       <div class="titulos">
         <h2 class="cortar">{c.titulo}</h2>
-        <p class="cortar">{c.artista}</p>
+        <p class="cortar">
+          {#each c.artista.split(", ").filter(Boolean) as nombre, i}{#if i}{", "}{/if}<button class="enlace" onclick={() => verArtista(nombre)}>{nombre}</button>{/each}
+          {#if c.album} · <button class="enlace" onclick={verAlbum}>{c.album}</button>{/if}
+        </p>
       </div>
+      <button class="redondo corazon" class:gusta onclick={tocarMeGusta} aria-pressed={gusta}
+        aria-label={gusta ? "Quitar de Me gusta" : "Me gusta"} title={gusta ? "Quitar de Me gusta" : "Me gusta"}>
+        <Icono nombre="corazon" relleno={gusta} tam={26} />
+      </button>
       {#if !c.local}<BotonDescarga cancion={c} />{/if}
     </section>
 
@@ -257,6 +296,11 @@
   .titulos { flex: 1; min-width: 0; }
   h2 { margin: 0; font-size: 24px; font-weight: 800; letter-spacing: -0.3px; }
   .titulos p { margin: 4px 0 0; font-size: 17px; color: rgba(255, 255, 255, 0.7); }
+  .corazon { color: rgba(255, 255, 255, 0.75); flex-shrink: 0; transition: transform 0.2s var(--curva), color 0.2s; }
+  .corazon.gusta { color: #ff4d6d; }
+  .corazon:active { transform: scale(0.85); }
+  .enlace { display: inline; padding: 0; font: inherit; color: inherit; }
+  .enlace:hover { color: #fff; text-decoration: underline; }
   .barra { margin-top: 18px; }
   input[type="range"] {
     width: 100%; height: 22px; background: transparent; -webkit-appearance: none; appearance: none; margin: 0;
@@ -301,7 +345,8 @@
     .reproductor { grid-template-rows: auto 1fr auto auto auto auto auto; }
     .derecha { grid-row: 2 / span 6; }
     .centro { margin: 24px 0; }
-    .pila { width: 100%; }
+    /* La carátula cabe en lo que queda de alto (título, barra y controles van abajo): en ventanas bajitas se achica */
+    .pila { width: min(100%, max(180px, calc(100vh - 470px))); }
     footer { justify-content: center; gap: 28px; }
     .derecha {
       display: flex; flex-direction: column; grid-column: 2; grid-row: 2 / span 5; min-height: 0;

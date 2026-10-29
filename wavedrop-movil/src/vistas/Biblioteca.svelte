@@ -6,6 +6,7 @@
   import { reproducir, reproducirAleatorio } from "../lib/reproductor.svelte.js";
   import { aBody } from "../lib/aBody.js";
   import { pedirEliminar } from "../lib/eliminar.js";
+  import { agrupar, agruparPorLetra, coincide, ORDENES } from "../lib/ordenar.js";
   import FilaCancion from "../componentes/FilaCancion.svelte";
   import Icono from "../componentes/Icono.svelte";
   import Portada from "../componentes/Portada.svelte";
@@ -17,6 +18,74 @@
   let creando = $state(false);
   let nombre = $state("");
   const b = $derived(e.datos);
+
+  // ---------- Buscar, ordenar y agrupar ----------
+  // Lo tuyo se filtra al instante; lo que no tienes se busca en YouTube Music cuando dejas de escribir.
+  let consulta = $state(e.q ?? "");
+  $effect(() => { e.q = consulta; });
+  const texto = $derived(consulta.trim());
+
+  let orden = $state(leerOrden());
+  function leerOrden() {
+    try { return localStorage.getItem("misiccord_orden") || "titulo"; } catch { return "titulo"; }
+  }
+  function ponerOrden(o) {
+    orden = o;
+    try { localStorage.setItem("misiccord_orden", o); } catch {}
+  }
+  function opcionesOrden() {
+    mostrarHoja({
+      titulo: "Ordenar y agrupar canciones",
+      opciones: ORDENES.map(([id, nombre]) => ({ texto: nombre, icono: orden === id ? "check" : "ordenar", accion: () => ponerOrden(id) })),
+    });
+  }
+
+  const cancionesVistas = $derived(b ? (texto ? b.canciones.filter((c) => coincide(texto, c.titulo, c.artista, c.album)) : b.canciones) : []);
+  const grupos = $derived(agrupar(cancionesVistas, orden));
+  const plana = $derived(grupos.flatMap((g) => g.canciones)); // en el orden en que se ven: así suena la cola
+  const albumesVistos = $derived(b ? b.albumes.filter((a) => !texto || coincide(texto, a.nombre, a.artista)) : []);
+  const gruposArtistas = $derived(agruparPorLetra(b ? b.artistas.filter((a) => !texto || coincide(texto, a.nombre)) : [], (a) => a.nombre));
+  const playlistsVistas = $derived(b ? b.playlists.filter((x) => !texto || coincide(texto, x.nombre)) : []);
+
+  let enLinea = $state([]);
+  let buscandoLinea = $state(false);
+  let pedidoLinea = 0;
+  let esperaLinea;
+  $effect(() => {
+    const t = texto;
+    clearTimeout(esperaLinea);
+    if (t.length < 2) {
+      enLinea = [];
+      buscandoLinea = false;
+      return;
+    }
+    esperaLinea = setTimeout(async () => {
+      const yo = ++pedidoLinea;
+      buscandoLinea = true;
+      try {
+        const r = await py("buscar", { q: t, tipo: "canciones" });
+        // Solo las que no tienes descargadas (las tuyas ya salen arriba)
+        if (yo === pedidoLinea) enLinea = (r.canciones ?? []).filter((c) => !c.ruta).slice(0, 8);
+      } catch {
+        if (yo === pedidoLinea) enLinea = [];
+      } finally {
+        if (yo === pedidoLinea) buscandoLinea = false;
+      }
+    }, 450);
+  });
+
+  // Índice A–Z a un lado (por título o artista, sin búsqueda): toca o desliza el dedo para saltar a una letra
+  const indice = $derived(!texto && (orden === "titulo" || orden === "artista") && plana.length > 25 ? grupos.map((g) => g.titulo) : []);
+  let enIndice = false;
+  function tocarIndice(ev) {
+    if (ev.type === "pointerdown") {
+      enIndice = true;
+      ev.currentTarget.setPointerCapture(ev.pointerId);
+    }
+    if (!enIndice) return;
+    const letra = document.elementFromPoint(ev.clientX, ev.clientY)?.closest?.("[data-letra]")?.dataset.letra;
+    if (letra) document.getElementById(`grupo-${letra}`)?.scrollIntoView({ block: "start" });
+  }
 
   // Filtro por carpeta de música ("" = todas); se recuerda al volver a esta vista
   let filtro = $state(e.filtro ?? "");
@@ -144,9 +213,9 @@
     s.has(id) ? s.delete(id) : s.add(id);
     elegidas = s;
   }
-  const todas = $derived(b?.canciones.length > 0 && elegidas.size === b.canciones.length);
+  const todas = $derived(plana.length > 0 && elegidas.size === plana.length);
   function alternarTodas() {
-    elegidas = todas ? new Set() : new Set(b.canciones.map((c) => c.db_id));
+    elegidas = todas ? new Set() : new Set(plana.map((c) => c.db_id));
   }
   function eliminarElegidas() {
     const rutas = new Set(b.canciones.filter((c) => elegidas.has(c.db_id)).map((c) => c.ruta));
@@ -177,12 +246,19 @@
   <header>
     <h1 class="titulo-vista">Biblioteca</h1>
     <div class="botones">
+      <button class="redondo" onclick={() => abrir("estadisticas")} aria-label="Tus estadísticas" title="Tus estadísticas"><Icono nombre="estadisticas" tam={24} /></button>
       <button class="redondo" onclick={abrirPanel} aria-label="Carpetas de música" title="Carpetas de música"><Icono nombre="carpeta" tam={24} /></button>
       {#if pestana === "playlists"}
         <button class="redondo" onclick={() => (creando = !creando)} aria-label="Nueva playlist"><Icono nombre="agregar" tam={26} /></button>
       {/if}
     </div>
   </header>
+  <form class="buscador" role="search" onsubmit={(ev) => { ev.preventDefault(); document.activeElement?.blur(); }}>
+    <Icono nombre="buscar" tam={19} />
+    <input bind:value={consulta} placeholder="Busca en tu biblioteca y en YouTube Music" enterkeyhint="search" />
+    {#if buscandoLinea}<span class="girando"></span>{/if}
+    {#if consulta}<button type="button" onclick={() => (consulta = "")} aria-label="Borrar búsqueda"><Icono nombre="cerrar" tam={17} /></button>{/if}
+  </form>
   {#if escaneando}
     <p class="tenue leyendo">Leyendo tu música… {revisadas ? `${revisadas} canciones revisadas` : ""}</p>
   {/if}
@@ -205,14 +281,14 @@
   {#if !b}
     {#each Array(6) as _}<div class="cargando-bloque" style="height:56px;margin:10px 0"></div>{/each}
   {:else if pestana === "canciones"}
-    <div in:fade={{ duration: 220 }}>
+    <div in:fade={{ duration: 220 }} class:con-indice={!seleccionando && indice.length > 4}>
       {#if b.canciones.length}
         {#if seleccionando}
           <div class="acciones">
             <button class="texto-boton" onclick={alternarTodas}>{todas ? "Quitar todas" : "Elegir todas"}</button>
             <button class="pildora oscura chica" onclick={salirSeleccion}>Listo</button>
           </div>
-          {#each b.canciones as c (c.db_id)}
+          {#each plana as c (c.db_id)}
             <button class="fila-eleccion" class:elegida={elegidas.has(c.db_id)} onclick={() => alternarElegida(c.db_id)}>
               <span class="casilla">{#if elegidas.has(c.db_id)}<Icono nombre="check" tam={16} />{/if}</span>
               <Portada url={c.portada} tam="46px" radio="8px" />
@@ -221,44 +297,63 @@
           {/each}
         {:else}
           <div class="acciones">
-            <span class="tenue">{b.canciones.length} canciones</span>
+            <span class="tenue">{texto ? `${plana.length} de ${b.canciones.length}` : plana.length} canciones</span>
             <div class="botones">
+              <button class="redondo" onclick={opcionesOrden} aria-label="Ordenar y agrupar" title="Ordenar y agrupar">
+                <Icono nombre="ordenar" tam={22} />
+              </button>
               <button class="redondo" onclick={() => (seleccionando = true)} aria-label="Seleccionar canciones" title="Seleccionar">
                 <Icono nombre="seleccionar" tam={22} />
               </button>
-              <button class="pildora oscura chica" onclick={() => reproducirAleatorio(b.canciones, "Tu biblioteca")}>
+              <button class="pildora oscura chica" disabled={!plana.length} onclick={() => reproducirAleatorio(plana, "Tu biblioteca")}>
                 <Icono nombre="aleatorio" tam={18} /> Aleatorio
               </button>
             </div>
           </div>
-          {#each b.canciones as c, i}
-            <FilaCancion cancion={c} alTocar={() => reproducir(b.canciones, i, "Tu biblioteca")} />
+          {#each grupos as g (g.titulo)}
+            <div class="grupo" id="grupo-{g.titulo}">{g.titulo}</div>
+            {#each g.canciones as c (c.db_id)}
+              <FilaCancion cancion={c} alTocar={() => reproducir(plana, plana.indexOf(c), "Tu biblioteca")} />
+            {/each}
+          {:else}
+            <p class="vacio">Nada en tu biblioteca con “{texto}”.</p>
           {/each}
         {/if}
       {:else}
         <p class="vacio">Aún no tienes canciones descargadas.</p>
       {/if}
+      {#if !seleccionando && texto.length >= 2 && (enLinea.length || buscandoLinea)}
+        <div class="titulo-seccion">En YouTube Music <small>no las tienes</small></div>
+        {#each enLinea as c, i (c.id)}
+          <FilaCancion cancion={c} alTocar={() => reproducir(enLinea, i, `Búsqueda “${texto}”`)} />
+        {:else}
+          {#each Array(3) as _}<div class="cargando-bloque" style="height:56px;margin:10px 0"></div>{/each}
+        {/each}
+      {/if}
     </div>
   {:else if pestana === "albumes"}
     <div class="rejilla" in:fade={{ duration: 220 }}>
-      {#each b.albumes as a}
+      {#each albumesVistos as a}
         <Tarjeta portada={a.portada} titulo={a.nombre} subtitulo={a.artista} ancho="100%" alTocar={() => abrir("album", { local: a })} />
       {:else}
-        <p class="vacio">Sin álbumes todavía.</p>
+        <p class="vacio">{texto ? `Ningún álbum con “${texto}”.` : "Sin álbumes todavía."}</p>
       {/each}
     </div>
   {:else if pestana === "artistas"}
     <div in:fade={{ duration: 220 }}>
-      {#each b.artistas as a}
-        <div class="fila-con-menu">
-          <button class="fila-artista" onclick={() => abrir("artista", { nombre: a.nombre })}>
-            <span class="avatar"><Icono nombre="persona" tam={22} /></span>
-            <span class="textos"><b class="cortar">{a.nombre}</b><small>{a.canciones} canciones</small></span>
-          </button>
-          <button class="mas" aria-label="Opciones de {a.nombre}" onclick={() => opcionesArtista(a)}><Icono nombre="mas" tam={22} /></button>
-        </div>
+      {#each gruposArtistas as g (g.titulo)}
+        <div class="grupo">{g.titulo}</div>
+        {#each g.items as a}
+          <div class="fila-con-menu">
+            <button class="fila-artista" onclick={() => abrir("artista", { nombre: a.nombre })}>
+              <span class="avatar"><Icono nombre="persona" tam={22} /></span>
+              <span class="textos"><b class="cortar">{a.nombre}</b><small>{a.canciones} canciones</small></span>
+            </button>
+            <button class="mas" aria-label="Opciones de {a.nombre}" onclick={() => opcionesArtista(a)}><Icono nombre="mas" tam={22} /></button>
+          </div>
+        {/each}
       {:else}
-        <p class="vacio">Sin artistas todavía.</p>
+        <p class="vacio">{texto ? `Ningún artista con “${texto}”.` : "Sin artistas todavía."}</p>
       {/each}
     </div>
   {:else}
@@ -269,17 +364,29 @@
           <button class="pildora cian chica">Crear</button>
         </form>
       {/if}
-      {#each b.playlists as p}
+      <!-- Me gusta va siempre primero: no es una playlist que se borre, guarda también canciones no descargadas -->
+      <button class="fila-artista" onclick={() => abrir("me_gusta")}>
+        <span class="avatar cuadro me-gusta"><Icono nombre="corazon" relleno tam={22} /></span>
+        <span class="textos"><b class="cortar">Me gusta</b><small>{b.me_gusta ?? 0} canciones</small></span>
+      </button>
+      {#each playlistsVistas as p}
         <button class="fila-artista" onclick={() => abrir("playlist", { id: p.id, nombre: p.nombre })}>
           <span class="avatar cuadro"><Icono nombre="lista" tam={22} /></span>
           <span class="textos"><b class="cortar">{p.nombre}</b><small>{p.canciones} canciones</small></span>
         </button>
       {:else}
-        {#if !creando}<p class="vacio">Crea tu primera playlist con el botón <b>+</b>.</p>{/if}
+        {#if !creando}<p class="vacio">Crea tus playlists con el botón <b>+</b>.</p>{/if}
       {/each}
     </div>
   {/if}
 </div>
+
+{#if pestana === "canciones" && !seleccionando && indice.length > 4}
+  <div class="indice" use:aBody role="navigation" aria-label="Saltar a una letra"
+    onpointerdown={tocarIndice} onpointermove={tocarIndice} onpointerup={() => (enIndice = false)} onpointercancel={() => (enIndice = false)}>
+    {#each indice as letra}<span data-letra={letra}>{letra}</span>{/each}
+  </div>
+{/if}
 
 {#if panelCarpetas}
   <div class="fondo-modal" use:aBody transition:fade={{ duration: 180 }} onclick={() => (panelCarpetas = false)} role="presentation"></div>
@@ -287,9 +394,10 @@
     <button class="redondo cerrar-modal" onclick={() => (panelCarpetas = false)} aria-label="Cerrar"><Icono nombre="cerrar" tam={22} /></button>
     {#if explorando}
       <h2>Elige tu carpeta de música</h2>
-      <p class="tenue ruta-actual">{explorando.ruta}</p>
+      <!-- ruta "" = la lista de almacenamientos (interno y tarjetas SD) -->
+      <p class="tenue ruta-actual">{explorando.ruta || "¿En qué almacenamiento está tu música?"}</p>
       <div class="lista-carpetas">
-        {#if explorando.padre}
+        {#if explorando.padre != null}
           <button class="fila-carpeta" onclick={() => irA(explorando.padre)}><Icono nombre="atras" tam={20} /><span>Subir</span></button>
         {/if}
         {#each explorando.carpetas as c}
@@ -298,7 +406,9 @@
           <p class="tenue">No hay más carpetas aquí.</p>
         {/each}
       </div>
-      <button class="pildora cian ancho" onclick={() => agregarCarpeta(explorando.ruta)}>Usar esta carpeta</button>
+      {#if explorando.ruta}
+        <button class="pildora cian ancho" onclick={() => agregarCarpeta(explorando.ruta)}>Usar esta carpeta</button>
+      {/if}
     {:else}
       <h2>Carpetas de música</h2>
       <p class="tenue">Misiccord escucha estas carpetas, con todas sus subcarpetas, para armar tu biblioteca.</p>
@@ -341,12 +451,38 @@
   .carpetas .chip { height: 32px; padding: 0 14px; font-size: 13px; display: inline-flex; align-items: center; gap: 6px; background: transparent; border: 1px solid var(--borde-fuerte); }
   .carpetas .chip.activo { background: var(--cian); border-color: var(--cian); color: #04121a; }
   .carpetas .chip small { opacity: 0.65; }
+  .buscador {
+    display: flex; align-items: center; gap: 10px; height: 44px; margin-top: 12px; padding: 0 12px; border-radius: 12px;
+    background: var(--tarjeta); border: 1px solid var(--borde); color: var(--tenue);
+  }
+  .buscador:focus-within { border-color: var(--cian); }
+  .buscador input { flex: 1; min-width: 0; height: 100%; border: 0; outline: 0; background: transparent; color: var(--texto); font-size: 15.5px; }
+  .buscador button { display: grid; place-items: center; color: var(--tenue); }
+  .girando { width: 16px; height: 16px; border-radius: 50%; border: 2.5px solid var(--borde-fuerte); border-top-color: var(--cian); animation: giro 0.8s linear infinite; flex-shrink: 0; }
+  @keyframes giro { to { transform: rotate(360deg); } }
+  /* Encabezado de cada grupo (letra, álbum o periodo): se queda arriba mientras pasan sus canciones */
+  .grupo {
+    position: sticky; top: 0; z-index: 2; background: var(--fondo); padding: 10px 0 4px; margin-top: 4px;
+    font-size: 15px; font-weight: 800; color: var(--cian); scroll-margin-top: 0;
+  }
+  .con-indice { padding-right: 16px; } /* que el índice no tape el ⋯ de las filas */
+  .indice {
+    position: fixed; z-index: 20; right: 2px; top: calc(var(--seguro-arriba) + 170px);
+    bottom: calc(var(--nav) + var(--mini) + var(--seguro-abajo) + 18px);
+    display: flex; flex-direction: column; justify-content: space-evenly; align-items: center; padding: 2px 3px;
+    touch-action: none; user-select: none; -webkit-user-select: none;
+  }
+  .indice span { font-size: 11px; font-weight: 800; color: var(--cian); padding: 0 4px; line-height: 1; cursor: pointer; }
+  @media (min-width: 900px) {
+    .indice { right: 10px; top: 200px; bottom: calc(var(--mini) + 30px); }
+  }
   .rejilla { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 18px 14px; margin-top: 8px; }
   .acciones { display: flex; justify-content: space-between; align-items: center; margin: 6px 0 8px; }
   .chica { height: 38px; padding: 0 16px; font-size: 14px; }
   .fila-artista { width: 100%; display: flex; align-items: center; gap: 14px; padding: 8px 0; text-align: left; }
   .avatar { width: 54px; height: 54px; border-radius: 50%; background: var(--tarjeta-2); display: grid; place-items: center; color: var(--tenue); flex-shrink: 0; }
   .avatar.cuadro { border-radius: 10px; }
+  .avatar.me-gusta { background: linear-gradient(135deg, #ff4d6d, #7c3aed); color: #fff; }
   .textos { min-width: 0; display: flex; flex-direction: column; }
   .textos small { color: var(--tenue); }
   .botones { display: flex; align-items: center; gap: 6px; }

@@ -9,7 +9,7 @@
   import Icono from "../componentes/Icono.svelte";
   import Portada from "../componentes/Portada.svelte";
 
-  // Álbum de YouTube Music (e.id) o de tu biblioteca (e.local).
+  // Álbum de YouTube Music (e.id, o e.buscar con "álbum artista"), o de tu biblioteca (e.local).
   let { e } = $props();
   const a = $derived(e.datos);
 
@@ -20,6 +20,12 @@
         e.datos = { titulo: e.local.nombre, artista: e.local.artista, anio: e.local.anio, tipo: "Álbum",
                     portada: e.local.portada, canciones: r.canciones, local: true };
       } else {
+        if (!e.id && e.buscar) {
+          // Solo se sabe el nombre (canción en vista previa): el primer álbum que encuentre YouTube Music
+          const r = await py("buscar", { q: e.buscar, tipo: "albumes" });
+          e.id = r.albumes?.[0]?.browse_id;
+          if (!e.id) throw new Error("sin álbum");
+        }
         e.datos = (await py("album", { browse_id: e.id })).album;
       }
     } catch (err) {

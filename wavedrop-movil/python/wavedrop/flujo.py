@@ -248,7 +248,9 @@ class _Manejador(BaseHTTPRequestHandler):
         if not partes.path.startswith(("/flujo/", "/video/")) or consulta.get("t", [""])[0] != _servidor["token"]:
             self.send_error(404)
             return
-        servir(self, partes.path.split("/")[2], self.headers.get("Range"), video=partes.path.startswith("/video/"))
+        # CORS: el ecualizador (Web Audio) deja en silencio el audio de otro origen que no lo permita
+        servir(self, partes.path.split("/")[2], self.headers.get("Range"),
+               cabeceras=lambda: self.send_header("Access-Control-Allow-Origin", "*"), video=partes.path.startswith("/video/"))
 
 
 def _recortar_cache(maximo: int = 25) -> None:

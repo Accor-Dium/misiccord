@@ -24,6 +24,7 @@ export const rep = $state({
   videoDisponible: false, // ajuste "ver video": si está apagado no hay interruptor ni se baja nada
   verVideo: localStorage.getItem("misiccord_ver_video") === "1", // el interruptor sobre la carátula
   videoDescargar: false, // ajuste "descargar también el video"
+  eq: { activo: false, bandas: [0, 0, 0, 0, 0] }, // ecualizador (se carga de los ajustes)
   videoEstado: "", // "" | "cargando" | "listo" | "error"
   salto: 0, // sube cada vez que se adelanta o regresa (para avisar al reloj y a la notificación)
 });
@@ -75,6 +76,54 @@ audios.forEach((a, i) => {
     aviso("No se pudo reproducir esta canción", "error");
   });
 });
+
+// ---------- Ecualizador ----------
+// Web Audio: los dos <audio> pasan por un pre-amplificador y 5 filtros. El grafo se arma solo la primera vez
+// que se prende: sin ecualizador el audio sale directo como siempre (no se arriesga la música en segundo plano).
+// Necesita CORS en lo que suena: el protocolo asset de Tauri y el flujo local (flujo.py) lo mandan.
+export const BANDAS_EQ = [60, 230, 910, 3600, 14000];
+let eq = null; // { ctx, filtros, previo }
+
+function armarEq() {
+  if (eq) return eq;
+  const ctx = new AudioContext();
+  const previo = ctx.createGain();
+  const filtros = BANDAS_EQ.map((frecuencia, i) => {
+    const f = ctx.createBiquadFilter();
+    f.type = i === 0 ? "lowshelf" : i === BANDAS_EQ.length - 1 ? "highshelf" : "peaking";
+    f.frequency.value = frecuencia;
+    f.Q.value = 1;
+    return f;
+  });
+  [previo, ...filtros].reduce((a, b) => (a.connect(b), b)).connect(ctx.destination);
+  for (const a of audios) {
+    // Sin crossOrigin el audio queda "ajeno" y Web Audio lo deja en silencio: lo que ya sonaba se recarga
+    const sonaba = !a.paused;
+    const donde = a.currentTime;
+    const fuente = a.getAttribute("src");
+    a.crossOrigin = "anonymous";
+    if (fuente) {
+      a.src = fuente;
+      a.currentTime = donde;
+      if (sonaba) a.play().catch(() => {});
+    }
+    ctx.createMediaElementSource(a).connect(previo);
+  }
+  eq = { ctx, filtros, previo };
+  return eq;
+}
+
+/** Ajustes del ecualizador: prendido/apagado y los dB de cada banda (−12 a +12). */
+export function aplicarEcualizador(activo, bandas) {
+  rep.eq = { activo: !!activo, bandas: [...(bandas ?? [])] };
+  if (!activo && !eq) return;
+  const { ctx, filtros, previo } = armarEq();
+  filtros.forEach((f, i) => f.gain.setTargetAtTime(activo ? Number(bandas[i]) || 0 : 0, ctx.currentTime, 0.05));
+  // Si subes bandas, se baja un poco todo para que no sature
+  const maximo = activo ? Math.max(0, ...bandas.map(Number)) : 0;
+  previo.gain.setTargetAtTime(Math.pow(10, -maximo / 2 / 20), ctx.currentTime, 0.05);
+  if (ctx.state === "suspended") ctx.resume().catch(() => {});
+}
 
 // ---------- Video ----------
 // El sonido siempre es el de los <audio>; el video va mudo y sigue al audio (su posición y si está en pausa).
@@ -217,6 +266,8 @@ async function cargar(i, manual) {
   }
   if (rep.indice !== i) return; // mientras cargaba se eligió otra
   rep.cargando = false;
+  // El navegador deja arrancar Web Audio solo después de que tocas algo: aquí ya hubo un toque
+  if (eq?.ctx.state === "suspended") eq.ctx.resume().catch(() => {});
   // Fundido completo cuando termina sola; uno cortito si la cambias tú
   cruzarA(fuente, manual ? Math.min(0.6, rep.fundido) : rep.fundido);
   prepararVideo(c);
@@ -265,24 +316,49 @@ function siguienteAutomatico() {
 
 function contarReproduccion(a) {
   // Cuenta para el historial (y las recomendaciones) a los 30 s o a la mitad si es corta
-  if (contada || !rep.actual?.ruta || !a.duration) return;
+  // Las vistas previas también cuentan (para las estadísticas); se mandan con su id de YouTube Music
+  const c = rep.actual;
+  if (contada || !(c?.ruta || c?.id) || !a.duration || !isFinite(a.duration)) return;
   if (a.currentTime >= Math.min(30, a.duration / 2)) {
     contada = true;
-    py("reproduccion", { ruta: rep.actual.ruta }).catch(() => {});
+    const datos = c.ruta
+      ? { ruta: c.ruta, duracion: a.duration }
+      : { id: c.id, titulo: c.titulo, artista: c.artista, duracion: a.duration, portada: c.portada };
+    py("reproduccion", datos).catch(() => {});
   }
 }
 
 // ---------- Controles ----------
 
-export function reproducir(lista, i = 0, origen = "") {
+// Si estás en un jam, tocar una canción no debe sonar encima del jam: jam.svelte.js registra aquí quién pregunta
+// "¿la mandas al jam o sales y la escuchas aquí?" (así este módulo no importa al del jam, que ya importa a este).
+let alTocarEnJam = null; // (cancion, reproducirAqui) => true si se encargó él
+
+export function preguntarAlReproducirEnJam(f) {
+  alTocarEnJam = f;
+}
+
+export function reproducir(lista, i = 0, origen = "", { aunEnJam = false } = {}) {
+  if (!aunEnJam && lista[i] && alTocarEnJam?.(lista[i], () => reproducir(lista, i, origen, { aunEnJam: true }))) return;
   rep.cola = lista.map((c) => ({ ...c }));
   rep.origen = origen;
   cargar(i, true);
 }
 
+/** Agrega a la cola: al final, o justo después de la que suena. Si no suena nada, empieza a sonar. */
+export function agregarACola(c, aContinuacion = false) {
+  if (!rep.actual) return reproducir([c], 0, "Tu cola");
+  const copia = { ...c };
+  if (aContinuacion) rep.cola.splice(rep.indice + 1, 0, copia);
+  else rep.cola.push(copia);
+  precargarSiguiente();
+}
+
 export function reproducirAleatorio(lista, origen = "") {
+  const i = Math.floor(Math.random() * lista.length);
+  if (lista[i] && alTocarEnJam?.(lista[i], () => { rep.aleatorio = true; reproducir(lista, i, origen, { aunEnJam: true }); })) return;
   rep.aleatorio = true;
-  reproducir(lista, Math.floor(Math.random() * lista.length), origen);
+  reproducir(lista, i, origen, { aunEnJam: true });
 }
 
 export function alternar() {
@@ -371,6 +447,15 @@ export function olvidarRutas(rutas) {
     rep.sonando = false;
     rep.pos = rep.dur = 0;
     prepararVideo(null);
+  }
+}
+
+/** Se editaron las etiquetas o la carátula de una canción: lo que está en la cola se ve con los datos nuevos. */
+export function actualizarCancion(nueva) {
+  for (const c of rep.cola) {
+    if (c.ruta !== nueva.ruta) continue;
+    Object.assign(c, { titulo: nueva.titulo, artista: nueva.artista, album: nueva.album,
+                       artista_album: nueva.artista_album, anio: nueva.anio, portada: nueva.portada });
   }
 }
 

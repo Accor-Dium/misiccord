@@ -22,6 +22,7 @@ import app.tauri.plugin.JSObject
 import app.tauri.plugin.Plugin
 import com.chaquo.python.Python
 import com.chaquo.python.android.AndroidPlatform
+import org.json.JSONArray
 import org.json.JSONObject
 import java.util.concurrent.LinkedBlockingQueue
 import java.util.concurrent.TimeUnit
@@ -95,14 +96,22 @@ class PythonPlugin(private val activity: Activity) : Plugin(activity) {
         return Python.getInstance()
     }
 
-    /** Carpetas que usa Python: datos (base de datos), música, caché y dónde está qjs. */
+    /** Carpetas que usa Python: datos (base de datos), música, caché, dónde está qjs y los almacenamientos. */
     private fun contexto(): String {
         val app = activity.applicationContext
+        // Raíz de cada almacenamiento (interno y tarjetas SD): getExternalFilesDirs da .../Android/data/<app>/files en cada uno
+        val volumenes = JSONArray()
+        for (dir in app.getExternalFilesDirs(null)) {
+            val ruta = dir?.absolutePath ?: continue
+            val corte = ruta.indexOf("/Android/data/")
+            if (corte > 0) volumenes.put(ruta.substring(0, corte))
+        }
         return JSONObject()
             .put("datos", app.filesDir.absolutePath + "/wavedrop")
             .put("musica", app.getExternalFilesDir(Environment.DIRECTORY_MUSIC)?.absolutePath ?: app.filesDir.absolutePath + "/musica")
             .put("cache", app.cacheDir.absolutePath)
             .put("libs", app.applicationInfo.nativeLibraryDir)
+            .put("volumenes", volumenes)
             .toString()
     }
 

@@ -9,6 +9,7 @@ emitir(tipo, datos), que en Android llama a emisor.emitir(json) y llega a la int
 import hashlib
 import json
 import os
+import re
 import threading
 import time
 import traceback
@@ -17,7 +18,7 @@ from concurrent.futures import ThreadPoolExecutor
 from dataclasses import asdict
 from pathlib import Path
 
-from . import biblioteca, descargas, explorar, letras, musicbrainz, plataforma
+from . import biblioteca, descargas, etiquetas, explorar, letras, musicbrainz, plataforma, romanizar, traduccion
 
 _estado = {"db": None, "emisor": None, "ajustes": None}
 _candado = threading.RLock()
@@ -31,6 +32,10 @@ AJUSTES_POR_DEFECTO = {
     "carpeta": "",         # dónde guardar las descargas ("" = la carpeta por defecto de cada sistema)
     "video_ver": False,    # mostrar el interruptor de video sobre la carátula del reproductor
     "video_descargar": False,  # bajar también el videoclip (mp4) al descargar una canción
+    "letra_traducir_a": "",  # idioma al que se traducen las letras ("" = no traducir)
+    "letra_romanizar": True,  # mostrar la romanización de letras en coreano, japonés (kana), ruso…
+    "eq_activo": False,    # ecualizador (Web Audio): apagado, el audio va directo como siempre
+    "eq_bandas": [0, 0, 0, 0, 0],  # dB de cada banda: 60 Hz, 230 Hz, 910 Hz, 3.6 kHz, 14 kHz
 }
 
 
@@ -134,7 +139,11 @@ def portada_local(ruta: Path) -> str | None:
     clave = str(ruta.parent) + "|" + ruta.stem
     if clave in _portadas:
         return _portadas[clave]
-    destino = plataforma.carpeta_cache() / "portadas" / (hashlib.md5(str(ruta).encode()).hexdigest() + ".jpg")
+    try:
+        version = ruta.stat().st_mtime_ns  # cambia al editar la carátula: así la interfaz no se queda con la vieja
+    except OSError:
+        version = 0
+    destino = plataforma.carpeta_cache() / "portadas" / (hashlib.md5(f"{ruta}|{version}".encode()).hexdigest() + ".jpg")
     resultado = None
     if destino.exists():
         resultado = str(destino)
@@ -152,6 +161,8 @@ def portada_local(ruta: Path) -> str | None:
                 if datos is None and "metadata_block_picture" in f.tags:
                     from mutagen.flac import Picture
                     datos = Picture(base64.b64decode(f.tags["metadata_block_picture"][0])).data
+            if datos is None and getattr(f, "pictures", None):  # FLAC guarda la carátula aparte de las etiquetas
+                datos = f.pictures[0].data
             if datos:
                 destino.parent.mkdir(parents=True, exist_ok=True)
                 destino.write_bytes(datos)
@@ -164,7 +175,7 @@ def portada_local(ruta: Path) -> str | None:
 
 def _local(c: biblioteca.Cancion) -> dict:
     return {"local": True, "ruta": str(c.ruta), "db_id": c.id, "titulo": c.titulo, "artista": c.artista,
-            "album": c.album, "anio": c.anio, "pista": c.pista, "duracion": c.duracion,
+            "album": c.album, "artista_album": c.artista_album, "anio": c.anio, "pista": c.pista, "duracion": c.duracion, "agregada": c.agregada,
             "portada": portada_local(c.ruta)}
 
 
@@ -185,6 +196,7 @@ def _album_local(a: biblioteca.Album) -> dict:
 def iniciar(d: dict) -> dict:
     with _candado:
         _estado["musica_app"] = d["musica"]
+        _estado["volumenes"] = d.get("volumenes") or []  # Android: raíz del almacenamiento interno y de cada tarjeta SD
         plataforma.configurar(d["datos"], d["musica"], d["cache"], d.get("libs"))
         elegida = _ajustes().get("carpeta")
         if elegida:
@@ -231,9 +243,20 @@ def _probar_carpeta(ruta: Path) -> None:
 def _carpetas_sugeridas() -> list[dict]:
     app = _estado.get("musica_app") or str(plataforma.carpeta_musica())
     if plataforma.es_android():
-        return [{"ruta": app, "nombre": "Carpeta de la app", "detalle": "Solo Misiccord la ve; se borra si desinstalas"},
-                {"ruta": "/storage/emulated/0/Music/Misiccord", "nombre": "Música del teléfono",
-                 "detalle": "Tus otras apps de música también la ven"}]
+        opciones = [{"ruta": app, "nombre": "Carpeta de la app", "detalle": "Solo Misiccord la ve; se borra si desinstalas"},
+                    {"ruta": f"{INTERNO}/Music/Misiccord", "nombre": "Música del teléfono",
+                     "detalle": "Tus otras apps de música también la ven"}]
+        for v in volumenes():
+            if v["ruta"] == INTERNO:
+                continue
+            opciones.append({"ruta": f"{v['ruta']}/Music/Misiccord", "nombre": f"Música en la {v['nombre'][0].lower()}{v['nombre'][1:]}",
+                             "detalle": "En la tarjeta; tus otras apps de música también la ven"})
+            # La carpeta de la app en la tarjeta se puede usar sin el permiso de todos los archivos
+            propia = app.replace(INTERNO, v["ruta"], 1)
+            if propia != app and os.path.isdir(os.path.dirname(propia)):
+                opciones.append({"ruta": propia, "nombre": f"Carpeta de la app en la {v['nombre'][0].lower()}{v['nombre'][1:]}",
+                                 "detalle": "No pide permisos; se borra si desinstalas"})
+        return opciones
     return [{"ruta": app, "nombre": "Música / Misiccord", "detalle": "La carpeta por defecto"}]
 
 
@@ -337,6 +360,7 @@ def biblioteca_(d: dict) -> dict:
         "albumes": [_album_local(a) for a in db.albumes(carpeta)],
         "artistas": [{"nombre": n, "canciones": k} for n, k in db.artistas(carpeta)],
         "playlists": [{"id": i, "nombre": n, "canciones": k} for i, n, k in db.playlists()],
+        "me_gusta": len(db.lista_me_gusta()),
     }
 
 
@@ -374,15 +398,150 @@ def quitar_carpeta_biblioteca(d: dict) -> dict:
     return carpetas_biblioteca({})
 
 
+INTERNO = "/storage/emulated/0"
+
+
+def volumenes() -> list[dict]:
+    """Almacenamientos del teléfono: el interno y cada tarjeta SD (/storage/XXXX-XXXX).
+
+    Kotlin los manda al iniciar (getExternalFilesDirs); además se mira /storage por si alguno no vino.
+    """
+    rutas = [INTERNO, *(_estado.get("volumenes") or [])]
+    try:
+        rutas += [f"/storage/{n}" for n in sorted(os.listdir("/storage")) if re.fullmatch(r"[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}", n)]
+    except OSError:
+        pass
+    vistos, encontrados = set(), []
+    for r in rutas:
+        r = r.rstrip("/")
+        if r in vistos or not os.path.isdir(r):
+            continue
+        vistos.add(r)
+        encontrados.append({"ruta": r, "nombre": "Almacenamiento interno" if r == INTERNO else f"Tarjeta SD ({Path(r).name})"})
+    return encontrados
+
+
 def subcarpetas(d: dict) -> dict:
-    """Para el selector de carpetas de Android (el selector del sistema no sirve para rutas reales)."""
-    ruta = Path(d.get("ruta") or "/storage/emulated/0")
+    """Para el selector de carpetas de Android (el selector del sistema no sirve para rutas reales).
+
+    Sin ruta: los almacenamientos (interno y tarjetas SD); si solo hay uno, se entra directo.
+    "padre" es "" para volver a esa lista y None cuando no hay a dónde subir.
+    """
+    raices = volumenes()
+    if not d.get("ruta"):
+        if len(raices) != 1:
+            return {"ruta": "", "padre": None, "carpetas": raices}
+        d = {"ruta": raices[0]["ruta"]}
+    ruta = Path(d["ruta"])
     try:
         hijas = sorted((p for p in ruta.iterdir() if p.is_dir() and not p.name.startswith(".")), key=lambda p: p.name.lower())
     except OSError as e:
         raise RuntimeError(f"No se puede abrir esa carpeta ({e.strerror or e})") from e
-    return {"ruta": str(ruta), "padre": str(ruta.parent) if ruta.parent != ruta else None,
-            "carpetas": [{"nombre": p.name, "ruta": str(p)} for p in hijas]}
+    if any(str(ruta) == r["ruta"] for r in raices):
+        padre = "" if len(raices) > 1 else None  # de la raíz de un almacenamiento se sube a la lista de almacenamientos
+    else:
+        padre = str(ruta.parent) if ruta.parent != ruta else None
+    return {"ruta": str(ruta), "padre": padre, "carpetas": [{"nombre": p.name, "ruta": str(p)} for p in hijas]}
+
+
+# ---------- Información y etiquetas de una canción ----------
+
+def info_cancion(d: dict) -> dict:
+    """Todo lo que se sabe de una canción. Si está descargada: etiquetas editables, datos técnicos e historial.
+    Si es una vista previa: solo lo que trae YouTube Music (no se puede editar)."""
+    if d.get("ruta"):
+        ruta = Path(d["ruta"])
+        r = etiquetas.leer(ruta)
+        r["tecnico"].update(_db().historial_de(ruta))
+        r["portada"] = portada_local(ruta)
+        r["descargada"] = True
+        return r
+    campos = dict.fromkeys(etiquetas.CAMPOS, "")
+    campos.update({"titulo": d.get("titulo", ""), "artista": d.get("artista", ""), "album": d.get("album", ""),
+                   "anio": str(d.get("anio") or "")})
+    tecnico = {"fuente": "YouTube Music", "duracion": d.get("duracion")}
+    if d.get("id"):
+        tecnico["enlace"] = f"https://music.youtube.com/watch?v={d['id']}"
+    return {"campos": campos, "tecnico": tecnico, "editable": False, "descargada": False, "portada": d.get("portada")}
+
+
+def _tras_editar(ruta: Path) -> dict:
+    _portadas.pop(str(ruta.parent) + "|" + ruta.stem, None)
+    _db().indexar(ruta)
+    plataforma.archivo_nuevo(ruta)  # Android: que las otras apps de música vean los datos nuevos
+    c = _db().cancion_por_ruta(ruta)
+    emitir("biblioteca", {"nuevas": 0, "quitadas": 0, "total": _db().total()})
+    return {"cancion": _local(c) if c else None}
+
+
+def guardar_etiquetas(d: dict) -> dict:
+    ruta = Path(d["ruta"])
+    etiquetas.escribir(ruta, d.get("campos") or {})
+    return _tras_editar(ruta)
+
+
+def cambiar_portada(d: dict) -> dict:
+    """Recibe la imagen en base64 (la interfaz la lee con un <input type="file">, que funciona igual en el cel)."""
+    import base64
+    ruta = Path(d["ruta"])
+    texto = d.get("imagen") or ""
+    try:
+        datos = base64.b64decode(texto.split(",", 1)[-1])  # acepta "data:image/png;base64,..." o solo el base64
+    except ValueError as e:
+        raise RuntimeError("No pude leer la imagen") from e
+    etiquetas.poner_portada(ruta, datos)
+    return _tras_editar(ruta)
+
+
+# ---------- Me gusta ----------
+
+def me_gusta_es(d: dict) -> dict:
+    return {"gusta": _db().me_gusta(d.get("artista", ""), d.get("titulo", ""))}
+
+
+def me_gusta_alternar(d: dict) -> dict:
+    """Pone o quita "Me gusta". Sirve igual para canciones descargadas y vistas previas (se guarda su id de YouTube
+    Music para poder escucharla o descargarla después aunque no la tengas)."""
+    db = _db()
+    artista, titulo = d.get("artista", ""), d.get("titulo", "")
+    if db.me_gusta(artista, titulo):
+        db.quitar_me_gusta(artista, titulo)
+        gusta = False
+    else:
+        # Las vistas previas traen portada de internet; las descargadas, un archivo de la caché que puede cambiar
+        portada = d.get("portada") if str(d.get("portada") or "").startswith("http") else None
+        db.poner_me_gusta({"titulo": titulo, "artista": artista, "album": d.get("album"), "duracion": d.get("duracion"),
+                           "portada": portada, "video_id": d.get("id")})
+        gusta = True
+        if not d.get("id"):
+            # Una canción de tus carpetas: se busca su id en segundo plano, por si algún día borras el archivo
+            def completar():
+                try:
+                    r = explorar.buscar_id(artista, titulo)
+                    if r:
+                        db._w("UPDATE me_gusta SET video_id = ? WHERE clave = ? AND video_id IS NULL",
+                              (r.video_id, biblioteca.clave(artista, titulo)))
+                except Exception:
+                    pass
+            threading.Thread(target=completar, daemon=True).start()
+    emitir("me_gusta", {"titulo": titulo, "artista": artista, "gusta": gusta})
+    return {"gusta": gusta}
+
+
+def me_gusta(d: dict) -> dict:
+    """Tu lista de Me gusta, la más nueva primero. Las que tienes descargadas suenan desde el archivo; las demás en línea
+    (y se pueden descargar). Las que no tienes y no traen id de YouTube Music salen como no disponibles."""
+    db = _db()
+    canciones = []
+    for r in db.lista_me_gusta():
+        local = db.buscar_existente(r["artista"] or "", r["titulo"] or "", r["duracion"])
+        if local:
+            canciones.append(_local(local) | {"id": r["video_id"]})
+        else:
+            canciones.append({"local": False, "id": r["video_id"], "titulo": r["titulo"], "artista": r["artista"],
+                              "album": r["album"] or "", "duracion": r["duracion"], "portada": r["portada"], "ruta": None,
+                              "disponible": bool(r["video_id"])})
+    return {"canciones": canciones}
 
 
 def album_local(d: dict) -> dict:
@@ -469,9 +628,28 @@ def eliminar_canciones(d: dict) -> dict:
 
 
 def reproduccion(d: dict) -> dict:
-    c = _db().cancion_por_ruta(Path(d["ruta"]))
-    _db().registrar("reproduccion", Path(d["ruta"]), c.artista if c else "", c.titulo if c else Path(d["ruta"]).stem)
+    """Cuenta una reproducción para el historial, las recomendaciones y las estadísticas.
+    Las vistas previas (sin archivo) también cuentan, como "yt:<id>"."""
+    if d.get("ruta"):
+        c = _db().cancion_por_ruta(Path(d["ruta"]))
+        _db().registrar("reproduccion", Path(d["ruta"]), c.artista if c else "", c.titulo if c else Path(d["ruta"]).stem,
+                        d.get("duracion"))
+    elif d.get("id"):
+        _db().registrar("reproduccion", f"yt:{d['id']}", d.get("artista", ""), d.get("titulo", ""),
+                        d.get("duracion"), d.get("portada"))
     return {}
+
+
+def estadisticas(d: dict) -> dict:
+    """Lo que escuchaste en el último mes (dias=30) o los últimos 3 meses (dias=90), con porcentajes."""
+    dias = 90 if int(d.get("dias", 30)) >= 90 else 30
+    e = _db().estadisticas(dias)
+    for c in e["canciones"]:
+        ruta = c.pop("ruta")
+        local = _db().cancion_por_ruta(Path(ruta)) if ruta else None
+        if local:
+            c.update(_local(local))  # con su portada y lista para reproducir
+    return e
 
 
 def previa(d: dict) -> dict:
@@ -551,8 +729,23 @@ def descargar_video(d: dict) -> dict:
 def letra(d: dict) -> dict:
     # Las que suenan en línea no tienen archivo: su .lrc se guarda en la caché de previas
     ruta = Path(d["ruta"]) if d.get("ruta") else explorar.carpeta_cache() / f"{d['id']}.letra"
-    l = letras.obtener_letra(ruta, d.get("titulo", ""), d.get("artista", ""), d.get("album", ""), d.get("duracion"))
-    return {"tipo": l.tipo, "lineas": l.lineas, "fuente": l.fuente}
+    l = letras.obtener_letra(ruta, d.get("titulo", ""), d.get("artista", ""), d.get("album", ""), d.get("duracion"),
+                             d.get("id"))
+    textos = [t for _, t in l.lineas]
+    cod = romanizar.idioma(textos)
+    r = {"tipo": l.tipo, "lineas": l.lineas, "fuente": l.fuente, "idioma": cod, "idioma_nombre": romanizar.NOMBRES.get(cod, "")}
+    if cod in romanizar.ROMANIZABLES:
+        rom = romanizar.romanizar(textos, cod)
+        if any(rom):
+            r["romanizacion"] = rom
+    return r
+
+
+def letra_traduccion(d: dict) -> dict:
+    """Traducción línea por línea de una letra (MyMemory, con caché)."""
+    if not d.get("origen") or d.get("origen") == d.get("destino"):
+        return {"traduccion": []}
+    return {"traduccion": traduccion.traducir([str(x) for x in d.get("lineas") or []], d["origen"], d["destino"])}
 
 
 # ---------- Descargas ----------
@@ -788,7 +981,10 @@ FUNCIONES = {
     "playlist": playlist, "crear_playlist": crear_playlist, "agregar_a_playlist": agregar_a_playlist,
     "quitar_de_playlist": quitar_de_playlist, "borrar_playlist": borrar_playlist,
     "eliminar_canciones": eliminar_canciones, "video": video, "descargar_video": descargar_video,
-    "reproduccion": reproduccion, "previa": previa, "precargar": precargar, "letra": letra,
+    "me_gusta": me_gusta, "me_gusta_es": me_gusta_es, "me_gusta_alternar": me_gusta_alternar,
+    "info_cancion": info_cancion, "guardar_etiquetas": guardar_etiquetas, "cambiar_portada": cambiar_portada,
+    "reproduccion": reproduccion, "estadisticas": estadisticas, "previa": previa, "precargar": precargar, "letra": letra,
+    "letra_traduccion": letra_traduccion,
     "descargar": descargar, "descargas": descargas_, "cancelar_descarga": cancelar_descarga,
     "limpiar_descargas": limpiar_descargas,
     "jam_crear": jam_crear, "jam_cerrar": jam_cerrar, "jam_buscar": jam_buscar, "jam_qr": jam_qr,
