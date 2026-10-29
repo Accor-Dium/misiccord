@@ -2,7 +2,7 @@
 // El anfitrión usa este mismo cliente contra su propio servidor (127.0.0.1).
 import { py } from "./api.js";
 import { aviso, mostrarHoja } from "./estado.svelte.js";
-import { alternar, preguntarAlReproducirEnJam, rep } from "./reproductor.svelte.js";
+import { alternar, gananciaDe, preguntarAlReproducirEnJam, rep } from "./reproductor.svelte.js";
 import { t } from "./idioma.svelte.js";
 
 export const jam = $state({
@@ -18,10 +18,11 @@ const audio = new Audio();
 audio.preload = "auto";
 let eventos = null;
 
-// El audio del jam usa el mismo volumen que el reproductor normal
+// El audio del jam usa el mismo volumen que el reproductor normal (con la misma curva; sin refuerzo arriba de 100 %:
+// no pasa por Web Audio porque el audio del anfitrión no siempre manda CORS)
 $effect.root(() => {
   $effect(() => {
-    audio.volume = rep.volumen;
+    audio.volume = Math.min(1, gananciaDe(rep.volumen));
     audio.muted = rep.silencio;
   });
 });

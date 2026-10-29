@@ -8,6 +8,33 @@ import { py, src } from "./api.js";
 import { aviso } from "./estado.svelte.js";
 import { t } from "./idioma.svelte.js";
 
+// ---------- Curva de volumen ----------
+// El oído escucha en decibeles, no en amplitud: con la barra lineal de antes casi todo el cambio estaba en el
+// primer 20 %. Aquí la barra es "qué tan fuerte se oye": cada +10 dB se percibe como el doble de fuerte
+// (ley de Stevens / sonios), así que 50 % = −10 dB (la mitad de fuerte), 100 % = el archivo tal cual
+// y 200 % = +10 dB (el doble de fuerte). Abajo de 2 % la curva baja en línea recta a 0 para que sí llegue a silencio.
+export const VOLUMEN_MAX = 2;
+const VOLUMEN_PISO = 0.02; // −56 dB
+
+/** Amplitud (1 = original) que corresponde a una posición de la barra (0–2). */
+export function gananciaDe(p) {
+  if (p <= 0) return 0;
+  const db = (x) => 10 ** ((10 * Math.log2(x)) / 20);
+  return p < VOLUMEN_PISO ? db(VOLUMEN_PISO) * (p / VOLUMEN_PISO) : db(p);
+}
+
+function volumenGuardado() {
+  let v = Number(localStorage.getItem("wavedrop_volumen") ?? 1);
+  if (!isFinite(v)) v = 1;
+  // Antes se guardaba la amplitud (barra lineal 0–1): se pasa una vez a la escala nueva para que suene igual
+  if (localStorage.getItem("misiccord_volumen_escala") !== "2") {
+    v = v > 0 ? Math.max(VOLUMEN_PISO, 2 ** ((20 * Math.log10(v)) / 10)) : 0;
+    localStorage.setItem("misiccord_volumen_escala", "2");
+    localStorage.setItem("wavedrop_volumen", String(v));
+  }
+  return Math.max(0, Math.min(VOLUMEN_MAX, v));
+}
+
 export const rep = $state({
   cola: [],
   indice: -1,
@@ -19,7 +46,7 @@ export const rep = $state({
   dur: 0,
   aleatorio: false,
   repetir: 0, // 0 no, 1 toda la lista, 2 una canción
-  volumen: Number(localStorage.getItem("wavedrop_volumen") ?? 1),
+  volumen: volumenGuardado(), // posición de la barra: 0 a 2 (200 %); ver gananciaDe()
   silencio: false,
   fundido: 6, // segundos; se carga de los ajustes
   videoDisponible: false, // ajuste "ver video": si está apagado no hay interruptor ni se baja nada
@@ -79,16 +106,30 @@ audios.forEach((a, i) => {
 });
 
 // ---------- Ecualizador ----------
-// Web Audio: los dos <audio> pasan por un pre-amplificador y 5 filtros. El grafo se arma solo la primera vez
-// que se prende: sin ecualizador el audio sale directo como siempre (no se arriesga la música en segundo plano).
+// Web Audio: los dos <audio> pasan por un pre-amplificador, 5 filtros, el refuerzo de volumen y un limitador. El grafo se
+// arma solo la primera vez que se prende el ecualizador o se sube de 100 %: si no, el audio sale directo como siempre
+// (no se arriesga la música en segundo plano).
 // Necesita CORS en lo que suena: el protocolo asset de Tauri y el flujo local (flujo.py) lo mandan.
 export const BANDAS_EQ = [60, 230, 910, 3600, 14000];
-let eq = null; // { ctx, filtros, previo }
+let eq = null; // { ctx, filtros, previo, refuerzo, limitador, suave }
 
 function armarEq() {
   if (eq) return eq;
   const ctx = new AudioContext();
   const previo = ctx.createGain();
+  // Arriba de 100 % el <audio> ya no puede subir (su volume llega a 1): el resto lo pone "refuerzo".
+  // Para que el refuerzo no recorte (la distorsión dura de pasar de 0 dBFS) hay dos etapas, solo activas con refuerzo:
+  // un limitador que aprieta lo que pase de −1.5 dB (con ratio 1 no toca nada) y, como se le escapan los golpes rápidos
+  // (~+1.4 dB en pruebas), un recorte suave al final: lineal hasta 0.8 y de ahí una curva tanh que nunca pasa de −0.4 dB.
+  // Sin sobremuestreo a propósito: el filtro del "2x"/"4x" rebota y vuelve a pasar de 0 dB.
+  const refuerzo = ctx.createGain();
+  const limitador = ctx.createDynamicsCompressor();
+  limitador.threshold.value = -1.5;
+  limitador.knee.value = 0;
+  limitador.ratio.value = 1;
+  limitador.attack.value = 0.001;
+  limitador.release.value = 0.2;
+  const suave = ctx.createWaveShaper();
   const filtros = BANDAS_EQ.map((frecuencia, i) => {
     const f = ctx.createBiquadFilter();
     f.type = i === 0 ? "lowshelf" : i === BANDAS_EQ.length - 1 ? "highshelf" : "peaking";
@@ -96,7 +137,7 @@ function armarEq() {
     f.Q.value = 1;
     return f;
   });
-  [previo, ...filtros].reduce((a, b) => (a.connect(b), b)).connect(ctx.destination);
+  [previo, ...filtros, refuerzo, limitador, suave].reduce((a, b) => (a.connect(b), b)).connect(ctx.destination);
   for (const a of audios) {
     // Sin crossOrigin el audio queda "ajeno" y Web Audio lo deja en silencio: lo que ya sonaba se recarga
     const sonaba = !a.paused;
@@ -110,9 +151,35 @@ function armarEq() {
     }
     ctx.createMediaElementSource(a).connect(previo);
   }
-  eq = { ctx, filtros, previo };
+  eq = { ctx, filtros, previo, refuerzo, limitador, suave };
+  aplicarRefuerzo();
   return eq;
 }
+
+/** Lo que el <audio> no alcanza (volumen > 100 %) va en el nodo de refuerzo; el grafo se arma solo si hace falta. */
+function aplicarRefuerzo() {
+  const g = gananciaDe(rep.volumen);
+  if (g <= 1 && !eq) return;
+  const { ctx, refuerzo, limitador, suave } = armarEq();
+  // setTargetAtTime: el cambio se suaviza en ~30 ms y no se oyen chasquidos al arrastrar la barra
+  refuerzo.gain.setTargetAtTime(Math.max(1, g), ctx.currentTime, 0.03);
+  limitador.ratio.setTargetAtTime(g > 1 ? 20 : 1, ctx.currentTime, 0.03);
+  suave.curve = g > 1 ? (curvaSuave ??= hacerCurvaSuave()) : null; // null = pasa tal cual
+  if (ctx.state === "suspended") ctx.resume().catch(() => {});
+}
+
+let curvaSuave = null;
+function hacerCurvaSuave() {
+  const n = 2049, c = new Float32Array(n), k = 0.8;
+  for (let i = 0; i < n; i++) {
+    const x = (i / (n - 1)) * 2 - 1, a = Math.abs(x);
+    c[i] = Math.sign(x) * (a <= k ? a : k + (1 - k) * Math.tanh((a - k) / (1 - k)));
+  }
+  return c;
+}
+
+/** Volumen del <audio> (0–1): la parte de la ganancia que el elemento sí puede dar. */
+const base = () => Math.min(1, gananciaDe(rep.volumen));
 
 /** Ajustes del ecualizador: prendido/apagado y los dB de cada banda (−12 a +12). */
 export function aplicarEcualizador(activo, bandas) {
@@ -207,7 +274,7 @@ function cancelarFundido() {
   if (fundido) {
     clearInterval(fundido.intervalo);
     for (const a of audios) if (a !== el()) a.pause();
-    el().volume = rep.volumen;
+    el().volume = base();
     fundido = null;
   }
 }
@@ -224,7 +291,7 @@ function cruzarA(url, segundos) {
   rep.dur = 0;
   if (viejo.paused || segundos <= 0) {
     viejo.pause();
-    nuevo.volume = rep.volumen;
+    nuevo.volume = base();
     nuevo.play().catch(() => {});
     return;
   }
@@ -237,12 +304,12 @@ function cruzarA(url, segundos) {
   fundido = {
     intervalo: setInterval(() => {
       const x = Math.min(1, (performance.now() - inicio) / total);
-      nuevo.volume = rep.volumen * Math.sin((x * Math.PI) / 2);
+      nuevo.volume = base() * Math.sin((x * Math.PI) / 2);
       viejo.volume = v0 * Math.cos((x * Math.PI) / 2);
       if (x >= 1) {
         clearInterval(fundido.intervalo);
         viejo.pause();
-        viejo.volume = rep.volumen;
+        viejo.volume = base();
         fundido = null;
       }
     }, 40),
@@ -384,11 +451,14 @@ export function irA(segundos) {
 }
 
 export function ponerVolumen(v) {
-  rep.volumen = Math.max(0, Math.min(1, v));
+  v = Math.max(0, Math.min(VOLUMEN_MAX, v));
+  if (Math.abs(v - 1) < 0.03) v = 1; // se "pega" en 100 % (el archivo tal cual) para que sea fácil regresar
+  rep.volumen = v;
   rep.silencio = false;
   localStorage.setItem("wavedrop_volumen", String(rep.volumen));
   for (const a of audios) a.muted = false;
-  if (!fundido) el().volume = rep.volumen;
+  if (!fundido) el().volume = base();
+  aplicarRefuerzo();
 }
 
 export function alternarSilencio() {
@@ -396,8 +466,10 @@ export function alternarSilencio() {
   for (const a of audios) a.muted = rep.silencio;
 }
 
-// El volumen guardado se aplica desde el arranque
-for (const a of audios) a.volume = rep.volumen;
+// El volumen guardado se aplica desde el arranque (arriba de 100 % el refuerzo se arma al primer play:
+// el navegador no deja empezar un AudioContext sin que el usuario toque algo)
+for (const a of audios) a.volume = base();
+audios.forEach((a) => a.addEventListener("play", () => gananciaDe(rep.volumen) > 1 && aplicarRefuerzo()));
 
 export function alternarAleatorio() {
   rep.aleatorio = !rep.aleatorio;

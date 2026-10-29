@@ -12,14 +12,14 @@ documentada abajo; si algo no está documentado, pregunta antes de "arreglarlo".
 
 ---
 
-## Estado del proyecto (al 29 de octubre de 2026 · versión publicada: **1.0.9**)
+## Estado del proyecto (al 29 de octubre de 2026 · versión publicada: **1.0.10**)
 
 Resumen para que no tengas que leer todo el código. Actualiza esta sección cuando publiques una versión.
 
 ### Qué hace la app hoy
 - **Biblioteca local**: escanea la carpeta de descargas (y las que se agreguen), agrupa por canción/álbum/artista, playlists propias,
   historial de reproducción. Eliminar canciones: una, varias (modo selección en Biblioteca), un álbum o un artista completo.
-- **Reproductor**: fundido entre canciones (0–12 s, en Ajustes), aleatorio/repetir, volumen, reproductor grande con letra sincronizada (LRCLIB)
+- **Reproductor**: fundido entre canciones (0–12 s, en Ajustes), aleatorio/repetir, volumen de 0 a 200 % con curva perceptual, reproductor grande con letra sincronizada (LRCLIB)
   y cola, mini reproductor. En el cel: notificación de música, pantalla bloqueada, relojes (Wear OS/Galaxy Watch) y audífonos Bluetooth.
 - **En línea (YouTube Music)**: buscador en vivo en **Inicio** (resultados mientras escribes), álbumes y artistas, recomendaciones "Para ti"
   (radio a partir de lo que más escuchas/descargas, caché de 6 h). Lo que no tienes suena **al instante por streaming progresivo** y se guarda en caché si se escucha completo.
@@ -57,13 +57,14 @@ Resumen para que no tengas que leer todo el código. Actualiza esta sección cua
 | 1.0.7 | Videos musicales (ver y descargar, opcional) y biblioteca por carpetas (de Omar). |
 | 1.0.8 | Info y edición de etiquetas/carátula, letras con traducción y romanización, estadísticas, Me gusta, ordenar biblioteca, ecualizador, pregunta al reproducir en un jam, mantener para agregar a la cola, descargas en segundo plano en Android (de Omar). |
 | 1.0.9 | Inicio estilo YouTube Music (estados de ánimo, marcación rápida, Explorar), jalar para actualizar, menú de canción al mantener presionada (compartir, radio), compartir/exportar (Android: menú del sistema; PC: portapapeles, USB o carpeta), avisos nuevos, idioma español/inglés. |
+| 1.0.10 | Volumen de 0 a 200 % con curva en decibeles (perceptual); arriba de 100 % refuerzo por Web Audio con limitador y recorte suave. |
 
 ### Qué está probado y dónde
 - **En dispositivos reales** (lo probó quien administra el proyecto): app de Windows, Android en varios teléfonos (Samsung S25 Ultra, Pixel 7 Pro…),
   jams en red local, escáner QR, jam por internet abierto desde el cel.
 - **Solo en el emulador o con scripts**: controles de reloj (con `cmd media_session dispatch`), links en Android, eliminar canciones,
   tiempos de streaming, streaming progresivo (en Chromium con la red frenada).
-- **Sin probar todavía**: links y "una sola ventana" en Windows, panel de medios de Windows, un reloj real, un jam con YouTube Music entre teléfonos reales, videos musicales y carpetas de la biblioteca en el cel, lo de 1.0.8 (segundo plano, ecualizador, editar etiquetas) en teléfonos reales, y de 1.0.9: exportar a una USB real y todo en la app de Windows (se probó en navegador con el núcleo de Python y en el emulador: menú, compartir de Android, jalar para actualizar, idioma).
+- **Sin probar todavía**: links y "una sola ventana" en Windows, panel de medios de Windows, un reloj real, un jam con YouTube Music entre teléfonos reales, videos musicales y carpetas de la biblioteca en el cel, lo de 1.0.8 (segundo plano, ecualizador, editar etiquetas) en teléfonos reales, y de 1.0.9: exportar a una USB real y todo en la app de Windows (se probó en navegador con el núcleo de Python y en el emulador: menú, compartir de Android, jalar para actualizar, idioma); de 1.0.10, el volumen arriba de 100 % con música real (la curva y el limitador se midieron en Chromium con señales de prueba).
 
 ### Dónde guarda las cosas
 | | Windows | Android |
@@ -177,7 +178,7 @@ Todo el trabajo real vive en Python: python/wavedrop/  (el mismo código en las 
 ## No cambiar (aunque parezca mejora)
 
 - **Identificadores**: `identifier` = `com.wavedrop.movil` (cambiarlo = otra app; se pierden datos y actualizaciones), carpeta de datos `%LOCALAPPDATA%\WaveDrop`,
-  claves de `localStorage` (`wavedrop_nombre`, `wavedrop_volumen`, `misiccord_ultima_revision`, `misiccord_idioma`, `misiccord_orden`), esquema `misiccord://`, URL de la página
+  claves de `localStorage` (`wavedrop_nombre`, `wavedrop_volumen`, `misiccord_ultima_revision`, `misiccord_idioma`, `misiccord_orden`, `misiccord_volumen_escala`), esquema `misiccord://`, URL de la página
   `https://accor-dium.github.io/misiccord/jam/` (está en `lib/enlaces.svelte.js` y en `api.jam_qr`: cambia las dos o ninguna), repo `Accor-Dium/misiccord`.
 - **Llaves de firma**: si cambia la del APK, Android no deja actualizar encima; si cambia la del updater, las PCs instaladas no aceptan versiones nuevas.
 - **Python 3.14 + Chaquopy 17.2** y **solo ABIs arm64/x86_64** (Chaquopy no compila 3.14 para armeabi-v7a).
@@ -223,6 +224,11 @@ Todo el trabajo real vive en Python: python/wavedrop/  (el mismo código en las 
   usan el cliente sin idioma (`_yt`): ytmusicapi reconoce cada resultado por su texto en inglés y con `language="es"` los filtros (canciones, álbumes) regresan vacíos.
 - **Compartir en Android** pasa por `FileProvider` (`res/xml/file_paths.xml` incluye `/storage` para tarjetas SD) con `ClipData`: sin ella WhatsApp no recibe
   permiso para leer todos los archivos.
+- **Volumen (`reproductor.svelte.js`)**: `rep.volumen` es la **posición de la barra (0–2)**, no la amplitud: `gananciaDe()` la pasa a decibeles
+  (+10 dB = el doble de fuerte: 50 % = −10 dB, 100 % = el archivo tal cual, 200 % = +10 dB). El `<audio>` da hasta 1 y lo de arriba lo pone el nodo
+  `refuerzo` del grafo de Web Audio (el mismo del ecualizador, que se arma al subir de 100 %), seguido de un limitador (−1.5 dB) y un recorte suave tanh,
+  sin sobremuestreo (con "2x"/"4x" el filtro rebota y pasa de 0 dB); los dos solo actúan con refuerzo. `wavedrop_volumen` antes guardaba la amplitud:
+  `misiccord_volumen_escala = "2"` marca que ya se convirtió. El audio de los jams usa la misma curva, pero sin refuerzo (tope 100 %).
 - **El servicio de Python fuerza UTF-8** en stdin/stdout (`servicio.py`): Windows usaba cp1252 y rompía acentos.
 
 ## Convenciones
