@@ -12,6 +12,64 @@ documentada abajo; si algo no está documentado, pregunta antes de "arreglarlo".
 
 ---
 
+## Estado del proyecto (al 29 de octubre de 2026 · versión publicada: **1.0.6**)
+
+Resumen para que no tengas que leer todo el código. Actualiza esta sección cuando publiques una versión.
+
+### Qué hace la app hoy
+- **Biblioteca local**: escanea la carpeta de descargas (y las que se agreguen), agrupa por canción/álbum/artista, playlists propias,
+  historial de reproducción. Eliminar canciones: una, varias (modo selección en Biblioteca), un álbum o un artista completo.
+- **Reproductor**: fundido entre canciones (0–12 s, en Ajustes), aleatorio/repetir, volumen, reproductor grande con letra sincronizada (LRCLIB)
+  y cola, mini reproductor. En el cel: notificación de música, pantalla bloqueada, relojes (Wear OS/Galaxy Watch) y audífonos Bluetooth.
+- **En línea (YouTube Music)**: buscador en vivo en **Inicio** (resultados mientras escribes), álbumes y artistas, recomendaciones "Para ti"
+  (radio a partir de lo que más escuchas/descargas, caché de 6 h). Lo que no tienes suena **al instante por streaming progresivo** y se guarda en caché si se escucha completo.
+- **Descargas**: canciones sueltas o links de playlists/álbumes de YouTube, YouTube Music, **Spotify** (se lee la lista de la página *embed* de Spotify, que trae unas 100 canciones como máximo, y cada una se busca en YouTube Music) y SoundCloud.
+  Metadatos de MusicBrainz, carpetas por artista, 1–4 descargas a la vez, carpeta configurable (en Android: carpeta de la app o la pública
+  `Music/Misiccord`, que pide "Acceso a todos los archivos").
+- **Jams** (escuchar juntos):
+  - Modos *Sincronizado* (suena en todos) o *Solo aquí* (suena en el anfitrión, ideal con bocina). Cola compartida, votos para saltar, reacciones,
+    invitados mandan canciones de su teléfono o de YouTube Music (suenan al momento, sin esperar descarga), agregar desde cualquier lista.
+  - Unirse: QR (escáner de la app o cámara normal), **link** que abre la app y entra solo, jams cercanos (UDP en la red) o IP + código.
+  - **Por internet**: el anfitrión (PC o cel) toca "Abrir" en Invitar; túnel de Cloudflare, sin cuenta ni configurar el módem.
+- **Actualizaciones automáticas** desde GitHub Releases (Windows instala solo; Android baja el APK y abre el instalador).
+
+### Historial de versiones
+| Versión | Qué trajo |
+|---|---|
+| 1.0.0 | Migración de WaveDrop (PySide6) a Tauri 2: Windows + Android con el mismo núcleo de Python; jams en red local. |
+| 1.0.1 | Carpeta pública Música en Android (permiso de archivos), primeras actualizaciones automáticas. |
+| 1.0.2 | **Lector QR ya no cierra la app** (reglas R8), rediseño de Jams, respaldo ante "not a bot" de YouTube, arreglos de Inicio. |
+| 1.0.3 | Jams por internet desde la PC, barra flotante del jam, agregar al jam desde cualquier lista, límite de intentos del código. |
+| 1.0.4 | Eliminar canciones, primer streaming, controles de medios/relojes, jam por internet desde el cel (`cloudflared` para Android). |
+| 1.0.5 | Streaming progresivo real (cliente `android_music` sin JS: de ~11 s a ~2 s en el cel) y precarga, YouTube en jams al instante, buscador en Inicio. |
+| 1.0.6 | Links de jam (`https://accor-dium.github.io/misiccord/jam/#…` → `misiccord://`), el QR usa ese link, avisos si un jam no responde. |
+
+### Qué está probado y dónde
+- **En dispositivos reales** (lo probó quien administra el proyecto): app de Windows, Android en varios teléfonos (Samsung S25 Ultra, Pixel 7 Pro…),
+  jams en red local, escáner QR, jam por internet abierto desde el cel.
+- **Solo en el emulador o con scripts**: controles de reloj (con `cmd media_session dispatch`), links en Android, eliminar canciones,
+  tiempos de streaming, streaming progresivo (en Chromium con la red frenada).
+- **Sin probar todavía**: links y "una sola ventana" en Windows, panel de medios de Windows, un reloj real, un jam con YouTube Music entre teléfonos reales.
+
+### Dónde guarda las cosas
+| | Windows | Android |
+|---|---|---|
+| Datos (`biblioteca.db`, `ajustes.json`, `recomendaciones.json`) | `%LOCALAPPDATA%\WaveDrop` | `files/wavedrop` de la app |
+| Música descargada (por defecto) | `~/Music/Misiccord` | `Android/data/com.wavedrop.movil/files/Music` (o `Music/Misiccord` si se elige) |
+| Caché (previas, portadas, yt-dlp, APK de actualización) | `%LOCALAPPDATA%\WaveDrop\cache` | caché de la app |
+| `cloudflared` | se baja a `%LOCALAPPDATA%\WaveDrop\bin` la primera vez | dentro del APK (`libcloudflared.so`) |
+
+### Problemas conocidos y siguientes pasos
+- El `misiccord-servicio.exe` de Windows (~11 MB) se cuela en el APK por `bundle.resources`; debería ir solo en la config de Windows.
+- El APK de teléfonos también trae las librerías `x86_64` del emulador (`libqjs.so`, `libcloudflared.so`): unos 12 MB de más.
+- YouTube a veces pide "confirm you're not a bot" en ciertas redes/IPs: hay respaldo de clientes, pero puede volver a pasar si YouTube cambia algo.
+- Android puede dormir la app en segundo plano si no hay nada sonando (con música activa la mantiene viva el servicio de medios).
+- `Buscar.svelte` quedó sin pestaña (la búsqueda está en Inicio); se puede quitar cuando nada la abra.
+- `README.md` todavía es el de la plantilla de Tauri.
+- No hay iOS ni macOS (no se ha intentado).
+
+---
+
 ## Arquitectura en una imagen
 
 ```
@@ -168,9 +226,3 @@ Las apps instaladas se actualizan solas desde la Release más reciente (Windows 
   - Links: `adb shell am start "intent://jam?ip=…&puerto=…&codigo=…#Intent;scheme=misiccord;package=com.wavedrop.movil;end"`.
   - El WebView del emulador **no conecta a `10.0.2.2`** (la PC): para unirse a un jam de la PC usa `adb reverse tcp:PUERTO tcp:PUERTO` e `ip=127.0.0.1`.
 - Los jams entre dispositivos reales los prueba quien administra el proyecto: no los des por probados si solo los corriste en el emulador.
-
-## Pendientes conocidos
-
-- El `misiccord-servicio.exe` de Windows (~11 MB) se cuela en el APK por `bundle.resources`; debería ir solo en la config de Windows.
-- `Buscar.svelte` quedó sin pestaña (la búsqueda está en Inicio); se puede quitar cuando nada la abra.
-- `README.md` todavía es el de la plantilla de Tauri.
