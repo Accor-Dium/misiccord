@@ -29,6 +29,8 @@ AJUSTES_POR_DEFECTO = {
     "por_artista": True,   # carpetas por artista
     "descargas_simultaneas": 2,
     "carpeta": "",         # dónde guardar las descargas ("" = la carpeta por defecto de cada sistema)
+    "video_ver": False,    # mostrar el interruptor de video sobre la carátula del reproductor
+    "video_descargar": False,  # bajar también el videoclip (mp4) al descargar una canción
 }
 
 
@@ -370,6 +372,7 @@ def eliminar_canciones(d: dict) -> dict:
     for c in canciones:
         try:
             c.ruta.unlink(missing_ok=True)
+            c.ruta.with_suffix(".mp4").unlink(missing_ok=True)  # su videoclip descargado, si lo tiene
             borradas.append(c)
         except OSError as e:
             fallidas.append({"titulo": c.titulo, "error": str(e)})
@@ -422,6 +425,52 @@ def precargar(d: dict) -> dict:
     from . import flujo
     flujo.precargar([str(i) for i in d.get("ids") or []][:10])
     return {}
+
+
+def video(d: dict) -> dict:
+    """Imagen del videoclip para verla junto a la canción (sin sonido: el audio sigue siendo el del reproductor).
+
+    Si la canción tiene su video descargado devuelve {"ruta"}; si no, un flujo en vivo {"url"} del clip que se busca
+    en YouTube Music (el id de la canción suele ser audio con la portada, no el clip).
+    """
+    from . import flujo
+    if d.get("ruta"):
+        descargado = descargas.ruta_video(Path(d["ruta"]))
+        if descargado:
+            return {"ruta": str(descargado)}
+    clip = explorar.buscar_video(d.get("artista", ""), d.get("titulo", ""), d.get("duracion"))
+    if not clip:
+        raise RuntimeError("No encontré el video de esta canción")
+    return {"url": flujo.url(clip, video=True)}
+
+
+def bajar_video(ruta: Path, titulo: str, artista: str, duracion: float | None,
+                cancelado=lambda: False) -> Path:
+    """Descarga el videoclip junto a la canción `ruta` (no hace nada si ya está)."""
+    existente = descargas.ruta_video(ruta)
+    if existente:
+        return existente
+    clip = explorar.buscar_video(artista, titulo, duracion)
+    if not clip:
+        raise RuntimeError("No encontré el video de esta canción")
+    return descargas.descargar_video(clip, ruta, lambda *a: None, cancelado)
+
+
+def descargar_video(d: dict) -> dict:
+    """Baja el video de una canción que ya tienes. Avisa con el evento "video_descarga" al terminar."""
+    ruta = Path(d["ruta"])
+    if descargas.ruta_video(ruta):
+        return {"estado": "existe"}
+
+    def trabajo():
+        try:
+            bajar_video(ruta, d.get("titulo", ""), d.get("artista", ""), d.get("duracion"))
+            emitir("video_descarga", {"estado": "listo", "titulo": d.get("titulo", ""), "ruta": str(ruta)})
+        except Exception as e:
+            emitir("video_descarga", {"estado": "error", "titulo": d.get("titulo", ""), "error": str(e) or type(e).__name__})
+
+    threading.Thread(target=trabajo, daemon=True).start()
+    return {"estado": "descargando"}
 
 
 def letra(d: dict) -> dict:
@@ -491,6 +540,16 @@ class _Gestor:
             if c:
                 _db().registrar("descarga", ruta, c.artista, c.titulo)
             self._avisar(tid, estado="listo", pct=100, ruta=str(ruta), cancion=_local(c) if c else None)
+            if aj.get("video_descargar"):
+                # La canción ya suena; el video se baja después y avisa aparte (si falla, la canción no se pierde)
+                try:
+                    bajar_video(ruta, c.titulo if c else entrada.titulo, c.artista if c else entrada.artista,
+                                entrada.duracion, lambda: tid in self.cancelados)
+                    emitir("video_descarga", {"estado": "listo", "titulo": entrada.titulo, "ruta": str(ruta)})
+                except descargas.Cancelado:
+                    pass
+                except Exception as e:
+                    emitir("video_descarga", {"estado": "error", "titulo": entrada.titulo, "error": str(e) or type(e).__name__})
         except descargas.Cancelado:
             self._avisar(tid, estado="cancelado")
         except Exception as e:
@@ -631,7 +690,7 @@ FUNCIONES = {
     "quitar_carpeta_biblioteca": quitar_carpeta_biblioteca, "subcarpetas": subcarpetas,
     "playlist": playlist, "crear_playlist": crear_playlist, "agregar_a_playlist": agregar_a_playlist,
     "quitar_de_playlist": quitar_de_playlist, "borrar_playlist": borrar_playlist,
-    "eliminar_canciones": eliminar_canciones,
+    "eliminar_canciones": eliminar_canciones, "video": video, "descargar_video": descargar_video,
     "reproduccion": reproduccion, "previa": previa, "precargar": precargar, "letra": letra,
     "descargar": descargar, "descargas": descargas_, "cancelar_descarga": cancelar_descarga,
     "limpiar_descargas": limpiar_descargas,

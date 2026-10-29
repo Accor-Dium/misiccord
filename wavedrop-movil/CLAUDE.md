@@ -171,6 +171,10 @@ Todo el trabajo real vive en Python: python/wavedrop/  (el mismo código en las 
 - **Plugins con `#[cfg(desktop)]` / `#[cfg(mobile)]`** en `lib.rs` (updater y single-instance solo escritorio; barcode solo móvil) y permisos en la capability de su plataforma.
 - **Borrar = de todos lados** (`api.eliminar_canciones`): archivo, biblioteca, playlists, historial, cola, jam, MediaStore y carpetas vacías. Si agregas otro lugar donde
   viva una canción, agrégalo ahí también.
+- **Video (ajustes `video_ver` y `video_descargar`, ambos apagados por defecto)**: el `<video>` va mudo y sigue al `<audio>` (`reproductor.svelte.js`). El clip se busca con
+  `explorar.buscar_video` porque el id de la canción en YT Music suele ser audio con la portada. El video descargado es `<canción>.mp4` junto al audio
+  (`.mp4` no está en `biblioteca.EXTENSIONES`: así no se toma por canción) y `eliminar_canciones` lo borra también. Para **transmitir** solo sirve el cliente
+  `android` de yt-dlp (mp4 360p por rangos); tv/web dan más calidad pero YouTube responde 403 sin token (`flujo._extraer_video` prueba cada candidato).
 - **El servicio de Python fuerza UTF-8** en stdin/stdout (`servicio.py`): Windows usaba cp1252 y rompía acentos.
 
 ## Convenciones

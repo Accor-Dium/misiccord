@@ -1,9 +1,9 @@
 <script>
   import { fade, fly } from "svelte/transition";
-  import { src, tiempo } from "../lib/api.js";
-  import { abrir, cerrarReproductor, descargar, irPestana, mostrarHoja, ui } from "../lib/estado.svelte.js";
+  import { py, src, tiempo } from "../lib/api.js";
+  import { abrir, aviso, cerrarReproductor, descargar, irPestana, mostrarHoja, ui } from "../lib/estado.svelte.js";
   import {
-    alternar, alternarAleatorio, anterior, ciclarRepetir, irA, rep, reproducirDeCola, siguiente,
+    alternar, alternarAleatorio, alternarVideo, anterior, ciclarRepetir, irA, montarVideo, rep, reproducirDeCola, siguiente,
   } from "../lib/reproductor.svelte.js";
   import BotonDescarga from "./BotonDescarga.svelte";
   import Icono from "./Icono.svelte";
@@ -48,9 +48,23 @@
     arrastre = 0;
   }
 
+  // El video reemplaza a la carátula mientras carga o suena; si no hay video para esta canción se queda la carátula
+  const enVideo = $derived(rep.videoDisponible && rep.verVideo && rep.videoEstado !== "error");
+
+  async function bajarVideo() {
+    try {
+      const r = await py("descargar_video", { ruta: c.ruta, titulo: c.titulo, artista: c.artista, duracion: c.duracion });
+      if (r.estado === "existe") aviso("Ya tienes el video de esta canción");
+      else aviso("Descargando el video…", "ok");
+    } catch (e) {
+      aviso(e.message, "error");
+    }
+  }
+
   function mas() {
     const ops = [];
     if (!c.ruta) ops.push({ texto: "Descargar", icono: "descargas", accion: () => descargar([c]) });
+    if (c.ruta && rep.videoDescargar) ops.push({ texto: "Descargar video", icono: "video", accion: bajarVideo });
     ops.push({ texto: `Ir a ${c.artista.split(",")[0]}`, icono: "persona", accion: () => {
       cerrarReproductor();
       setTimeout(() => abrir("buscar_artista", { nombre: c.artista.split(",")[0] }), 250);
@@ -88,12 +102,26 @@
 
     <section class="centro">
       {#if panel === "portada" || ui.amplio}
-        <div class="portada" in:fade={{ duration: 250 }}>
-          {#key c.portada}
-            <div class="tapa" in:fade={{ duration: 350 }}>
-              <Portada url={c.portada} radio="14px" sombra />
+        <div class="pila" in:fade={{ duration: 250 }}>
+          {#if rep.videoDisponible}
+            <div class="selector" role="tablist" aria-label="Canción o video">
+              <button role="tab" aria-selected={!rep.verVideo} class:activo={!rep.verVideo} onclick={() => rep.verVideo && alternarVideo()}>Canción</button>
+              <button role="tab" aria-selected={rep.verVideo} class:activo={rep.verVideo} onclick={() => !rep.verVideo && alternarVideo()}>Video</button>
             </div>
-          {/key}
+            {#if rep.verVideo && rep.videoEstado === "error"}<small class="sin-video">Esta canción no tiene video</small>{/if}
+          {/if}
+          <div class="portada">
+            {#if !enVideo}
+              {#key c.portada}
+                <div class="tapa" in:fade={{ duration: 350 }}>
+                  <Portada url={c.portada} radio="14px" sombra />
+                </div>
+              {/key}
+            {/if}
+            <div class="caja-video" class:visible={enVideo} use:montarVideo>
+              {#if rep.videoEstado === "cargando"}<span class="girando claro"></span>{/if}
+            </div>
+          </div>
         </div>
       {:else if panel === "letra"}
         <div class="lado" in:fade={{ duration: 250 }}><Letra /></div>
@@ -205,8 +233,19 @@
   .origen small { font-size: 11px; letter-spacing: 1.5px; color: rgba(255, 255, 255, 0.65); }
   .origen b { font-size: 14px; }
   .centro { flex: 1; min-height: 0; display: flex; align-items: center; justify-content: center; margin: 18px 0; }
-  .portada { width: min(100%, 52vh); display: grid; }
+  .pila { width: min(100%, 50vh); display: flex; flex-direction: column; gap: 12px; }
+  .portada { width: 100%; display: grid; }
   .portada > * { grid-area: 1 / 1; }
+  /* Selector "Canción | Video" como el de YouTube Music: la opción activa va en blanco */
+  .selector { display: grid; grid-template-columns: 1fr 1fr; align-self: center; width: min(100%, 230px); padding: 4px; border-radius: 999px; background: rgba(255, 255, 255, 0.14); backdrop-filter: blur(10px); }
+  .selector button { height: 34px; border-radius: 999px; font-size: 14px; font-weight: 600; color: rgba(255, 255, 255, 0.75); transition: background 0.25s, color 0.25s; }
+  .selector button.activo { background: #fff; color: #04121a; box-shadow: 0 1px 4px rgba(0, 0, 0, 0.3); }
+  .sin-video { align-self: center; color: rgba(255, 255, 255, 0.6); }
+  /* El <video> lo pone reproductor.svelte.js (use:montarVideo); el sonido sigue siendo el del audio */
+  .caja-video { display: none; align-self: center; aspect-ratio: 16 / 9; position: relative; background: #000; border-radius: 14px; overflow: hidden; place-items: center; box-shadow: 0 12px 40px rgba(0, 0, 0, 0.5); }
+  .caja-video.visible { display: grid; }
+  .caja-video :global(video) { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; }
+  .caja-video .girando { border-color: rgba(255, 255, 255, 0.25); border-top-color: #fff; position: relative; }
   .lado { width: 100%; height: 100%; }
   .cola { overflow-y: auto; }
   .cola h3 { margin: 0 0 10px; font-size: 18px; }
@@ -262,7 +301,7 @@
     .reproductor { grid-template-rows: auto 1fr auto auto auto auto auto; }
     .derecha { grid-row: 2 / span 6; }
     .centro { margin: 24px 0; }
-    .portada { width: 100%; }
+    .pila { width: 100%; }
     footer { justify-content: center; gap: 28px; }
     .derecha {
       display: flex; flex-direction: column; grid-column: 2; grid-row: 2 / span 5; min-height: 0;

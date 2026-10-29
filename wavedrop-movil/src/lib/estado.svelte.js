@@ -97,6 +97,10 @@ alEvento("descarga", ({ trabajo }) => {
     aviso(`No se pudo descargar “${trabajo.titulo}”`, "error");
   }
 });
+alEvento("video_descarga", (d) => {
+  if (d.estado === "listo") aviso(`Video de “${d.titulo}” descargado`, "ok");
+  else if (d.estado === "error") aviso(`No se pudo bajar el video de “${d.titulo}”: ${d.error}`, "error");
+});
 alEvento("biblioteca", () => ui.version++);
 
 export async function descargar(canciones, coleccion = "") {

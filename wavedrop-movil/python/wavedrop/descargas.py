@@ -426,6 +426,45 @@ class Descargador:
         )
 
 
+def ruta_video(ruta_audio: Path) -> Path | None:
+    """El videoclip descargado de una canción: mismo nombre y carpeta, con .mp4 (la biblioteca no lo toma por canción)."""
+    video = Path(ruta_audio).with_suffix(".mp4")
+    return video if video.is_file() else None
+
+
+def descargar_video(video_id: str, ruta_audio: Path, al_progreso: ProgresoCb, cancelado: Callable[[], bool]) -> Path:
+    """Baja el videoclip (hasta 720p, mp4) junto a la canción. Lanza Cancelado o RuntimeError si no se pudo."""
+    destino = Path(ruta_audio).with_suffix(".mp4")
+    logger = _Logger()
+
+    def progreso(d):
+        if cancelado():
+            raise Cancelado()
+        if d["status"] == "downloading":
+            total = d.get("total_bytes") or d.get("total_bytes_estimate") or 0
+            al_progreso("Descargando video", min(int(d.get("downloaded_bytes", 0) * 100 / total), 100) if total else 0,
+                        d.get("speed"), d.get("eta"))
+
+    # Con ffmpeg se junta imagen y sonido de mayor calidad; sin él (Android) solo sirve un mp4 que ya los traiga juntos
+    formato = ("bestvideo[height<=720][ext=mp4]+bestaudio[ext=m4a]/best[height<=720][ext=mp4]" if plataforma.hay_ffmpeg()
+               else "best[height<=720][ext=mp4]/best[ext=mp4]")
+    opciones = _opciones_base(logger) | {
+        "format": formato, "merge_output_format": "mp4", "noplaylist": True, "progress_hooks": [progreso],
+        "outtmpl": str(destino.with_suffix("")).replace("%", "%%") + ".%(ext)s",
+    }
+    try:
+        extraer(opciones, f"https://www.youtube.com/watch?v={video_id}", True, logger)
+    except Cancelado:
+        raise
+    except Exception as e:
+        if cancelado():
+            raise Cancelado() from e
+        raise RuntimeError(logger.ultimo_error or str(e)) from e
+    if not destino.is_file():
+        raise RuntimeError(logger.ultimo_error or "YouTube no tiene este video en mp4")
+    return destino
+
+
 def etiquetar_sin_ffmpeg(ruta: Path, info: dict, entrada: Entrada) -> None:
     """Sin ffmpeg (Android): escribe título, artista, álbum y portada con mutagen.
 

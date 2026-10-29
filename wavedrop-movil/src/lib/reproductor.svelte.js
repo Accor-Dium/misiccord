@@ -21,6 +21,10 @@ export const rep = $state({
   volumen: Number(localStorage.getItem("wavedrop_volumen") ?? 1),
   silencio: false,
   fundido: 6, // segundos; se carga de los ajustes
+  videoDisponible: false, // ajuste "ver video": si está apagado no hay interruptor ni se baja nada
+  verVideo: localStorage.getItem("misiccord_ver_video") === "1", // el interruptor sobre la carátula
+  videoDescargar: false, // ajuste "descargar también el video"
+  videoEstado: "", // "" | "cargando" | "listo" | "error"
   salto: 0, // sube cada vez que se adelanta o regresa (para avisar al reloj y a la notificación)
 });
 
@@ -40,13 +44,14 @@ audios.forEach((a, i) => {
     if (a.duration && isFinite(a.duration)) rep.dur = a.duration;
     revisarFin(a);
     contarReproduccion(a);
+    sincronizarVideo(a);
   });
   a.addEventListener("ended", () => {
     if (i === actual && !avanceProgramado) siguienteAutomatico();
   });
-  a.addEventListener("play", () => i === actual && (rep.sonando = true));
-  a.addEventListener("pause", () => i === actual && (rep.sonando = false));
-  a.addEventListener("seeked", () => i === actual && rep.salto++);
+  a.addEventListener("play", () => { if (i === actual) { rep.sonando = true; sincronizarVideo(a); } });
+  a.addEventListener("pause", () => { if (i === actual) { rep.sonando = false; sincronizarVideo(a); } });
+  a.addEventListener("seeked", () => { if (i === actual) { rep.salto++; sincronizarVideo(a); } });
   a.addEventListener("error", () => {
     if (i !== actual || !a.src) return;
     const c = rep.actual;
@@ -70,6 +75,74 @@ audios.forEach((a, i) => {
     aviso("No se pudo reproducir esta canción", "error");
   });
 });
+
+// ---------- Video ----------
+// El sonido siempre es el de los <audio>; el video va mudo y sigue al audio (su posición y si está en pausa).
+// Si la canción tiene su video descargado se usa ese archivo; si no, se transmite el clip de YouTube.
+const video = document.createElement("video");
+video.muted = true;
+video.playsInline = true;
+video.preload = "auto";
+video.disablePictureInPicture = true;
+let pedidoVideo = 0;
+
+/** Pone el <video> dentro de un contenedor del reproductor grande (use:montarVideo). */
+export function montarVideo(nodo) {
+  nodo.prepend(video);
+  return { destroy: () => video.remove() };
+}
+
+function sincronizarVideo(a) {
+  if (!video.getAttribute("src") || rep.videoEstado === "error") return;
+  if (a.paused) {
+    if (!video.paused) video.pause();
+  } else if (video.paused && video.readyState >= 2) {
+    video.play().catch(() => {});
+  }
+  if (video.readyState >= 1 && Math.abs(video.currentTime - a.currentTime) > 0.5) video.currentTime = a.currentTime;
+}
+
+video.addEventListener("loadedmetadata", () => { video.currentTime = el().currentTime; });
+video.addEventListener("canplay", () => {
+  if (!video.getAttribute("src")) return;
+  rep.videoEstado = "listo";
+  sincronizarVideo(el());
+});
+video.addEventListener("error", () => {
+  if (video.getAttribute("src")) rep.videoEstado = "error";
+});
+
+/** Carga (o suelta) el video de la canción según el ajuste y el interruptor. */
+async function prepararVideo(c) {
+  const yo = ++pedidoVideo;
+  video.pause();
+  video.removeAttribute("src");
+  video.load();
+  rep.videoEstado = "";
+  if (!c || !rep.videoDisponible || !rep.verVideo) return;
+  rep.videoEstado = "cargando";
+  try {
+    const r = await py("video", { ruta: c.ruta, id: c.id, titulo: c.titulo, artista: c.artista, duracion: c.duracion });
+    if (yo !== pedidoVideo) return;
+    video.src = r.ruta ? src(r.ruta) : r.url;
+  } catch {
+    if (yo === pedidoVideo) rep.videoEstado = "error";
+  }
+}
+
+export function alternarVideo() {
+  rep.verVideo = !rep.verVideo;
+  localStorage.setItem("misiccord_ver_video", rep.verVideo ? "1" : "0");
+  prepararVideo(rep.actual);
+}
+
+/** Los ajustes de video cambiaron: aparece o desaparece el interruptor y se suelta lo que estaba cargado. */
+export function aplicarAjustesVideo(aj) {
+  rep.videoDescargar = !!aj.video_descargar;
+  if (rep.videoDisponible === !!aj.video_ver) return;
+  rep.videoDisponible = !!aj.video_ver;
+  prepararVideo(rep.actual);
+}
 
 /** Dirección reproducible: el archivo descargado o, si es de YouTube Music, la caché o el flujo en vivo. */
 async function fuenteDe(c) {
@@ -146,6 +219,7 @@ async function cargar(i, manual) {
   rep.cargando = false;
   // Fundido completo cuando termina sola; uno cortito si la cambias tú
   cruzarA(fuente, manual ? Math.min(0.6, rep.fundido) : rep.fundido);
+  prepararVideo(c);
   precargarSiguiente();
 }
 
@@ -265,6 +339,7 @@ export function soltarSi(seBorra) {
   if (!rep.actual?.ruta || !seBorra(rep.actual)) return;
   cancelarFundido();
   for (const a of audios) { a.pause(); a.removeAttribute("src"); a.load(); }
+  prepararVideo(null); // el video descargado también está abierto y se borra con la canción
 }
 
 /** Canciones borradas del dispositivo: salen de la cola (las de YouTube Music vuelven a ser vista previa). */
@@ -295,6 +370,7 @@ export function olvidarRutas(rutas) {
     rep.indice = -1;
     rep.sonando = false;
     rep.pos = rep.dur = 0;
+    prepararVideo(null);
   }
 }
 

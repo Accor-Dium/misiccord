@@ -79,9 +79,10 @@ mod escritorio {
         proceso: Mutex<Child>,
     }
 
-    /// Empaquetado: resources/servicio/misiccord-servicio.exe. En desarrollo: el Python del venv del proyecto.
+    /// Empaquetado: resources/servicio/misiccord-servicio.exe. En desarrollo: el Python del venv del proyecto
+    /// (Tauri copia el .exe viejo de servicio-dist junto al binario de debug y sin esto tapaba los cambios de python/).
     fn comando(app: &AppHandle) -> Command {
-        if let Ok(dir) = app.path().resource_dir() {
+        if let (false, Ok(dir)) = (cfg!(debug_assertions), app.path().resource_dir()) {
             let exe = dir.join("servicio").join("misiccord-servicio.exe");
             if exe.exists() {
                 return Command::new(exe);

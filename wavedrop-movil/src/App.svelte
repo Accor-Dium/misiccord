@@ -7,7 +7,7 @@
   import { nav } from "./lib/estado.svelte.js";
   import { jam } from "./lib/jam.svelte.js";
   import "./lib/medios.svelte.js"; // notificación, pantalla bloqueada, relojes y teclas multimedia
-  import { rep } from "./lib/reproductor.svelte.js";
+  import { aplicarAjustesVideo, rep } from "./lib/reproductor.svelte.js";
   import Avisos from "./componentes/Avisos.svelte";
   import Hoja from "./componentes/Hoja.svelte";
   import MiniReproductor from "./componentes/MiniReproductor.svelte";
@@ -38,6 +38,7 @@
     try {
       const r = await py("iniciar");
       rep.fundido = r.ajustes.fundido;
+      aplicarAjustesVideo(r.ajustes);
       listo = true;
       revisarAlIniciar();
       escucharEnlaces(); // links de jam con los que se abre la app

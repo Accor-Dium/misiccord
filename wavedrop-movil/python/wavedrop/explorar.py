@@ -131,6 +131,26 @@ def buscar_id(artista: str, titulo: str) -> ResultadoCancion | None:
     return resultados[0] if resultados else None
 
 
+_clips: dict[str, str | None] = {}
+
+
+def _dur(d: dict) -> float | None:
+    return d.get("duration_seconds") or _segundos(d.get("duration"))
+
+
+def buscar_video(artista: str, titulo: str, duracion: float | None = None) -> str | None:
+    """Id del videoclip de una canción (el id de la canción en YouTube Music suele ser solo audio con la portada)."""
+    clave = f"{biblioteca.normalizar(artista)}|{biblioteca.normalizar(titulo)}"
+    if clave not in _clips:
+        candidatos = [d for d in _yt().search(f"{biblioteca.artista_principal(artista)} {titulo}", filter="videos", limit=6)
+                      if d.get("videoId")]
+        # El que dure lo mismo que la canción; si ninguno, el primero (es el que YouTube considera mejor)
+        elegido = next((d for d in candidatos if not duracion or not _dur(d) or abs(_dur(d) - duracion) <= 20),
+                       candidatos[0] if candidatos else None)
+        _clips[clave] = elegido["videoId"] if elegido else None
+    return _clips[clave]
+
+
 def artistas_parecidos(nombre: str, limite: int = 10) -> list[dict]:
     encontrados = _yt().search(nombre, filter="artists", limit=3)
     if not encontrados or not encontrados[0].get("browseId"):

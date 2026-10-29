@@ -27,6 +27,7 @@ _info: dict[str, dict] = {}  # video_id -> {url, headers, tam, ext, tipo, hora}
 _en_curso: dict[str, threading.Event] = {}  # video_id que yt-dlp está resolviendo ahorita
 _candado = threading.Lock()
 _servidor: dict = {"puerto": None, "token": secrets.token_urlsafe(12)}
+PREFIJO_VIDEO = "v:"  # en _info/_en_curso el video de una canción va aparte de su audio
 # Precarga: lo que está en pantalla se resuelve antes de que lo toques (pocos a la vez, la más reciente primero)
 _pendientes: list[str] = []
 _hay_pendientes = threading.Condition()
@@ -54,8 +55,11 @@ def _resolver(video_id: str, forzar: bool = False) -> dict:
             _en_curso.pop(video_id).set()
 
 
-def _extraer(video_id: str) -> dict:
+def _extraer(clave: str) -> dict:
     inicio = time.time()
+    video_id = clave.removeprefix(PREFIJO_VIDEO)
+    if clave.startswith(PREFIJO_VIDEO):
+        return _extraer_video(clave, video_id)
     url = f"https://music.youtube.com/watch?v={video_id}"
     base = {"format": "bestaudio[ext=m4a]/bestaudio", "noplaylist": True}
     # Camino rápido: el cliente de la app de YouTube Music da el audio sin correr el JavaScript del
@@ -85,6 +89,56 @@ def _extraer(video_id: str) -> dict:
         _info[video_id] = i
     print(f"[flujo] {video_id} resuelto en {time.time() - inicio:.1f} s", flush=True)
     return i
+
+
+def _extraer_video(clave: str, video_id: str) -> dict:
+    """Solo la imagen del clip (el sonido ya viene del audio), sin caché.
+
+    El cliente "android" da un mp4 de 360p que se puede pedir por rangos sin token ni JavaScript (rápido, también
+    en el cel). Los clientes que dan más calidad (tv, web) necesitan un token de YouTube y responden 403 al pedirlo
+    por rangos: por eso cada candidato se prueba antes de usarlo.
+    """
+    inicio = time.time()
+    url = f"https://www.youtube.com/watch?v={video_id}"
+    base = {"format": "best[height<=720][ext=mp4]/bestvideo[height<=720][ext=mp4]/best[height<=720]", "noplaylist": True}
+    candidatos = []
+    try:
+        rapido = nucleo._opciones_base(nucleo._Logger()) | base | {
+            "extractor_args": {"youtube": {"player_client": ["android"]}}, "js_runtimes": {}}
+        with yt_dlp.YoutubeDL(rapido) as ydl:
+            candidatos.append(ydl.extract_info(url, download=False))
+    except Exception:
+        pass
+    logger = nucleo._Logger()
+    for info in candidatos + [None]:
+        if info is None:  # camino normal de yt-dlp, por si "android" ya no sirve
+            try:
+                info = nucleo.extraer(nucleo._opciones_base(logger) | base, url, False, logger)
+            except Exception as e:
+                raise RuntimeError(logger.ultimo_error or str(e)) from e
+        formato = (info.get("requested_formats") or [info])[0] if info else {}
+        if not formato.get("url"):
+            continue
+        ext = formato.get("ext") or "mp4"
+        i = {"url": formato["url"], "headers": dict(formato.get("http_headers") or {}),
+             "tam": formato.get("filesize") or formato.get("filesize_approx"), "ext": ext,
+             "tipo": "video/webm" if ext == "webm" else "video/mp4", "hora": time.time()}
+        if _responde(i):
+            with _candado:
+                _info[clave] = i
+            print(f"[flujo] video {video_id} resuelto en {time.time() - inicio:.1f} s", flush=True)
+            return i
+    raise RuntimeError("YouTube no deja transmitir el video de esta canción")
+
+
+def _responde(i: dict) -> bool:
+    """¿YouTube entrega esta dirección por rangos? (pide 1 byte)"""
+    try:
+        r = requests.get(i["url"], headers={**i["headers"], "Range": "bytes=0-0"}, stream=True, timeout=(8, 15))
+        r.close()
+        return r.status_code in (200, 206)
+    except requests.RequestException:
+        return False
 
 
 def _trabajador_precarga() -> None:
@@ -126,14 +180,16 @@ def _pedir(video_id: str, rango: str):
     raise RuntimeError(f"YouTube respondió {r.status_code}")
 
 
-def servir(manejador: BaseHTTPRequestHandler, video_id: str, rango: str | None, cabeceras=None) -> None:
+def servir(manejador: BaseHTTPRequestHandler, video_id: str, rango: str | None, cabeceras=None,
+           video: bool = False) -> None:
     """Pasa el audio de YouTube a quien lo pidió (el reproductor local o un invitado del jam) conforme llega.
 
     cabeceras: función que agrega las suyas a la respuesta (el jam pone las de CORS).
+    video: manda la imagen del clip en vez del audio (no se guarda en la caché de previas).
     """
     rango = rango or "bytes=0-"
     try:
-        i, r = _pedir(video_id, rango)
+        i, r = _pedir((PREFIJO_VIDEO if video else "") + video_id, rango)
     except Exception as e:
         manejador.send_error(502, str(e)[:100])
         return
@@ -150,7 +206,7 @@ def servir(manejador: BaseHTTPRequestHandler, video_id: str, rango: str | None, 
 
     # Si es la canción entera desde el principio, se va guardando para la caché de previas
     total = r.headers.get("Content-Range", "").rsplit("/", 1)[-1]
-    completa = rango.strip() == "bytes=0-"
+    completa = rango.strip() == "bytes=0-" and not video
     final = explorar.carpeta_cache() / f"{video_id}.{i['ext']}"
     temporal = final.with_name(f"{final.name}.{secrets.token_hex(3)}.parte") if completa else None
     archivo = open(temporal, "wb") if temporal else None
@@ -189,10 +245,10 @@ class _Manejador(BaseHTTPRequestHandler):
     def do_GET(self):
         partes = urllib.parse.urlparse(self.path)
         consulta = urllib.parse.parse_qs(partes.query)
-        if not partes.path.startswith("/flujo/") or consulta.get("t", [""])[0] != _servidor["token"]:
+        if not partes.path.startswith(("/flujo/", "/video/")) or consulta.get("t", [""])[0] != _servidor["token"]:
             self.send_error(404)
             return
-        servir(self, partes.path.split("/")[2], self.headers.get("Range"))
+        servir(self, partes.path.split("/")[2], self.headers.get("Range"), video=partes.path.startswith("/video/"))
 
 
 def _recortar_cache(maximo: int = 25) -> None:
@@ -219,7 +275,7 @@ def _arrancar() -> int:
         return _servidor["puerto"]
 
 
-def url(video_id: str) -> str:
-    """Dirección local para reproducir la canción mientras llega (resuelve la de YouTube antes de devolverla)."""
-    _resolver(video_id)
-    return f"http://127.0.0.1:{_arrancar()}/flujo/{video_id}?t={_servidor['token']}"
+def url(video_id: str, video: bool = False) -> str:
+    """Dirección local para reproducir la canción (o su clip) mientras llega; resuelve la de YouTube antes."""
+    _resolver((PREFIJO_VIDEO if video else "") + video_id)
+    return f"http://127.0.0.1:{_arrancar()}/{'video' if video else 'flujo'}/{video_id}?t={_servidor['token']}"

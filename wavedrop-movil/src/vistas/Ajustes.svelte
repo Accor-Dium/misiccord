@@ -4,7 +4,7 @@
   import { atras, aviso } from "../lib/estado.svelte.js";
   import { act, buscarActualizacion, instalarActualizacion, REPO } from "../lib/actualizaciones.svelte.js";
   import { getVersion } from "@tauri-apps/api/app";
-  import { rep } from "../lib/reproductor.svelte.js";
+  import { aplicarAjustesVideo, rep } from "../lib/reproductor.svelte.js";
   import Icono from "../componentes/Icono.svelte";
 
   let aj = $state(null);
@@ -19,6 +19,7 @@
   async function guardar(cambios) {
     aj = { ...aj, ...cambios };
     if ("fundido" in cambios) rep.fundido = cambios.fundido;
+    if ("video_ver" in cambios || "video_descargar" in cambios) aplicarAjustesVideo(aj);
     try {
       info = await py("guardar_ajustes", cambios);
       aj = info.ajustes;
@@ -75,6 +76,24 @@
       <input class="deslizador" type="range" min="0" max="12" step="1" value={aj.fundido}
         style:--avance="{(aj.fundido / 12) * 100}%"
         oninput={(e) => (aj.fundido = +e.target.value)} onchange={(e) => guardar({ fundido: +e.target.value })} />
+    </section>
+
+    <section>
+      <h2>Video</h2>
+      <label class="opcion">
+        <div class="texto">
+          <b>Ver el video con la canción</b>
+          <small>Pone un interruptor sobre la carátula del reproductor. El video va mudo y sigue al audio; si no lo tienes descargado se transmite de YouTube y gasta datos</small>
+        </div>
+        <input type="checkbox" class="interruptor" checked={aj.video_ver} onchange={(e) => guardar({ video_ver: e.target.checked })} />
+      </label>
+      <label class="opcion">
+        <div class="texto">
+          <b>Descargar también el video</b>
+          <small>Al descargar una canción se guarda su videoclip (mp4, hasta 720p) en la misma carpeta. Ocupa bastante más espacio</small>
+        </div>
+        <input type="checkbox" class="interruptor" checked={aj.video_descargar} onchange={(e) => guardar({ video_descargar: e.target.checked })} />
+      </label>
     </section>
 
     <section>
