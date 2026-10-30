@@ -103,7 +103,7 @@
   {#if a}
     <div class="hero" in:fade={{ duration: 300 }}>
       <div class="ambiente" style:background-image={a.portada ? `url("${src(a.portada)}")` : "none"}></div>
-      <div class="tapa"><Portada url={a.portada} radio="12px" sombra /></div>
+      <div class="tapa"><Portada url={a.portada} radio="12px" sombra objeto /></div>
       <h1>{a.titulo}</h1>
       {#if a.artista_id}
         <button class="artista" onclick={() => abrir("artista", { id: a.artista_id, nombre: a.artista })}>{a.artista}</button>

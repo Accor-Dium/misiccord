@@ -163,7 +163,7 @@
             {:else if !enVideo}
               {#key c.portada}
                 <div class="tapa" in:fade={{ duration: 350 }}>
-                  <Portada url={c.portada} radio="14px" sombra />
+                  <Portada url={c.portada} radio="14px" sombra objeto giro={rep.sonando} />
                 </div>
               {/key}
             {/if}

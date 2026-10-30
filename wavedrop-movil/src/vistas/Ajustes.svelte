@@ -1,12 +1,13 @@
 <script>
   import { onMount } from "svelte";
   import { py } from "../lib/api.js";
-  import { aplicarAjustesLetra, atras, aviso } from "../lib/estado.svelte.js";
+  import { aplicarAjustesLetra, aplicarCaratulas, atras, aviso } from "../lib/estado.svelte.js";
   import { act, buscarActualizacion, instalarActualizacion, REPO } from "../lib/actualizaciones.svelte.js";
   import { getVersion } from "@tauri-apps/api/app";
   import { aplicarAjustesVideo, rep } from "../lib/reproductor.svelte.js";
   import { aplicarAjusteBurbuja } from "../lib/escritorio.svelte.js";
   import Icono from "../componentes/Icono.svelte";
+  import Portada from "../componentes/Portada.svelte";
   import { idioma, idiomaElegido, IDIOMAS as IDIOMAS_APP, ponerIdioma, t } from "../lib/idioma.svelte.js";
 
   let aj = $state(null);
@@ -46,6 +47,7 @@
     if ("video_ver" in cambios || "video_descargar" in cambios) aplicarAjustesVideo(aj);
     if ("letra_traducir_a" in cambios || "letra_romanizar" in cambios) aplicarAjustesLetra(aj);
     if ("burbuja" in cambios) aplicarAjusteBurbuja(cambios.burbuja);
+    if ("caratulas" in cambios) aplicarCaratulas(cambios.caratulas);
     try {
       info = await py("guardar_ajustes", cambios);
       aj = info.ajustes;
@@ -101,6 +103,22 @@
         <select class="selector" value={idiomaElegido()} onchange={(e) => ponerIdioma(e.target.value)} aria-label={t("Idioma de la app")}>
           {#each IDIOMAS_APP as [cod, nombre]}<option value={cod}>{cod ? nombre : t(nombre)}</option>{/each}
         </select>
+      </div>
+    </section>
+
+    <section>
+      <h2>{t("Apariencia")}</h2>
+      <div class="opcion">
+        <div class="texto">
+          <b><Icono nombre="disco" tam={18} /> {t("Estilo de las carátulas")}</b>
+          <small>{t("En tarjetas, álbumes y el reproductor. En las listas se quedan normales")}</small>
+          <div class="segmentos largos">
+            {#each [["normal", t("Normal")], ["cd", t("CD")], ["vinilo", t("Vinilo")]] as [cod, nombre]}
+              <button class:activo={aj.caratulas === cod} onclick={() => guardar({ caratulas: cod })}>{nombre}</button>
+            {/each}
+          </div>
+        </div>
+        <div class="muestra"><Portada url={rep.actual?.portada} icono="disco" objeto /></div>
       </div>
     </section>
 
@@ -298,6 +316,9 @@
   .segmentos { display: flex; gap: 6px; }
   .segmentos button { width: 38px; height: 38px; border-radius: 10px; background: var(--tarjeta-2); font-weight: 700; }
   .segmentos .activo { background: var(--cian); color: #04121a; }
+  .segmentos.largos { margin-top: 8px; }
+  .segmentos.largos button { width: auto; padding: 0 14px; }
+  .muestra { width: 92px; flex-shrink: 0; }
   .acerca { line-height: 1.5; font-size: 14px; }
   .ruta { font-family: ui-monospace, monospace; font-size: 12.5px; word-break: break-all; }
   .chica { height: 40px; padding: 0 16px; font-size: 14px; flex-shrink: 0; }

@@ -39,6 +39,7 @@ AJUSTES_POR_DEFECTO = {
     "eq_bandas": [0, 0, 0, 0, 0],  # dB de cada banda; cuántas hay (3, 5, 10, 15 o 31) dice qué frecuencias son
     "eq_mono": False,      # sumar izquierda y derecha (también va por Web Audio)
     "burbuja": False,      # escritorio: burbuja flotante con controles al minimizar la ventana
+    "caratulas": "normal",  # cómo se dibujan las carátulas grandes: "normal", "cd" o "vinilo"
 }
 
 

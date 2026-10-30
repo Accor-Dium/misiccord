@@ -20,6 +20,7 @@
   import FilaCancion from "../componentes/FilaCancion.svelte";
   import Icono from "../componentes/Icono.svelte";
   import ListaVirtual from "../componentes/ListaVirtual.svelte";
+  import Costilla from "../componentes/Costilla.svelte";
   import Portada from "../componentes/Portada.svelte";
   import Tarjeta from "../componentes/Tarjeta.svelte";
 
@@ -276,6 +277,8 @@
   }
   // ListaVirtual mide por tipo: con otras columnas la fila mide distinto
   const tipoFila = $derived(`${pestana}-${enCuadricula ? `cuadricula-${nColumnas}` : "lista"}${seleccionando ? "-eleccion" : ""}`);
+  // En lista, los álbumes se ven por el lomo; cada estilo tiene su alto y ListaVirtual lo guarda por tipo
+  const conCostillas = $derived(ui.caratulas !== "normal" && !enCuadricula && !seleccionando);
   function alternarVista() {
     vistas = { ...vistas, [pestana]: enCuadricula ? "lista" : "cuadricula" };
     try { localStorage.setItem("misiccord_vista_biblioteca", JSON.stringify(vistas)); } catch {}
@@ -536,7 +539,7 @@
       {#each gruposAlbumes as g (g.titulo)}
         <span class="ancla" id="grupo-{g.titulo}"></span>
         <div class="grupo">{g.titulo}</div>
-        <ListaVirtual items={g.items} clave={claveAlbum} tipo={tipoFila} clase={enCuadricula ? "mosaico-biblioteca" : ""}>
+        <ListaVirtual items={g.items} clave={claveAlbum} tipo={conCostillas ? `${tipoFila}-${ui.caratulas}` : tipoFila} clase={enCuadricula ? "mosaico-biblioteca" : ""}>
           {#snippet fila(a)}
             {#if !enCuadricula}
               {#if seleccionando}
@@ -545,6 +548,8 @@
                   <Portada url={a.portada} tam="46px" radio="8px" />
                   <span class="textos"><b class="cortar">{a.nombre}</b><small class="cortar">{a.artista}</small></span>
                 </button>
+              {:else if conCostillas}
+                <Costilla portada={a.portada} titulo={a.nombre} artista={a.artista} alTocar={() => abrir("album", { local: a })} />
               {:else}
                 <button class="fila-artista" onclick={() => abrir("album", { local: a })}>
                   <Portada url={a.portada} tam="54px" radio="10px" />

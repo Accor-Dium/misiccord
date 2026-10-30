@@ -23,10 +23,15 @@ export const ui = $state({
   completar: null, // canciones en la ventana de completar datos (CompletarDatos.svelte)
   resumen: null, // presentación del resumen abierta: { tipo, dias, nombre } (Resumen.svelte)
   letra: { traducirA: "", romanizar: true }, // ajustes de las letras (se cargan al iniciar y desde Ajustes)
+  caratulas: "normal", // cómo se dibujan las carátulas grandes: "normal", "cd" o "vinilo"
 });
 
 export function aplicarAjustesLetra(aj) {
   ui.letra = { traducirA: aj.letra_traducir_a || "", romanizar: aj.letra_romanizar !== false };
+}
+
+export function aplicarCaratulas(estilo) {
+  ui.caratulas = estilo;
 }
 
 /** Busca en MusicBrainz las ediciones de estas canciones para elegir con cuál completar sus datos (como Picard). */

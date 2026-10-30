@@ -238,6 +238,9 @@ Todo el trabajo real vive en Python: python/wavedrop/  (el mismo código en las 
 - **Completar datos** (`CompletarDatos.svelte`, `musicbrainz.opciones`): una opción por grupo de MusicBrainz, primero su edición más antigua (si no, Thriller salía de 2022). Respeta el límite de 1 consulta por segundo de `_get`.
 - **Editar álbum** (`EditarAlbum.svelte`, `musicbrainz.buscar_albumes/album_detalle/emparejar`): las opciones van por edición (no por grupo) porque cambian las pistas. Solo es "exacta" si coinciden
   todas las letras (`_letras`); `normalizar` ignora paréntesis y "(en vivo)" pasaría por exacta. Las canciones que se dejan fuera no se tocan y siguen a `completarDatos`.
+- **Carátulas como objeto** (ajuste `caratulas`, `ui.caratulas`, `Portada.svelte`): estuche de CD o vinilo solo con CSS, en lo grande (`objeto`: `Tarjeta`, álbum, reproductor, jam); en listas se quedan normales porque a 46 px es ruido.
+  El cuadro sigue siendo cuadrado aunque el estuche no lo sea: las rejillas cuentan con eso. Con `giro` (true/false) el vinilo es el disco entero y la carátula su etiqueta; el brillo no gira.
+  En la lista de álbumes de Biblioteca cada fila es el lomo (`Costilla.svelte`): el color es una franja de la carátula. Cada estilo mide distinto, por eso su `tipo` de `ListaVirtual` también.
 - **Resumen** (`lib/resumen.js`, `Resumen.svelte`): el último día del mes, trimestre o año avisa una vez por periodo (`misiccord_resumen_visto`); lo más grande gana (31 de diciembre = año).
 - **Reproducir estando en un jam pregunta primero** (mandarla al jam o salir/cerrar el jam y escucharla aquí): todo pasa por `reproducir()`,
   y `jam.svelte.js` registra la pregunta con `preguntarAlReproducirEnJam` (el reproductor no importa al jam: el jam ya importa al reproductor).

@@ -8,7 +8,7 @@
 </script>
 
 <button class="tarjeta" style:width={ancho} onclick={alTocar} class:redonda use:mantener={alMantener}>
-  <Portada url={portada} {redonda} {icono} radio="12px" />
+  <Portada url={portada} {redonda} {icono} radio="12px" objeto />
   <b class="cortar">{titulo}</b>
   {#if subtitulo}<small class="cortar">{subtitulo}</small>{/if}
 </button>

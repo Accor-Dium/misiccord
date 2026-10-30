@@ -5,7 +5,7 @@
   import { revisarAlIniciar } from "./lib/actualizaciones.svelte.js";
   import { revisarResumen } from "./lib/resumen.js";
   import { escucharEnlaces } from "./lib/enlaces.svelte.js";
-  import { aplicarAjustesLetra, nav } from "./lib/estado.svelte.js";
+  import { aplicarAjustesLetra, aplicarCaratulas, nav } from "./lib/estado.svelte.js";
   import { idioma, t } from "./lib/idioma.svelte.js";
   import { jam } from "./lib/jam.svelte.js";
   import "./lib/medios.svelte.js"; // notificación, pantalla bloqueada, relojes y teclas multimedia
@@ -50,6 +50,7 @@
       rep.fundido = r.ajustes.fundido;
       aplicarAjustesVideo(r.ajustes);
       aplicarAjustesLetra(r.ajustes);
+      aplicarCaratulas(r.ajustes.caratulas);
       aplicarEcualizador(r.ajustes.eq_activo, r.ajustes.eq_bandas, r.ajustes.eq_mono);
       aplicarAjusteBurbuja(r.ajustes.burbuja);
       listo = true;
