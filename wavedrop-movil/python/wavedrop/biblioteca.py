@@ -376,6 +376,47 @@ class Biblioteca:
             f"""SELECT artista_ppal AS a, COUNT(*) AS n FROM canciones WHERE artista_ppal != '' AND {donde}
                GROUP BY artista_ppal COLLATE NOCASE ORDER BY artista_ppal COLLATE NOCASE""", params)]
 
+    def generos(self, carpeta: str = "") -> list[tuple[str, int, str | None]]:
+        """(género, canciones, una portada). "Music" lo pone YouTube a todo: no cuenta."""
+        donde, params = self._en_carpeta(carpeta)
+        return [(r["g"], r["n"], r["p"]) for r in self._q(
+            f"""SELECT MIN(genero) AS g, COUNT(*) AS n, MIN(NULLIF(portada, '')) AS p FROM canciones
+                WHERE genero != '' AND LOWER(genero) != 'music' AND {donde}
+                GROUP BY genero COLLATE NOCASE ORDER BY genero COLLATE NOCASE""", params)]
+
+    def canciones_de_genero(self, genero: str) -> list[Cancion]:
+        return [self._cancion(r) for r in self._q(
+            """SELECT * FROM canciones WHERE genero = ? COLLATE NOCASE
+               ORDER BY artista COLLATE NOCASE, album COLLATE NOCASE, pista, titulo COLLATE NOCASE""", (genero,))]
+
+    def veces_por_ruta(self) -> dict[str, int]:
+        """Cuántas veces ha sonado cada archivo (una sola consulta, para ordenar por más reproducidas)."""
+        return {r["ruta"]: r["n"] for r in self._q(
+            "SELECT ruta, COUNT(*) AS n FROM eventos WHERE tipo = 'reproduccion' GROUP BY ruta")}
+
+    def albumes_de_artista(self, artista: str) -> list[Album]:
+        filas = self._q(
+            """SELECT album, COALESCE(artista_album, '') AS grupo, MIN(artista_ppal) AS ppal, MAX(anio) AS anio,
+                      COUNT(*) AS n, MIN(NULLIF(portada, '')) AS portada
+               FROM canciones WHERE album != '' AND artista_ppal = ? COLLATE NOCASE
+               GROUP BY album COLLATE NOCASE, COALESCE(artista_album, '') COLLATE NOCASE
+               ORDER BY anio DESC, album COLLATE NOCASE""", (artista,))
+        return [Album(r["album"], r["grupo"] or r["ppal"] or "", r["anio"] or "", r["n"], r["portada"], r["grupo"])
+                for r in filas]
+
+    def album_por_nombre(self, nombre: str, artista: str = "") -> Album | None:
+        """El álbum de tu biblioteca con ese nombre (de ese artista, si se puede): ver álbumes sin pedir nada a internet."""
+        objetivo = normalizar(nombre)
+        principal = normalizar(artista_principal(artista))
+        elegido = None
+        for a in self.albumes():
+            if normalizar(a.nombre) != objetivo:
+                continue
+            if normalizar(artista_principal(a.artista)) == principal:
+                return a
+            elegido = elegido or a
+        return elegido
+
     def canciones_de_artista(self, artista: str) -> list[Cancion]:
         return [self._cancion(r) for r in self._q(
             """SELECT * FROM canciones WHERE artista_ppal = ? COLLATE NOCASE
@@ -433,6 +474,8 @@ class Biblioteca:
             c = canciones.setdefault(k, {"titulo": r["titulo"], "artista": r["artista"], "veces": 0, "ruta": None,
                                          "portada": None})
             c["veces"] += 1
+            if str(r["ruta"]).startswith("yt:"):
+                c["id"] = r["ruta"][3:]  # vista previa: así se puede volver a poner
             if r["cid"]:
                 c["ruta"] = r["ruta"]
             elif r["portada"]:

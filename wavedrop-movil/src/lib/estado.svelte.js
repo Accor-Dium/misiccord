@@ -16,11 +16,18 @@ export const ui = $state({
   version: 0, // sube cuando cambia la biblioteca, para que las vistas recarguen
   alAtras: null, // qué hacer con el próximo "atrás" (p. ej. cerrar la cámara del QR)
   info: null, // canción abierta en la ventana de información y etiquetas (InfoCancion.svelte)
+  completar: null, // canciones en la ventana de completar datos (CompletarDatos.svelte)
+  resumen: null, // presentación del resumen abierta: { tipo, dias, nombre } (Resumen.svelte)
   letra: { traducirA: "", romanizar: true }, // ajustes de las letras (se cargan al iniciar y desde Ajustes)
 });
 
 export function aplicarAjustesLetra(aj) {
   ui.letra = { traducirA: aj.letra_traducir_a || "", romanizar: aj.letra_romanizar !== false };
+}
+
+/** Busca en MusicBrainz las ediciones de estas canciones para elegir con cuál completar sus datos (como Picard). */
+export function completarDatos(lista) {
+  ui.completar = lista;
 }
 
 /** Abre la ventana de información de una canción (en descargadas también se editan etiquetas y carátula). */
@@ -80,7 +87,7 @@ export function abrirAlbumDe(c) {
     // Así agrupa la biblioteca: nombre del álbum + "artista del álbum" tal cual viene en el archivo ("" si no trae)
     return abrir("album", { local: { nombre: c.album, artista: c.artista_album || c.artista, grupo: c.artista_album || "", portada: c.portada } });
   }
-  abrir("album", { buscar: `${c.album} ${c.artista.split(",")[0]}`, nombre: c.album });
+  abrir("album", { buscar: `${c.album} ${c.artista.split(",")[0]}`, nombre: c.album, artista: c.artista });
 }
 
 /** Abre una tarjeta de YouTube Music (álbum, playlist o artista) de Inicio o Explorar. */

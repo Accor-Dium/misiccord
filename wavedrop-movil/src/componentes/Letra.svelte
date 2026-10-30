@@ -156,8 +156,9 @@
   .letra::-webkit-scrollbar { display: none; }
   .linea {
     display: block; width: 100%; text-align: left; font-size: 25px; font-weight: 800; line-height: 1.3;
-    padding: 8px 0; color: rgba(255, 255, 255, 0.38); transition: color 0.4s, transform 0.4s var(--curva);
-    transform-origin: left center;
+    /* El relleno derecho es para el 3 % que crece la línea actual: si no, se cortaba lo último del renglón */
+    padding: 8px 5% 8px 0; color: rgba(255, 255, 255, 0.38); transition: color 0.4s, transform 0.4s var(--curva);
+    transform-origin: left center; overflow-wrap: anywhere;
   }
   .linea.pasada { color: rgba(255, 255, 255, 0.22); }
   .linea.actual { color: #fff; transform: scale(1.03); }

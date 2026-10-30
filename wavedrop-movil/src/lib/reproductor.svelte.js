@@ -52,7 +52,7 @@ export const rep = $state({
   videoDisponible: false, // ajuste "ver video": si está apagado no hay interruptor ni se baja nada
   verVideo: localStorage.getItem("misiccord_ver_video") === "1", // el interruptor sobre la carátula
   videoDescargar: false, // ajuste "descargar también el video"
-  eq: { activo: false, bandas: [0, 0, 0, 0, 0] }, // ecualizador (se carga de los ajustes)
+  eq: { activo: false, bandas: [0, 0, 0, 0, 0], mono: false }, // ecualizador (se carga de los ajustes)
   videoEstado: "", // "" | "cargando" | "listo" | "error"
   salto: 0, // sube cada vez que se adelanta o regresa (para avisar al reloj y a la notificación)
 });
@@ -106,12 +106,62 @@ audios.forEach((a, i) => {
 });
 
 // ---------- Ecualizador ----------
-// Web Audio: los dos <audio> pasan por un pre-amplificador, 5 filtros, el refuerzo de volumen y un limitador. El grafo se
-// arma solo la primera vez que se prende el ecualizador o se sube de 100 %: si no, el audio sale directo como siempre
-// (no se arriesga la música en segundo plano).
+// Web Audio: los dos <audio> pasan por un pre-amplificador, los filtros, el refuerzo de volumen y un limitador. El grafo se
+// arma solo la primera vez que se prende el ecualizador, el mono, un visualizador o se sube de 100 %: si no, el audio sale
+// directo como siempre (no se arriesga la música en segundo plano).
 // Necesita CORS en lo que suena: el protocolo asset de Tauri y el flujo local (flujo.py) lo mandan.
-export const BANDAS_EQ = [60, 230, 910, 3600, 14000];
-let eq = null; // { ctx, filtros, previo, refuerzo, limitador, suave }
+export const NUM_BANDAS = [3, 5, 10, 15, 31];
+const FRECUENCIAS = {
+  3: [100, 1000, 10000],
+  5: [60, 230, 910, 3600, 14000],
+  10: [31, 62, 125, 250, 500, 1000, 2000, 4000, 8000, 16000], // por octava
+  15: [25, 40, 63, 100, 160, 250, 400, 630, 1000, 1600, 2500, 4000, 6300, 10000, 16000], // 2/3 de octava
+  31: [20, 25, 31.5, 40, 50, 63, 80, 100, 125, 160, 200, 250, 315, 400, 500, 630, 800, 1000, 1250, 1600, 2000, 2500, 3150,
+       4000, 5000, 6300, 8000, 10000, 12500, 16000, 20000], // 1/3 de octava, como un ecualizador gráfico de estudio
+};
+// Entre más bandas, más angosta cada una (Q de 1, 2/3 y 1/3 de octava)
+const Q_EQ = { 3: 0.5, 5: 1, 10: 1.41, 15: 2.15, 31: 4.32 };
+export const frecuenciasEq = (n) => FRECUENCIAS[n] ?? FRECUENCIAS[5];
+
+// Definidos en 5 bandas; convertirBandas los pasa a las que tengas
+export const PRESETS_EQ = [
+  ["Plano", [0, 0, 0, 0, 0]], ["Graves", [6, 3, 0, 0, 0]], ["Voces", [-2, 0, 3, 3, 1]], ["Agudos", [0, 0, 0, 3, 6]],
+  ["Rock", [4, 2, -1, 2, 4]], ["Pop", [-1, 2, 4, 2, -1]], ["Electrónica", [5, 2, 0, 1, 4]],
+];
+
+/** La misma curva con otro número de bandas (interpolando en octavas, como las oye el oído). */
+export function convertirBandas(bandas, n) {
+  const de = frecuenciasEq(bandas.length);
+  return frecuenciasEq(n).map((f) => {
+    if (f <= de[0]) return bandas[0];
+    if (f >= de.at(-1)) return bandas.at(-1);
+    const k = de.findIndex((x) => x >= f);
+    const x = Math.log2(f / de[k - 1]) / Math.log2(de[k] / de[k - 1]);
+    return Math.round(bandas[k - 1] + (bandas[k] - bandas[k - 1]) * x);
+  });
+}
+
+let eq = null; // { ctx, filtros, previo, refuerzo, limitador, suave, analizador }
+
+function crearFiltros(ctx, n) {
+  const frecuencias = frecuenciasEq(n);
+  return frecuencias.map((frecuencia, i) => {
+    const f = ctx.createBiquadFilter();
+    f.type = i === 0 ? "lowshelf" : i === frecuencias.length - 1 ? "highshelf" : "peaking";
+    f.frequency.value = frecuencia;
+    f.Q.value = Q_EQ[n] ?? 1;
+    return f;
+  });
+}
+
+/** Cambia cuántas bandas hay sin cortar lo que suena: solo se reconecta el tramo de los filtros. */
+function cambiarFiltros(n) {
+  const { ctx, previo, refuerzo } = eq;
+  previo.disconnect();
+  eq.filtros.forEach((f) => f.disconnect());
+  eq.filtros = crearFiltros(ctx, n);
+  [previo, ...eq.filtros].reduce((a, b) => (a.connect(b), b)).connect(refuerzo);
+}
 
 function armarEq() {
   if (eq) return eq;
@@ -130,14 +180,13 @@ function armarEq() {
   limitador.attack.value = 0.001;
   limitador.release.value = 0.2;
   const suave = ctx.createWaveShaper();
-  const filtros = BANDAS_EQ.map((frecuencia, i) => {
-    const f = ctx.createBiquadFilter();
-    f.type = i === 0 ? "lowshelf" : i === BANDAS_EQ.length - 1 ? "highshelf" : "peaking";
-    f.frequency.value = frecuencia;
-    f.Q.value = 1;
-    return f;
-  });
+  const filtros = crearFiltros(ctx, rep.eq.bandas.length || 5);
   [previo, ...filtros, refuerzo, limitador, suave].reduce((a, b) => (a.connect(b), b)).connect(ctx.destination);
+  // Para los visualizadores: solo escucha, no cambia lo que suena
+  const analizador = ctx.createAnalyser();
+  analizador.fftSize = 2048;
+  analizador.smoothingTimeConstant = 0.78;
+  suave.connect(analizador);
   for (const a of audios) {
     // Sin crossOrigin el audio queda "ajeno" y Web Audio lo deja en silencio: lo que ya sonaba se recarga
     const sonaba = !a.paused;
@@ -151,9 +200,16 @@ function armarEq() {
     }
     ctx.createMediaElementSource(a).connect(previo);
   }
-  eq = { ctx, filtros, previo, refuerzo, limitador, suave };
+  eq = { ctx, filtros, previo, refuerzo, limitador, suave, analizador };
   aplicarRefuerzo();
   return eq;
+}
+
+/** El analizador del sonido para dibujar visualizadores (arma el grafo si hacía falta). */
+export function analizadorDeAudio() {
+  const { ctx, analizador } = armarEq();
+  if (ctx.state === "suspended") ctx.resume().catch(() => {});
+  return analizador;
 }
 
 /** Lo que el <audio> no alcanza (volumen > 100 %) va en el nodo de refuerzo; el grafo se arma solo si hace falta. */
@@ -181,15 +237,20 @@ function hacerCurvaSuave() {
 /** Volumen del <audio> (0–1): la parte de la ganancia que el elemento sí puede dar. */
 const base = () => Math.min(1, gananciaDe(rep.volumen));
 
-/** Ajustes del ecualizador: prendido/apagado y los dB de cada banda (−12 a +12). */
-export function aplicarEcualizador(activo, bandas) {
-  rep.eq = { activo: !!activo, bandas: [...(bandas ?? [])] };
-  if (!activo && !eq) return;
-  const { ctx, filtros, previo } = armarEq();
-  filtros.forEach((f, i) => f.gain.setTargetAtTime(activo ? Number(bandas[i]) || 0 : 0, ctx.currentTime, 0.05));
+/** Ajustes del ecualizador: prendido/apagado, los dB de cada banda (−12 a +12) y mono. */
+export function aplicarEcualizador(activo, bandas, mono = rep.eq.mono) {
+  const lista = (bandas?.length ? bandas : [0, 0, 0, 0, 0]).map((x) => Number(x) || 0);
+  rep.eq = { activo: !!activo, bandas: lista, mono: !!mono };
+  if (!activo && !mono && !eq) return;
+  const { ctx, previo } = armarEq();
+  if (eq.filtros.length !== lista.length) cambiarFiltros(lista.length);
+  eq.filtros.forEach((f, i) => f.gain.setTargetAtTime(activo ? lista[i] : 0, ctx.currentTime, 0.05));
   // Si subes bandas, se baja un poco todo para que no sature
-  const maximo = activo ? Math.max(0, ...bandas.map(Number)) : 0;
+  const maximo = activo ? Math.max(0, ...lista) : 0;
   previo.gain.setTargetAtTime(Math.pow(10, -maximo / 2 / 20), ctx.currentTime, 0.05);
+  // Mono: desde aquí todo va en un canal (izquierda + derecha) y al final sale igual por los dos lados
+  previo.channelCount = mono ? 1 : 2;
+  previo.channelCountMode = mono ? "explicit" : "max";
   if (ctx.state === "suspended") ctx.resume().catch(() => {});
 }
 
@@ -342,24 +403,54 @@ async function cargar(i, manual) {
   precargarSiguiente();
 }
 
+// La cola siempre es el orden real en que van a sonar: con aleatorio se baraja de verdad (así "A continuación" dice
+// cuál sigue) y al apagarlo regresa al orden de antes. Prenderlo otra vez baraja distinto.
+let original = null; // la cola tal como estaba antes de barajar
+
+function barajar(lista) {
+  const r = [...lista];
+  for (let i = r.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [r[i], r[j]] = [r[j], r[i]];
+  }
+  return r;
+}
+
+/** La que suena se queda primero y todas las demás se barajan después de ella. */
+function mezclar() {
+  const c = rep.cola[rep.indice];
+  original = [...rep.cola];
+  rep.cola = c ? [c, ...barajar(rep.cola.filter((_, i) => i !== rep.indice))] : barajar(rep.cola);
+  if (c) rep.indice = 0;
+}
+
+function desmezclar() {
+  const c = rep.cola[rep.indice];
+  const hay = new Set(rep.cola);
+  const base = (original ?? []).filter((x) => hay.has(x));
+  const enBase = new Set(base);
+  const nuevas = rep.cola.filter((x) => !enBase.has(x) && x !== c); // las que entraron mientras estaba mezclada
+  let i = base.indexOf(c);
+  if (i < 0 && c) {
+    base.unshift(c);
+    i = 0;
+  }
+  base.splice(i + 1, 0, ...nuevas);
+  rep.cola = base;
+  rep.indice = i;
+  original = null;
+}
+
 function indiceSiguiente() {
   const n = rep.cola.length;
   if (!n) return -1;
-  if (rep.aleatorio && n > 1) {
-    let j;
-    do j = Math.floor(Math.random() * n);
-    while (j === rep.indice);
-    return j;
-  }
   if (rep.indice + 1 < n) return rep.indice + 1;
   return rep.repetir === 1 ? 0 : -1;
 }
 
 /** Deja lista la vista previa de la siguiente canción para que el fundido no tenga que esperar. */
-let siguientePrecargado = -1;
 function precargarSiguiente() {
-  const j = rep.aleatorio ? -1 : indiceSiguiente();
-  siguientePrecargado = j;
+  const j = indiceSiguiente();
   if (j >= 0 && !rep.cola[j].ruta && !rep.cola[j].fuente_previa) fuenteDe(rep.cola[j]).catch(() => {});
 }
 
@@ -367,8 +458,7 @@ function revisarFin(a) {
   if (avanceProgramado || rep.fundido <= 0 || rep.repetir === 2 || !a.duration || !isFinite(a.duration)) return;
   if (a.duration - a.currentTime <= rep.fundido && indiceSiguiente() >= 0) {
     avanceProgramado = true;
-    const j = rep.aleatorio ? indiceSiguiente() : siguientePrecargado >= 0 ? siguientePrecargado : indiceSiguiente();
-    cargar(j, false);
+    cargar(indiceSiguiente(), false);
   }
 }
 
@@ -410,6 +500,12 @@ export function reproducir(lista, i = 0, origen = "", { aunEnJam = false } = {})
   if (!aunEnJam && lista[i] && alTocarEnJam?.(lista[i], () => reproducir(lista, i, origen, { aunEnJam: true }))) return;
   rep.cola = lista.map((c) => ({ ...c }));
   rep.origen = origen;
+  rep.indice = i;
+  original = null;
+  if (rep.aleatorio) {
+    mezclar();
+    i = 0;
+  }
   cargar(i, true);
 }
 
@@ -419,6 +515,22 @@ export function agregarACola(c, aContinuacion = false) {
   const copia = { ...c };
   if (aContinuacion) rep.cola.splice(rep.indice + 1, 0, copia);
   else rep.cola.push(copia);
+  original?.push(rep.cola[aContinuacion ? rep.indice + 1 : rep.cola.length - 1]);
+  precargarSiguiente();
+}
+
+/** Cambiar el orden de lo que falta por sonar (arrastrando en "A continuación"). */
+export function moverEnCola(de, a) {
+  rep.cola.splice(a, 0, rep.cola.splice(de, 1)[0]);
+  precargarSiguiente();
+}
+
+/** Quitar una canción de la cola (no la que suena). */
+export function quitarDeCola(i) {
+  if (i === rep.indice) return;
+  const [c] = rep.cola.splice(i, 1);
+  if (i < rep.indice) rep.indice--;
+  if (original) original = original.filter((x) => x !== c);
   precargarSiguiente();
 }
 
@@ -475,6 +587,10 @@ audios.forEach((a) => a.addEventListener("play", () => gananciaDe(rep.volumen) >
 
 export function alternarAleatorio() {
   rep.aleatorio = !rep.aleatorio;
+  if (!rep.cola.length) return;
+  if (rep.aleatorio) mezclar();
+  else desmezclar();
+  precargarSiguiente();
 }
 
 export function ciclarRepetir() {
@@ -509,6 +625,7 @@ export function olvidarRutas(rutas) {
     if (k === antes) seFueLaActual = true;
   });
   rep.cola = quedan;
+  if (original) original = original.filter((c) => quedan.includes(c));
   const j = antes - quitadasAntes;
   if (!seFueLaActual) {
     rep.indice = j;

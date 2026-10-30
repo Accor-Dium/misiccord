@@ -9,14 +9,14 @@
   import { onMount } from "svelte";
   import { fade, scale } from "svelte/transition";
   import { alEvento, py } from "../lib/api.js";
-  import { abrir, aviso, mostrarHoja, ui } from "../lib/estado.svelte.js";
+  import { abrir, aviso, completarDatos, mostrarHoja, ui } from "../lib/estado.svelte.js";
   import { reproducir, reproducirAleatorio } from "../lib/reproductor.svelte.js";
   import { aBody } from "../lib/aBody.js";
   import { pedirEliminar } from "../lib/eliminar.js";
   import { compartir } from "../lib/compartir.js";
   import { menuCancion } from "../lib/menuCancion.js";
   import { canciones, t } from "../lib/idioma.svelte.js";
-  import { agrupar, agruparPorLetra, coincide, ORDENES } from "../lib/ordenar.js";
+  import { agrupar, agruparLista, coincide, ORDENES, ORDENES_LISTA } from "../lib/ordenar.js";
   import FilaCancion from "../componentes/FilaCancion.svelte";
   import Icono from "../componentes/Icono.svelte";
   import ListaVirtual from "../componentes/ListaVirtual.svelte";
@@ -47,19 +47,38 @@
     orden = o;
     try { localStorage.setItem("misiccord_orden", o); } catch {}
   }
+  // Álbumes, artistas, playlists y géneros: cada pestaña recuerda el suyo
+  let ordenLista = $state(leerOrdenLista());
+  function leerOrdenLista() {
+    try { return JSON.parse(localStorage.getItem("misiccord_ordenes") || "{}"); } catch { return {}; }
+  }
+  function ponerOrdenLista(o) {
+    ordenLista = { ...ordenLista, [pestana]: o };
+    try { localStorage.setItem("misiccord_ordenes", JSON.stringify(ordenLista)); } catch {}
+  }
+  const ordenDe = (tab) => ordenLista[tab] ?? "nombre";
   function opcionesOrden() {
+    const enCanciones = pestana === "canciones";
+    const lista = enCanciones ? ORDENES : ORDENES_LISTA[pestana];
+    const elegido = enCanciones ? orden : ordenDe(pestana);
     mostrarHoja({
-      titulo: t("Ordenar y agrupar canciones"),
-      opciones: ORDENES.map(([id, nombre]) => ({ texto: nombre, icono: orden === id ? "check" : "ordenar", accion: () => ponerOrden(id) })),
+      titulo: t("Ordenar y agrupar"),
+      opciones: lista.map(([id, nombre]) => ({
+        texto: nombre, icono: elegido === id ? "check" : "ordenar", accion: () => (enCanciones ? ponerOrden(id) : ponerOrdenLista(id)),
+      })),
     });
   }
 
   const cancionesVistas = $derived(b ? (texto ? b.canciones.filter((c) => coincide(texto, c.titulo, c.artista, c.album)) : b.canciones) : []);
   const grupos = $derived(agrupar(cancionesVistas, orden));
   const plana = $derived(grupos.flatMap((g) => g.canciones)); // en el orden en que se ven: así suena la cola
-  const albumesVistos = $derived(b ? b.albumes.filter((a) => !texto || coincide(texto, a.nombre, a.artista)) : []);
-  const gruposArtistas = $derived(agruparPorLetra(b ? b.artistas.filter((a) => !texto || coincide(texto, a.nombre)) : [], (a) => a.nombre));
-  const playlistsVistas = $derived(b ? b.playlists.filter((x) => !texto || coincide(texto, x.nombre)) : []);
+  const gruposAlbumes = $derived(agruparLista(b ? b.albumes.filter((a) => !texto || coincide(texto, a.nombre, a.artista)) : [], ordenDe("albumes")));
+  const gruposArtistas = $derived(agruparLista(b ? b.artistas.filter((a) => !texto || coincide(texto, a.nombre)) : [], ordenDe("artistas")));
+  const gruposPlaylists = $derived(agruparLista(b ? b.playlists.filter((x) => !texto || coincide(texto, x.nombre)) : [], ordenDe("playlists")));
+  const gruposGeneros = $derived(agruparLista(b ? (b.generos ?? []).filter((x) => !texto || coincide(texto, x.nombre)) : [], ordenDe("generos")));
+  const gruposVistos = $derived({ canciones: grupos, albumes: gruposAlbumes, artistas: gruposArtistas, playlists: gruposPlaylists, generos: gruposGeneros }[pestana]);
+  const cuantos = $derived(pestana === "canciones" ? plana.length : gruposVistos.reduce((n, g) => n + g.items.length, 0));
+  const porLetra = $derived(pestana === "canciones" ? orden === "titulo" || orden === "artista" : ["nombre", "artista"].includes(ordenDe(pestana)));
 
   let enLinea = $state([]);
   let buscandoLinea = $state(false);
@@ -88,8 +107,8 @@
     }, 450);
   });
 
-  // Índice A–Z a un lado (por título o artista, sin búsqueda): toca o desliza el dedo para saltar a una letra
-  const indice = $derived(!texto && (orden === "titulo" || orden === "artista") && plana.length > 25 ? grupos.map((g) => g.titulo) : []);
+  // Índice A–Z a un lado (ordenado por nombre, sin búsqueda): toca o desliza el dedo para saltar a una letra
+  const indice = $derived(!texto && porLetra && cuantos > 25 ? gruposVistos.map((g) => g.titulo) : []);
   // Mientras el dedo está en el índice, una burbuja grande junto a él muestra la letra (el dedo tapa la del índice)
   let enIndice = null; // pointerId del dedo que arrastra (otro dedo o el mouse que pasa no cuentan)
   let burbuja = $state(null); // { letra, y, x }
@@ -235,20 +254,49 @@
 
   // ---------- Lista o cuadrícula ----------
   // Cada pestaña recuerda la suya (los álbumes empiezan en cuadrícula, lo demás en lista)
-  const VISTAS_INICIALES = { canciones: "lista", albumes: "cuadricula", artistas: "lista", playlists: "lista" };
+  const VISTAS_INICIALES = { canciones: "lista", albumes: "cuadricula", artistas: "lista", playlists: "lista", generos: "lista" };
   let vistas = $state(leerVistas());
   function leerVistas() {
     try { return { ...VISTAS_INICIALES, ...JSON.parse(localStorage.getItem("misiccord_vista_biblioteca") || "{}") }; }
     catch { return { ...VISTAS_INICIALES }; }
   }
   const enCuadricula = $derived(vistas[pestana] === "cuadricula");
-  const tipoFila = $derived(`${pestana}-${enCuadricula ? "cuadricula" : "lista"}${seleccionando ? "-eleccion" : ""}`);
+  // Cuántas columnas tiene el mosaico: cada pestaña recuerda las suyas
+  const MAX_COLUMNAS = 8;
+  let columnas = $state(leerColumnas());
+  function leerColumnas() {
+    try { return JSON.parse(localStorage.getItem("misiccord_columnas") || "{}"); } catch { return {}; }
+  }
+  const nColumnas = $derived(columnas[pestana] ?? (ui.amplio ? 6 : pestana === "albumes" ? 2 : 3));
+  function cambiarColumnas(paso) {
+    columnas = { ...columnas, [pestana]: Math.max(2, Math.min(MAX_COLUMNAS, nColumnas + paso)) };
+    try { localStorage.setItem("misiccord_columnas", JSON.stringify(columnas)); } catch {}
+  }
+  // ListaVirtual mide por tipo: con otras columnas la fila mide distinto
+  const tipoFila = $derived(`${pestana}-${enCuadricula ? `cuadricula-${nColumnas}` : "lista"}${seleccionando ? "-eleccion" : ""}`);
   function alternarVista() {
     vistas = { ...vistas, [pestana]: enCuadricula ? "lista" : "cuadricula" };
     try { localStorage.setItem("misiccord_vista_biblioteca", JSON.stringify(vistas)); } catch {}
   }
 
-  const pestanas = [["canciones", t("Canciones")], ["albumes", t("Álbumes")], ["artistas", t("Artistas")], ["playlists", t("Playlists")]];
+  const pestanas = [["canciones", t("Canciones")], ["albumes", t("Álbumes")], ["artistas", t("Artistas")], ["generos", t("Géneros")], ["playlists", t("Playlists")]];
+
+  // ---------- El encabezado reaparece al subir ----------
+  // Al bajar se esconde para dejarle lugar a la lista; con el primer gesto hacia arriba regresa, estés donde estés.
+  let cabeceraVisible = $state(true);
+  let altoCabecera = $state(0);
+  onMount(() => {
+    const principal = document.querySelector("main");
+    let ultimo = principal.scrollTop;
+    function alDesplazar() {
+      const y = principal.scrollTop;
+      if (Math.abs(y - ultimo) < 6 || enIndice !== null) return;
+      cabeceraVisible = y < ultimo || y < altoCabecera;
+      ultimo = y;
+    }
+    principal.addEventListener("scroll", alDesplazar, { passive: true });
+    return () => principal.removeEventListener("scroll", alDesplazar);
+  });
 
   // ---------- Selección múltiple para compartir/exportar o borrar ----------
   // Se pueden juntar canciones, álbumes, artistas y playlists (cambiando de pestaña sin perder lo elegido).
@@ -269,6 +317,13 @@
     s.has(clave) ? s.delete(clave) : s.add(clave);
     elegidos = s;
   }
+
+  const contador = $derived(
+    pestana === "canciones" ? (texto ? t("{n} de {total} canciones", { n: plana.length, total: b?.canciones.length ?? 0 }) : canciones(plana.length))
+    : pestana === "albumes" ? t("{n} álbumes", { n: cuantos })
+    : pestana === "artistas" ? t("{n} artistas", { n: cuantos })
+    : pestana === "generos" ? t("{n} géneros", { n: cuantos })
+    : t("{n} playlists", { n: cuantos }));
 
   let preparando = $state(false);
   async function compartirElegidas() {
@@ -341,7 +396,8 @@
   }
 </script>
 
-<div class="vista">
+<div class="vista" style:--columnas={nColumnas} style:--arriba="{cabeceraVisible ? altoCabecera : 0}px">
+  <div class="cabecera" class:oculta={!cabeceraVisible} bind:clientHeight={altoCabecera}>
   <header>
     <h1 class="titulo-vista">{t("Biblioteca")}</h1>
     <div class="botones">
@@ -377,17 +433,55 @@
       {/each}
     </div>
   {/if}
+  {#if b}
+    <div class="acciones">
+      {#if seleccionando && pestana === "canciones"}
+        <button class="texto-boton" onclick={alternarTodas}>{todas ? t("Quitar todas") : t("Elegir todas")}</button>
+        <button class="pildora oscura chica" onclick={salirSeleccion}>{t("Listo")}</button>
+      {:else}
+        <span class="tenue contador">{contador}</span>
+        <div class="botones">
+          {#if enCuadricula}
+            <div class="columnas" role="group" aria-label={t("Columnas")}>
+              <button onclick={() => cambiarColumnas(-1)} disabled={nColumnas <= 2} aria-label={t("Menos columnas")}>−</button>
+              <span>{nColumnas}</span>
+              <button onclick={() => cambiarColumnas(1)} disabled={nColumnas >= MAX_COLUMNAS} aria-label={t("Más columnas")}>+</button>
+            </div>
+          {/if}
+          <button class="redondo" onclick={opcionesOrden} aria-label={t("Ordenar y agrupar")} title={t("Ordenar y agrupar")}>
+            <Icono nombre="ordenar" tam={22} />
+          </button>
+          {#if pestana === "canciones"}
+            <button class="redondo" onclick={() => (seleccionando = true)} aria-label={t("Seleccionar canciones")} title={t("Seleccionar")}>
+              <Icono nombre="seleccionar" tam={22} />
+            </button>
+            {#if enCuadricula}
+              <button class="redondo" disabled={!plana.length} onclick={() => reproducirAleatorio(plana, t("Tu biblioteca"))} aria-label={t("Aleatorio")} title={t("Aleatorio")}>
+                <Icono nombre="aleatorio" tam={22} />
+              </button>
+            {:else}
+              <button class="pildora oscura chica" disabled={!plana.length} onclick={() => reproducirAleatorio(plana, t("Tu biblioteca"))}>
+                <Icono nombre="aleatorio" tam={18} /> {t("Aleatorio")}
+              </button>
+            {/if}
+          {:else if pestana === "playlists" && !seleccionando}
+            <button class="redondo" class:activo-cian={creando} onclick={() => (creando = !creando)} aria-label={t("Nueva playlist")} title={t("Nueva playlist")}>
+              <Icono nombre="agregar" tam={24} />
+            </button>
+          {/if}
+        </div>
+      {/if}
+    </div>
+  {/if}
+  </div>
 
+  <div class:con-indice={!seleccionando && indice.length > 4}>
   {#if !b}
     {#each Array(6) as _}<div class="cargando-bloque" style="height:56px;margin:10px 0"></div>{/each}
   {:else if pestana === "canciones"}
-    <div in:fade={{ duration: 220 }} class:con-indice={!seleccionando && indice.length > 4}>
+    <div in:fade={{ duration: 220 }}>
       {#if b.canciones.length}
         {#if seleccionando}
-          <div class="acciones">
-            <button class="texto-boton" onclick={alternarTodas}>{todas ? t("Quitar todas") : t("Elegir todas")}</button>
-            <button class="pildora oscura chica" onclick={salirSeleccion}>{t("Listo")}</button>
-          </div>
           <ListaVirtual items={plana} clave={idDe} tipo={tipoFila} clase={enCuadricula ? "mosaico-biblioteca" : ""}>
             {#snippet fila(c)}
               {#if enCuadricula}
@@ -405,20 +499,6 @@
             {/snippet}
           </ListaVirtual>
         {:else}
-          <div class="acciones">
-            <span class="tenue">{texto ? t("{n} de {total} canciones", { n: plana.length, total: b.canciones.length }) : canciones(plana.length)}</span>
-            <div class="botones">
-              <button class="redondo" onclick={opcionesOrden} aria-label={t("Ordenar y agrupar")} title={t("Ordenar y agrupar")}>
-                <Icono nombre="ordenar" tam={22} />
-              </button>
-              <button class="redondo" onclick={() => (seleccionando = true)} aria-label={t("Seleccionar canciones")} title={t("Seleccionar")}>
-                <Icono nombre="seleccionar" tam={22} />
-              </button>
-              <button class="pildora oscura chica" disabled={!plana.length} onclick={() => reproducirAleatorio(plana, t("Tu biblioteca"))}>
-                <Icono nombre="aleatorio" tam={18} /> {t("Aleatorio")}
-              </button>
-            </div>
-          </div>
           {#each grupos as g (g.titulo)}
             <!-- El salto del índice va al ancla: un encabezado fijo (sticky) que ya pasó no deja regresar a él -->
             <span class="ancla" id="grupo-{g.titulo}"></span>
@@ -451,8 +531,10 @@
     </div>
   {:else if pestana === "albumes"}
     <div in:fade={{ duration: 220 }}>
-      {#if albumesVistos.length}
-        <ListaVirtual items={albumesVistos} clave={claveAlbum} tipo={tipoFila} clase={enCuadricula ? "rejilla-biblioteca" : ""}>
+      {#each gruposAlbumes as g (g.titulo)}
+        <span class="ancla" id="grupo-{g.titulo}"></span>
+        <div class="grupo">{g.titulo}</div>
+        <ListaVirtual items={g.items} clave={claveAlbum} tipo={tipoFila} clase={enCuadricula ? "mosaico-biblioteca" : ""}>
           {#snippet fila(a)}
             {#if !enCuadricula}
               {#if seleccionando}
@@ -479,11 +561,12 @@
         </ListaVirtual>
       {:else}
         <p class="vacio">{texto ? t("Ningún álbum con “{q}”.", { q: texto }) : t("Sin álbumes todavía.")}</p>
-      {/if}
+      {/each}
     </div>
   {:else if pestana === "artistas"}
     <div in:fade={{ duration: 220 }}>
       {#each gruposArtistas as g (g.titulo)}
+        <span class="ancla" id="grupo-{g.titulo}"></span>
         <div class="grupo">{g.titulo}</div>
         <ListaVirtual items={g.items} clave={(a) => a.nombre} tipo={tipoFila} clase={enCuadricula ? "mosaico-biblioteca" : ""}>
           {#snippet fila(a)}
@@ -518,17 +601,29 @@
         <p class="vacio">{texto ? t("Ningún artista con “{q}”.", { q: texto }) : t("Sin artistas todavía.")}</p>
       {/each}
     </div>
+  {:else if pestana === "generos"}
+    <div in:fade={{ duration: 220 }}>
+      {#each gruposGeneros as g (g.titulo)}
+        <span class="ancla" id="grupo-{g.titulo}"></span>
+        <div class="grupo">{g.titulo}</div>
+        <div class:mosaico-biblioteca={enCuadricula}>
+          {#each g.items as x (x.nombre)}
+            {#if enCuadricula}
+              <Tarjeta portada={x.portada} titulo={x.nombre} subtitulo={canciones(x.canciones)} icono="nota" ancho="100%" alTocar={() => abrir("genero", { nombre: x.nombre })} />
+            {:else}
+              <button class="fila-artista" onclick={() => abrir("genero", { nombre: x.nombre })}>
+                <Portada url={x.portada} tam="54px" radio="10px" icono="nota" />
+                <span class="textos"><b class="cortar">{x.nombre}</b><small>{canciones(x.canciones)}</small></span>
+              </button>
+            {/if}
+          {/each}
+        </div>
+      {:else}
+        <p class="vacio">{texto ? t("Ningún género con “{q}”.", { q: texto }) : t("Tus canciones todavía no traen género. Puedes completarlo desde su información.")}</p>
+      {/each}
+    </div>
   {:else}
     <div in:fade={{ duration: 220 }}>
-      <!-- Aquí y no en el encabezado: con el botón de lista/cuadrícula ya no caben cinco botones en un cel angosto -->
-      {#if !seleccionando}
-        <div class="acciones">
-          <span></span>
-          <button class="pildora oscura chica" class:activo-cian={creando} onclick={() => (creando = !creando)}>
-            <Icono nombre="agregar" tam={18} /> {t("Nueva playlist")}
-          </button>
-        </div>
-      {/if}
       {#if creando}
         <form class="nueva" onsubmit={(ev) => { ev.preventDefault(); crear(); }}>
           <input bind:value={nombre} placeholder={t("Nombre de la playlist")} />
@@ -536,53 +631,56 @@
         </form>
       {/if}
       <!-- Me gusta va siempre primero: no es una playlist que se borre, guarda también canciones no descargadas -->
-      {#if enCuadricula}
-        <div class="mosaico-biblioteca">
-          {#if !seleccionando}
+      {#if !seleccionando}
+        <div class:mosaico-biblioteca={enCuadricula}>
+          {#if enCuadricula}
             <button class="tarjeta-lista" onclick={() => abrir("me_gusta")}>
               <span class="cubierta me-gusta"><Icono nombre="corazon" relleno tam={34} /></span>
               <b class="cortar">{t("Me gusta")}</b><small>{canciones(b.me_gusta ?? 0)}</small>
             </button>
-          {/if}
-          {#each playlistsVistas as p}
-            <button class="tarjeta-lista" class:eleccion-tarjeta={seleccionando} class:elegida={elegidos.has(`playlist:${p.id}`)}
-              onclick={() => (seleccionando ? alternarElegido(`playlist:${p.id}`) : abrir("playlist", { id: p.id, nombre: p.nombre }))}>
-              <span class="cubierta"><Icono nombre="lista" tam={34} /></span>
-              <b class="cortar">{p.nombre}</b><small>{canciones(p.canciones)}</small>
-              {#if seleccionando}<span class="casilla">{#if elegidos.has(`playlist:${p.id}`)}<Icono nombre="check" tam={16} />{/if}</span>{/if}
+          {:else}
+            <button class="fila-artista" onclick={() => abrir("me_gusta")}>
+              <span class="avatar cuadro me-gusta"><Icono nombre="corazon" relleno tam={22} /></span>
+              <span class="textos"><b class="cortar">{t("Me gusta")}</b><small>{canciones(b.me_gusta ?? 0)}</small></span>
             </button>
+          {/if}
+        </div>
+      {/if}
+      {#each gruposPlaylists as g (g.titulo)}
+        <span class="ancla" id="grupo-{g.titulo}"></span>
+        <div class="grupo">{g.titulo}</div>
+        <div class:mosaico-biblioteca={enCuadricula}>
+          {#each g.items as p (p.id)}
+            {#if enCuadricula}
+              <button class="tarjeta-lista" class:eleccion-tarjeta={seleccionando} class:elegida={elegidos.has(`playlist:${p.id}`)}
+                onclick={() => (seleccionando ? alternarElegido(`playlist:${p.id}`) : abrir("playlist", { id: p.id, nombre: p.nombre }))}>
+                <span class="cubierta"><Icono nombre="lista" tam={34} /></span>
+                <b class="cortar">{p.nombre}</b><small>{canciones(p.canciones)}</small>
+                {#if seleccionando}<span class="casilla">{#if elegidos.has(`playlist:${p.id}`)}<Icono nombre="check" tam={16} />{/if}</span>{/if}
+              </button>
+            {:else if seleccionando}
+              <button class="fila-eleccion" class:elegida={elegidos.has(`playlist:${p.id}`)} onclick={() => alternarElegido(`playlist:${p.id}`)}>
+                <span class="casilla">{#if elegidos.has(`playlist:${p.id}`)}<Icono nombre="check" tam={16} />{/if}</span>
+                <span class="avatar chico cuadro"><Icono nombre="lista" tam={20} /></span>
+                <span class="textos"><b class="cortar">{p.nombre}</b><small>{canciones(p.canciones)}</small></span>
+              </button>
+            {:else}
+              <button class="fila-artista" onclick={() => abrir("playlist", { id: p.id, nombre: p.nombre })}>
+                <span class="avatar cuadro"><Icono nombre="lista" tam={22} /></span>
+                <span class="textos"><b class="cortar">{p.nombre}</b><small>{canciones(p.canciones)}</small></span>
+              </button>
+            {/if}
           {/each}
         </div>
-        {#if !playlistsVistas.length && !creando}<p class="vacio">{t("Crea tus playlists con el botón +.")}</p>{/if}
-      {:else}
-      {#if !seleccionando}
-      <button class="fila-artista" onclick={() => abrir("me_gusta")}>
-        <span class="avatar cuadro me-gusta"><Icono nombre="corazon" relleno tam={22} /></span>
-        <span class="textos"><b class="cortar">{t("Me gusta")}</b><small>{canciones(b.me_gusta ?? 0)}</small></span>
-      </button>
-      {/if}
-      {#each playlistsVistas as p}
-        {#if seleccionando}
-          <button class="fila-eleccion" class:elegida={elegidos.has(`playlist:${p.id}`)} onclick={() => alternarElegido(`playlist:${p.id}`)}>
-            <span class="casilla">{#if elegidos.has(`playlist:${p.id}`)}<Icono nombre="check" tam={16} />{/if}</span>
-            <span class="avatar chico cuadro"><Icono nombre="lista" tam={20} /></span>
-            <span class="textos"><b class="cortar">{p.nombre}</b><small>{canciones(p.canciones)}</small></span>
-          </button>
-        {:else}
-        <button class="fila-artista" onclick={() => abrir("playlist", { id: p.id, nombre: p.nombre })}>
-          <span class="avatar cuadro"><Icono nombre="lista" tam={22} /></span>
-          <span class="textos"><b class="cortar">{p.nombre}</b><small>{canciones(p.canciones)}</small></span>
-        </button>
-        {/if}
       {:else}
         {#if !creando}<p class="vacio">{t("Crea tus playlists con el botón +.")}</p>{/if}
       {/each}
-      {/if}
     </div>
   {/if}
+  </div>
 </div>
 
-{#if pestana === "canciones" && !seleccionando && indice.length > 4}
+{#if !seleccionando && indice.length > 4}
   <div class="indice" use:aBody role="navigation" aria-label={t("Saltar a una letra")}
     onpointerdown={tocarIndice} onpointermove={tocarIndice} onpointerup={soltarIndice} onpointercancel={soltarIndice}>
     {#each indice as letra}<span data-letra={letra} class:tocada={burbuja?.letra === letra}>{letra}</span>{/each}
@@ -647,6 +745,7 @@
     </div>
     <div class="botones">
       {#if elegidas.size && !elegidos.size}
+        <button class="redondo" onclick={() => completarDatos(b.canciones.filter((c) => elegidas.has(c.db_id)))} aria-label={t("Completar datos")} title={t("Completar datos")}><Icono nombre="etiqueta" tam={20} /></button>
         <button class="redondo rojo-texto" onclick={eliminarElegidas} aria-label={t("Eliminar")} title={t("Eliminar")}><Icono nombre="basura" tam={20} /></button>
       {/if}
       <button class="pildora cian chica" disabled={!totalElegido || preparando} onclick={compartirElegidas}>
@@ -657,7 +756,13 @@
 {/if}
 
 <style>
-  .vista { padding: calc(var(--seguro-arriba) + 14px) var(--margen) 0; }
+  .vista { padding: 0 var(--margen); }
+  /* Se queda pegada arriba: al bajar se esconde y al subir regresa */
+  .cabecera {
+    position: sticky; top: 0; z-index: 6; margin: 0 calc(-1 * var(--margen)); padding: calc(var(--seguro-arriba) + 14px) var(--margen) 2px;
+    background: var(--fondo); transition: transform 0.25s var(--curva);
+  }
+  .cabecera.oculta { transform: translateY(-100%); }
   header { display: flex; align-items: center; justify-content: space-between; }
   .chips { display: flex; gap: 8px; margin: var(--margen) calc(-1 * var(--margen)) 10px; padding: 0 var(--margen); overflow-x: auto; scrollbar-width: none; }
   /* Segunda fila de chips (carpetas): más chica para que se note que es un filtro */
@@ -676,10 +781,15 @@
   @keyframes giro { to { transform: rotate(360deg); } }
   /* Encabezado de cada grupo (letra, álbum o periodo): se queda arriba mientras pasan sus canciones */
   .grupo {
-    position: sticky; top: 0; z-index: 2; background: var(--fondo); padding: 10px 0 4px; margin-top: 4px;
-    font-size: 15px; font-weight: 800; color: var(--cian); scroll-margin-top: 0;
+    position: sticky; top: var(--arriba, 0px); z-index: 2; background: var(--fondo); padding: 10px 0 4px; margin-top: 4px;
+    font-size: 15px; font-weight: 800; color: var(--cian); transition: top 0.25s var(--curva);
   }
-  .ancla { display: block; height: 0; }
+  .ancla { display: block; height: 0; scroll-margin-top: var(--arriba, 0px); }
+  .contador { font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+  .columnas { display: inline-flex; align-items: center; gap: 2px; height: 34px; padding: 0 3px; border-radius: 999px; background: var(--tarjeta); flex-shrink: 0; }
+  .columnas button { width: 28px; height: 28px; border-radius: 50%; font-size: 18px; font-weight: 700; line-height: 1; }
+  .columnas button:disabled { opacity: 0.3; }
+  .columnas span { min-width: 16px; text-align: center; font-size: 13.5px; font-weight: 700; font-variant-numeric: tabular-nums; }
   .con-indice { padding-right: 16px; } /* que el índice no tape el ⋯ de las filas */
   .indice {
     position: fixed; z-index: 20; right: 2px; top: calc(var(--seguro-arriba) + 170px);
@@ -699,18 +809,16 @@
   @media (min-width: 900px) {
     .indice { right: 10px; top: 200px; bottom: calc(var(--mini) + 30px); }
   }
-  /* Cuadrícula de canciones, artistas y playlists: 3 por fila en el cel, las que quepan en la PC.
-     Es global porque también la usa la caja de ListaVirtual */
-  :global(.mosaico-biblioteca) { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px 12px; margin: 6px 0 12px; }
+  /* Cuadrícula: las columnas las eliges tú (--columnas, en .vista). Es global porque también la usa la caja de ListaVirtual */
+  :global(.mosaico-biblioteca) { display: grid; grid-template-columns: repeat(var(--columnas, 3), minmax(0, 1fr)); gap: 16px 12px; margin: 6px 0 12px; }
   :global(.mosaico-biblioteca .tarjeta b) { font-size: 13.5px; margin-top: 6px; }
   :global(.mosaico-biblioteca .tarjeta small) { font-size: 12.5px; }
-  @media (min-width: 900px) { :global(.mosaico-biblioteca) { grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 22px 18px; } }
+  @media (min-width: 900px) { :global(.mosaico-biblioteca) { gap: 22px 18px; } }
   .tarjeta-lista { position: relative; display: flex; flex-direction: column; gap: 4px; text-align: left; min-width: 0; }
   .tarjeta-lista b { margin-top: 6px; font-size: 13.5px; font-weight: 700; width: 100%; }
   .tarjeta-lista small { color: var(--tenue); font-size: 12.5px; }
   .cubierta { aspect-ratio: 1; border-radius: 12px; background: var(--tarjeta-2); display: grid; place-items: center; color: var(--tenue); }
   .cubierta.me-gusta { background: linear-gradient(135deg, #ff4d6d, #7c3aed); color: #fff; }
-  :global(.rejilla-biblioteca) { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 18px 14px; margin-top: 8px; }
   .acciones { display: flex; justify-content: space-between; align-items: center; margin: 6px 0 8px; }
   .chica { height: 38px; padding: 0 16px; font-size: 14px; }
   .fila-artista { width: 100%; display: flex; align-items: center; gap: 14px; padding: 8px 0; text-align: left; }

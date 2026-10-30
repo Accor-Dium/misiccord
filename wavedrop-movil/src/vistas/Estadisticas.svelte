@@ -6,11 +6,13 @@
   import { reproducir } from "../lib/reproductor.svelte.js";
   import Icono from "../componentes/Icono.svelte";
   import { local, t } from "../lib/idioma.svelte.js";
+  import { abrirResumen, diasDelPeriodo } from "../lib/resumen.js";
   import Portada from "../componentes/Portada.svelte";
 
-  // Lo que escuchaste en el último mes o los últimos 3 meses, con porcentajes.
+  // Lo que escuchaste en el último mes, los últimos 3 meses o lo que va del año, con porcentajes.
   // Cuentan las descargadas y las vistas previas (desde que esta versión empezó a anotarlas).
   let { e } = $props();
+  const diasDelAnio = diasDelPeriodo("anio");
   let dias = $state(e.dias ?? 30);
   $effect(() => { e.dias = dias; });
   let datos = $state(e.datos ?? null);
@@ -46,18 +48,27 @@
     [t("Artistas"), datos.actual.artistas, datos.anterior.artistas],
   ] : []);
 
-  const maxDia = $derived(Math.max(1, ...(datos?.por_dia ?? [])));
+  // Un año no cabe día por día en un cel: se junta por semanas
+  const semanal = $derived((datos?.por_dia.length ?? 0) > 120);
+  const columnas = $derived.by(() => {
+    const d = datos?.por_dia ?? [];
+    if (!semanal) return d;
+    const r = [];
+    for (let i = 0; i < d.length; i += 7) r.push(d.slice(i, i + 7).reduce((a, b) => a + b, 0));
+    return r;
+  });
+  const maxDia = $derived(Math.max(1, ...columnas));
   const maxHora = $derived(Math.max(1, ...(datos?.por_hora ?? [])));
   const horaPico = $derived(datos ? datos.por_hora.indexOf(Math.max(...datos.por_hora)) : -1);
 
   function fechaDia(i) {
-    const d = new Date(Date.now() - (dias - 1 - i) * 86400000);
+    const d = new Date(Date.now() - (dias - 1 - i * (semanal ? 7 : 1)) * 86400000);
     return d.toLocaleDateString(local(), { day: "numeric", month: "short" });
   }
   const veces = (n) => (n === 1 ? t("1 vez") : t("{n} veces", { n }));
   const etiquetaHover = $derived.by(() => {
     if (!hover || !datos) return "";
-    if (hover.tipo === "dia") return `${fechaDia(hover.i)}: ${veces(datos.por_dia[hover.i])}`;
+    if (hover.tipo === "dia") return `${semanal ? t("Semana del {fecha}", { fecha: fechaDia(hover.i) }) : fechaDia(hover.i)}: ${veces(columnas[hover.i])}`;
     return `${hover.i}:00 – ${hover.i + 1}:00: ${veces(datos.por_hora[hover.i])}`;
   });
 
@@ -75,6 +86,7 @@
   <div class="chips">
     <button class="chip" class:activo={dias === 30} onclick={() => cambiar(30)}>{t("Último mes")}</button>
     <button class="chip" class:activo={dias === 90} onclick={() => cambiar(90)}>{t("Últimos 3 meses")}</button>
+    <button class="chip" class:activo={dias === diasDelAnio} onclick={() => cambiar(diasDelAnio)}>{t("Este año")}</button>
   </div>
 
   {#if !datos}
@@ -84,6 +96,9 @@
     <p class="vacio">{t("Todavía no hay nada que contar en este periodo. Escucha un rato y vuelve.")}</p>
   {:else}
     <div in:fade={{ duration: 220 }}>
+      <button class="pildora cian ver-resumen" onclick={() => abrirResumen(dias === diasDelAnio ? "anio" : dias === 90 ? "trimestre" : "mes")}>
+        <Icono nombre="play" relleno tam={18} /> {t("Ver mi resumen")}
+      </button>
       <div class="tiles">
         {#each tiles as [nombre, valor, antes]}
           {@const c = cambio(valor, antes)}
@@ -158,7 +173,7 @@
       <h2>{t("Día a día")}</h2>
       <p class="tenue nota">{datos.descargas ? t("{n} descargas en este periodo", { n: numero(datos.descargas) }) : ""}</p>
       <div class="columnas dias" role="img" aria-label={t("Reproducciones por día")} onpointerleave={() => (hover = null)}>
-        {#each datos.por_dia as n, i}
+        {#each columnas as n, i}
           <span class="col" class:activa={hover?.tipo === "dia" && hover.i === i}
             onpointerenter={() => (hover = { tipo: "dia", i })} onpointerdown={() => (hover = { tipo: "dia", i })}
             title="{fechaDia(i)}: {veces(n)}">
@@ -179,6 +194,7 @@
   .chips { display: flex; gap: 8px; margin: 18px 0 16px; }
   h2 { font-size: 20px; font-weight: 800; margin: 30px 0 10px; letter-spacing: -0.3px; }
   .nota { margin: -4px 0 10px; font-size: 13.5px; min-height: 1em; }
+  .ver-resumen { width: 100%; justify-content: center; height: 44px; margin-bottom: 12px; }
   .tiles { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
   .tile { background: var(--tarjeta); border-radius: 16px; padding: 14px 16px; display: flex; flex-direction: column; gap: 2px; min-width: 0; }
   .tile small { color: var(--tenue); font-size: 13px; }

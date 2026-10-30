@@ -2,7 +2,7 @@
   import { fade, scale } from "svelte/transition";
   import { py, tiempo } from "../lib/api.js";
   import { aBody } from "../lib/aBody.js";
-  import { aviso, ui } from "../lib/estado.svelte.js";
+  import { aviso, completarDatos, ui } from "../lib/estado.svelte.js";
   import { local, t } from "../lib/idioma.svelte.js";
   import { actualizarCancion } from "../lib/reproductor.svelte.js";
   import Icono from "./Icono.svelte";
@@ -161,6 +161,11 @@
         {/if}
       </form>
 
+      {#if editable}
+        <button class="pildora oscura completar" onclick={() => { const x = c; cerrar(); completarDatos([x]); }}>
+          <Icono nombre="etiqueta" tam={18} /> {t("Completar con MusicBrainz")}
+        </button>
+      {/if}
       <h3>{t("Detalles")}</h3>
       <dl>
         {#each tecnico as [nombre, valor, copiable]}
@@ -205,6 +210,7 @@
   }
   .campos input:focus { border-color: var(--cian); }
   .campos span { padding: 2px 0 6px; border-bottom: 1px solid var(--borde); overflow-wrap: anywhere; }
+  .completar { width: 100%; justify-content: center; margin-top: 10px; height: 42px; font-size: 14.5px; }
   .ancho { grid-column: 1 / -1; justify-content: center; margin-top: 4px; }
   .ancho:disabled { opacity: 0.45; }
   .nota { grid-column: 1 / -1; margin: 4px 0 0; font-size: 13.5px; }

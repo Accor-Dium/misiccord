@@ -6,6 +6,7 @@
   import { reproducir, reproducirAleatorio } from "../lib/reproductor.svelte.js";
   import { pedirEliminar } from "../lib/eliminar.js";
   import { canciones, t } from "../lib/idioma.svelte.js";
+  import { normalizar } from "../lib/ordenar.js";
   import FilaCancion from "../componentes/FilaCancion.svelte";
   import Icono from "../componentes/Icono.svelte";
   import Portada from "../componentes/Portada.svelte";
@@ -14,13 +15,20 @@
   // o álbum de tu biblioteca (e.local).
   let { e } = $props();
   const a = $derived(e.datos);
+  let completo = $state(e.completo ?? null); // lo que te falta del álbum, según YouTube Music
 
   async function cargar() {
     try {
+      // Primero lo tuyo: es instantáneo y funciona sin internet. Si lo tienes, internet solo agrega lo que falta
+      if (!e.local && e.buscar && e.nombre) {
+        const { album } = await py("album_local_buscar", { nombre: e.nombre, artista: e.artista });
+        if (album) e.local = album;
+      }
       if (e.local) {
         const r = await py("album_local", { nombre: e.local.nombre, artista: e.local.artista, grupo: e.local.grupo });
         e.datos = { titulo: e.local.nombre, artista: e.local.artista, anio: e.local.anio, tipo: "Álbum",
                     portada: e.local.portada, canciones: r.canciones, local: true };
+        buscarFaltantes();
       } else if (e.playlist) {
         e.datos = (await py("playlist_yt", { id: e.playlist })).album;
       } else {
@@ -37,6 +45,18 @@
     }
   }
   onMount(() => { if (!e.datos) cargar(); });
+
+  /** En segundo plano y en silencio: sin internet simplemente no aparece nada. */
+  async function buscarFaltantes() {
+    if (completo) return;
+    try {
+      const { albumes } = await py("buscar", { q: `${e.local.nombre} ${e.local.artista}`, tipo: "albumes" });
+      const igual = albumes?.find((x) => normalizar(x.titulo) === normalizar(e.local.nombre));
+      if (!igual) return;
+      const { album } = await py("album", { browse_id: igual.browse_id });
+      completo = e.completo = { faltantes: album.canciones.filter((c) => !c.ruta), id: igual.browse_id };
+    } catch {}
+  }
 
   let version = ui.version;
   $effect(() => { if (ui.version !== version) { version = ui.version; cargar(); } });
@@ -94,6 +114,15 @@
         <FilaCancion cancion={c} numero={c.pista || i + 1} sinPortada alTocar={() => reproducir(a.canciones, i, a.titulo)} />
       {/each}
     </div>
+    {#if a.local && completo?.faltantes.length}
+      <div class="titulo-seccion">
+        <span>{t("Te faltan de este álbum")}</span>
+        <button onclick={() => descargar(completo.faltantes, a.titulo)}><small>{t("Descargar todas")}</small></button>
+      </div>
+      {#each completo.faltantes as c, i (c.id)}
+        <FilaCancion cancion={c} sinPortada alTocar={() => reproducir(completo.faltantes, i, a.titulo)} />
+      {/each}
+    {/if}
   {:else}
     <div class="hero"><div class="cargando-bloque" style="width:62%;aspect-ratio:1;margin:0 auto"></div></div>
   {/if}

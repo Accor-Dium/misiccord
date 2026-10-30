@@ -4,13 +4,17 @@
   import { alEvento, py, src, tiempo } from "../lib/api.js";
   import { abrir, abrirAlbumDe, alternarMeGusta, aviso, cerrarReproductor, descargar, irPestana, mostrarHoja, ui, verInfo } from "../lib/estado.svelte.js";
   import {
-    alternar, alternarAleatorio, alternarVideo, anterior, ciclarRepetir, irA, montarVideo, rep, reproducirDeCola, siguiente,
+    alternar, alternarAleatorio, alternarVideo, anterior, ciclarRepetir, irA, montarVideo, rep, siguiente,
   } from "../lib/reproductor.svelte.js";
   import { t } from "../lib/idioma.svelte.js";
   import { menuCancion } from "../lib/menuCancion.js";
   import BotonDescarga from "./BotonDescarga.svelte";
+  import Cola from "./Cola.svelte";
+  import Ecualizador from "./Ecualizador.svelte";
   import Icono from "./Icono.svelte";
   import Letra from "./Letra.svelte";
+  import Marquesina from "./Marquesina.svelte";
+  import Visualizador from "./Visualizador.svelte";
   import Portada from "./Portada.svelte";
   import Volumen from "./Volumen.svelte";
 
@@ -83,6 +87,18 @@
     arrastre = 0;
   }
 
+  // Qué se ve sobre el título: la carátula, un visualizador o el video
+  let verVisual = $state(leerVisual());
+  function leerVisual() {
+    try { return localStorage.getItem("misiccord_ver_visual") === "1"; } catch { return false; }
+  }
+  const vistaCentro = $derived(verVisual ? "visual" : rep.videoDisponible && rep.verVideo ? "video" : "cancion");
+  function elegirVista(v) {
+    if ((v === "video") !== rep.verVideo) alternarVideo();
+    verVisual = v === "visual";
+    try { localStorage.setItem("misiccord_ver_visual", verVisual ? "1" : "0"); } catch {}
+  }
+
   // El video reemplaza a la carátula mientras carga o suena; si no hay video para esta canción se queda la carátula
   const enVideo = $derived(rep.videoDisponible && rep.verVideo && rep.videoEstado !== "error");
 
@@ -133,15 +149,18 @@
     <section class="centro">
       {#if panel === "portada" || ui.amplio}
         <div class="pila" in:fade={{ duration: 250 }}>
-          {#if rep.videoDisponible}
-            <div class="selector" role="tablist" aria-label={t("Canción o video")}>
-              <button role="tab" aria-selected={!rep.verVideo} class:activo={!rep.verVideo} onclick={() => rep.verVideo && alternarVideo()}>{t("Canción")}</button>
-              <button role="tab" aria-selected={rep.verVideo} class:activo={rep.verVideo} onclick={() => !rep.verVideo && alternarVideo()}>{t("Video")}</button>
-            </div>
-            {#if rep.verVideo && rep.videoEstado === "error"}<small class="sin-video">{t("Esta canción no tiene video")}</small>{/if}
-          {/if}
+          <div class="selector" role="tablist" aria-label={t("Qué ver")}>
+            <button role="tab" aria-selected={vistaCentro === "cancion"} class:activo={vistaCentro === "cancion"} onclick={() => elegirVista("cancion")}>{t("Canción")}</button>
+            <button role="tab" aria-selected={vistaCentro === "visual"} class:activo={vistaCentro === "visual"} onclick={() => elegirVista("visual")}>{t("Visual")}</button>
+            {#if rep.videoDisponible}
+              <button role="tab" aria-selected={vistaCentro === "video"} class:activo={vistaCentro === "video"} onclick={() => elegirVista("video")}>{t("Video")}</button>
+            {/if}
+          </div>
+          {#if vistaCentro === "video" && rep.videoEstado === "error"}<small class="sin-video">{t("Esta canción no tiene video")}</small>{/if}
           <div class="portada">
-            {#if !enVideo}
+            {#if vistaCentro === "visual"}
+              <Visualizador />
+            {:else if !enVideo}
               {#key c.portada}
                 <div class="tapa" in:fade={{ duration: 350 }}>
                   <Portada url={c.portada} radio="14px" sombra />
@@ -155,26 +174,24 @@
         </div>
       {:else if panel === "letra"}
         <div class="lado" in:fade={{ duration: 250 }}><Letra /></div>
+      {:else if panel === "eq"}
+        <div class="lado" in:fade={{ duration: 250 }}><Ecualizador /></div>
       {:else}
-        <div class="lado cola" in:fade={{ duration: 250 }}>
-          <h3>{t("A continuación")}</h3>
-          {#each rep.cola as item, i}
-            <button class="item" class:actual={i === rep.indice} onclick={() => reproducirDeCola(i)}>
-              <Portada url={item.portada} tam="42px" radio="6px" />
-              <span class="textos"><b class="cortar">{item.titulo}</b><small class="cortar">{item.artista}</small></span>
-            </button>
-          {/each}
-        </div>
+        <div class="lado" in:fade={{ duration: 250 }}><Cola /></div>
       {/if}
     </section>
 
     <section class="datos">
       <div class="titulos">
-        <h2 class="cortar">{c.titulo}</h2>
-        <p class="cortar">
-          {#each c.artista.split(", ").filter(Boolean) as nombre, i}{#if i}{", "}{/if}<button class="enlace" onclick={() => verArtista(nombre)}>{nombre}</button>{/each}
-          {#if c.album} · <button class="enlace" onclick={verAlbum}>{c.album}</button>{/if}
-        </p>
+        {#key c}
+          <h2><Marquesina>{c.titulo}</Marquesina></h2>
+          <p>
+            <Marquesina>
+              {#each c.artista.split(", ").filter(Boolean) as nombre, i}{#if i}{", "}{/if}<button class="enlace" onclick={() => verArtista(nombre)}>{nombre}</button>{/each}
+              {#if c.album}{" · "}<button class="enlace" onclick={verAlbum}>{c.album}</button>{/if}
+            </Marquesina>
+          </p>
+        {/key}
       </div>
       <button class="redondo corazon" class:gusta onclick={tocarMeGusta} aria-pressed={gusta}
         aria-label={gusta ? t("Quitar de Me gusta") : t("Me gusta")} title={gusta ? t("Quitar de Me gusta") : t("Me gusta")}>
@@ -222,6 +239,9 @@
       <button class="redondo relleno" class:encendido={vista === "letra"} onclick={() => alternarPanel("letra")} aria-label={t("Letra")}>
         <Icono nombre="comillas" tam={22} />
       </button>
+      <button class="redondo relleno" class:encendido={vista === "eq" || rep.eq.activo} onclick={() => alternarPanel("eq")} aria-label={t("Ecualizador")} title={t("Ecualizador")}>
+        <Icono nombre="ecualizador" tam={22} />
+      </button>
       <button class="redondo relleno" onclick={irAJams} aria-label={t("Jams")} title={t("Escuchar en grupo")}>
         <Icono nombre="jam" tam={22} />
       </button>
@@ -233,18 +253,14 @@
         <div class="pestanas">
           <button class:activa={lado === "letra"} onclick={() => (lado = "letra")}>{t("Letra")}</button>
           <button class:activa={lado === "cola"} onclick={() => (lado = "cola")}>{t("A continuación")}</button>
+          <button class:activa={lado === "eq"} onclick={() => (lado = "eq")}>{t("Ecualizador")}</button>
         </div>
         {#if lado === "letra"}
           <div class="lado" in:fade={{ duration: 250 }}><Letra /></div>
+        {:else if lado === "eq"}
+          <div class="lado" in:fade={{ duration: 250 }}><Ecualizador /></div>
         {:else}
-          <div class="lado cola" in:fade={{ duration: 250 }}>
-            {#each rep.cola as item, i}
-              <button class="item" class:actual={i === rep.indice} onclick={() => reproducirDeCola(i)}>
-                <Portada url={item.portada} tam="48px" radio="6px" />
-                <span class="textos"><b class="cortar">{item.titulo}</b><small class="cortar">{item.artista}</small></span>
-              </button>
-            {/each}
-          </div>
+          <div class="lado" in:fade={{ duration: 250 }}><Cola /></div>
         {/if}
       </aside>
     {/if}
@@ -274,7 +290,7 @@
   .portada { width: 100%; display: grid; }
   .portada > * { grid-area: 1 / 1; }
   /* Selector "Canción | Video" como el de YouTube Music: la opción activa va en blanco */
-  .selector { display: grid; grid-template-columns: 1fr 1fr; align-self: center; width: min(100%, 230px); padding: 4px; border-radius: 999px; background: rgba(255, 255, 255, 0.14); backdrop-filter: blur(10px); }
+  .selector { display: grid; grid-auto-flow: column; grid-auto-columns: 1fr; align-self: center; width: min(100%, 300px); padding: 4px; border-radius: 999px; background: rgba(255, 255, 255, 0.14); backdrop-filter: blur(10px); }
   .selector button { height: 34px; border-radius: 999px; font-size: 14px; font-weight: 600; color: rgba(255, 255, 255, 0.75); transition: background 0.25s, color 0.25s; }
   .selector button.activo { background: #fff; color: #04121a; box-shadow: 0 1px 4px rgba(0, 0, 0, 0.3); }
   .sin-video { align-self: center; color: rgba(255, 255, 255, 0.6); }
@@ -284,12 +300,6 @@
   .caja-video :global(video) { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; }
   .caja-video .girando { border-color: rgba(255, 255, 255, 0.25); border-top-color: #fff; position: relative; }
   .lado { width: 100%; height: 100%; }
-  .cola { overflow-y: auto; }
-  .cola h3 { margin: 0 0 10px; font-size: 18px; }
-  .item { width: 100%; display: flex; align-items: center; gap: 12px; padding: 6px 4px; text-align: left; border-radius: 8px; }
-  .item.actual b { color: var(--cian); }
-  .item .textos { min-width: 0; display: flex; flex-direction: column; }
-  .item small { color: rgba(255, 255, 255, 0.6); }
   .datos { display: flex; align-items: center; gap: 12px; }
   .titulos { flex: 1; min-width: 0; }
   h2 { margin: 0; font-size: 24px; font-weight: 800; letter-spacing: -0.3px; }

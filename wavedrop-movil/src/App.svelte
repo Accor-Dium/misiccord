@@ -3,6 +3,7 @@
   import { fade } from "svelte/transition";
   import { py } from "./lib/api.js";
   import { revisarAlIniciar } from "./lib/actualizaciones.svelte.js";
+  import { revisarResumen } from "./lib/resumen.js";
   import { escucharEnlaces } from "./lib/enlaces.svelte.js";
   import { aplicarAjustesLetra, nav } from "./lib/estado.svelte.js";
   import { idioma, t } from "./lib/idioma.svelte.js";
@@ -12,6 +13,8 @@
   import { aplicarAjustesVideo, aplicarEcualizador, rep } from "./lib/reproductor.svelte.js";
   import Avisos from "./componentes/Avisos.svelte";
   import Hoja from "./componentes/Hoja.svelte";
+  import CompletarDatos from "./componentes/CompletarDatos.svelte";
+  import Resumen from "./componentes/Resumen.svelte";
   import InfoCancion from "./componentes/InfoCancion.svelte";
   import MiniReproductor from "./componentes/MiniReproductor.svelte";
   import Navegacion from "./componentes/Navegacion.svelte";
@@ -22,6 +25,7 @@
   import Biblioteca from "./vistas/Biblioteca.svelte";
   import Descargas from "./vistas/Descargas.svelte";
   import Estadisticas from "./vistas/Estadisticas.svelte";
+  import Genero from "./vistas/Genero.svelte";
   import Explorar from "./vistas/Explorar.svelte";
   import MeGusta from "./vistas/MeGusta.svelte";
   import Inicio from "./vistas/Inicio.svelte";
@@ -31,7 +35,7 @@
   const vistas = {
     inicio: Inicio, biblioteca: Biblioteca, descargas: Descargas, jams: Jams,
     album: Album, artista: Artista, buscar_artista: Artista, playlist: Playlist, ajustes: Ajustes,
-    biblioteca_albumes: Biblioteca, estadisticas: Estadisticas, me_gusta: MeGusta, explorar: Explorar,
+    biblioteca_albumes: Biblioteca, estadisticas: Estadisticas, me_gusta: MeGusta, genero: Genero, explorar: Explorar,
   };
 
   let listo = $state(false);
@@ -45,9 +49,11 @@
       rep.fundido = r.ajustes.fundido;
       aplicarAjustesVideo(r.ajustes);
       aplicarAjustesLetra(r.ajustes);
-      aplicarEcualizador(r.ajustes.eq_activo, r.ajustes.eq_bandas);
+      aplicarEcualizador(r.ajustes.eq_activo, r.ajustes.eq_bandas, r.ajustes.eq_mono);
       listo = true;
       revisarAlIniciar();
+      revisarResumen();
+      setInterval(revisarResumen, 3600000); // por si la app se queda abierta y cambia el día
       escucharEnlaces(); // links de jam con los que se abre la app
     } catch (e) {
       error = e.message;
@@ -85,6 +91,8 @@
   <Reproductor />
   <Hoja />
   <InfoCancion />
+  <CompletarDatos />
+  <Resumen />
 {/if}
 <Avisos />
 

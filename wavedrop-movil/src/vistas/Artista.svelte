@@ -1,5 +1,5 @@
 <script>
-  import { t } from "../lib/idioma.svelte.js";
+  import { canciones, t } from "../lib/idioma.svelte.js";
   import { onMount } from "svelte";
   import { fade } from "svelte/transition";
   import { py, src } from "../lib/api.js";
@@ -9,10 +9,18 @@
   import Icono from "../componentes/Icono.svelte";
   import Tarjeta from "../componentes/Tarjeta.svelte";
 
-  // Artista de YouTube Music. Se abre con e.id (browse_id) o solo con e.nombre (lo busca primero).
+  // Artista: primero lo que tienes (al instante y sin internet) y, si hay conexión, lo de YouTube Music debajo.
+  // Se abre con e.nombre y/o e.id (browse_id).
   let { e } = $props();
   const a = $derived(e.datos);
+  let tuyo = $state(e.tuyo ?? null); // { canciones, albumes }
+  let sinConexion = $state(false);
   let verMas = $state(false);
+  let verTodas = $state(false);
+  const tuyas = $derived(tuyo?.canciones ?? []);
+  const nombre = $derived(a?.nombre ?? e.nombre ?? "");
+  const lista = $derived(tuyas.length ? tuyas : a?.canciones ?? []);
+  const portada = $derived(a?.portada ?? tuyo?.albumes?.find((x) => x.portada)?.portada ?? tuyas.find((c) => c.portada)?.portada);
 
   // Las primeras canciones se dejan listas para que suenen en cuanto las toques
   $effect(() => {
@@ -21,6 +29,11 @@
   });
 
   onMount(async () => {
+    if (e.nombre && !tuyo) {
+      try {
+        tuyo = e.tuyo = await py("artista_local", { nombre: e.nombre });
+      } catch {}
+    }
     if (e.datos) return;
     try {
       let id = e.id;
@@ -31,20 +44,48 @@
       }
       e.datos = (await py("artista", { browse_id: id })).artista;
     } catch (err) {
-      aviso(t("No encontré a {nombre}", { nombre: e.nombre ?? t("este artista") }), "error");
+      // Sin internet no es un error si tienes canciones suyas: lo tuyo ya está en pantalla
+      sinConexion = true;
+      if (!tuyo?.canciones.length) aviso(t("No encontré a {nombre}", { nombre: e.nombre ?? t("este artista") }), "error");
     }
   });
 </script>
 
 <div class="vista">
   <button class="redondo relleno volver" onclick={atras} aria-label={t("Atrás")}><Icono nombre="atras" tam={24} /></button>
-  <div class="hero" style:background-image={a?.portada ? `url("${src(a.portada)}")` : "none"}>
+  <div class="hero" style:background-image={portada ? `url("${src(portada)}")` : "none"}>
     <div class="degradado"></div>
     <div class="nombre">
-      <h1>{a?.nombre ?? e.nombre ?? ""}</h1>
+      <h1>{nombre}</h1>
       {#if a?.oyentes}<p>{a.oyentes} oyentes mensuales</p>{/if}
     </div>
   </div>
+
+  {#if tuyas.length}
+    <div class="cuerpo">
+      <div class="acciones">
+        <button class="pildora clara" onclick={() => reproducir(lista, 0, nombre)}><Icono nombre="play" relleno tam={20} /> {t("Reproducir")}</button>
+        <button class="pildora oscura" onclick={() => reproducirAleatorio(lista, nombre)}><Icono nombre="aleatorio" tam={20} /> {t("Aleatorio")}</button>
+      </div>
+      <div class="titulo-seccion">{t("En tu biblioteca")} <small>{canciones(tuyas.length)}</small></div>
+      {#each verTodas ? tuyas : tuyas.slice(0, 6) as c, i (c.db_id)}
+        <FilaCancion cancion={c} alTocar={() => reproducir(tuyas, i, nombre)} />
+      {/each}
+      {#if tuyas.length > 6}
+        <button class="ver" onclick={() => (verTodas = !verTodas)}>{verTodas ? t("Ver menos") : t("Ver todas ({n})", { n: tuyas.length })}</button>
+      {/if}
+      {#if tuyo.albumes.length}
+        <div class="titulo-seccion">{t("Tus álbumes")}</div>
+        <div class="carrusel">
+          {#each tuyo.albumes as al}
+            <Tarjeta portada={al.portada} titulo={al.nombre} subtitulo={[al.anio, canciones(al.canciones)].filter(Boolean).join(" · ")}
+              alTocar={() => abrir("album", { local: al })} />
+          {/each}
+        </div>
+      {/if}
+      {#if sinConexion}<p class="tenue sin-red">{t("Sin conexión: esto es lo que tienes guardado.")}</p>{/if}
+    </div>
+  {/if}
 
   {#if a}
     <div class="cuerpo" in:fade={{ duration: 300 }}>
@@ -52,10 +93,12 @@
         <p class="desc" class:abierta={verMas}>{a.descripcion}</p>
         <button class="ver" onclick={() => (verMas = !verMas)}>{verMas ? "Ver menos" : "Ver más"}</button>
       {/if}
-      <div class="acciones">
-        <button class="pildora clara" onclick={() => reproducir(a.canciones, 0, a.nombre)}><Icono nombre="play" relleno tam={20} /> {t("Reproducir")}</button>
-        <button class="pildora oscura" onclick={() => reproducirAleatorio(a.canciones, a.nombre)}><Icono nombre="aleatorio" tam={20} /> {t("Aleatorio")}</button>
-      </div>
+      {#if !tuyas.length}
+        <div class="acciones">
+          <button class="pildora clara" onclick={() => reproducir(a.canciones, 0, a.nombre)}><Icono nombre="play" relleno tam={20} /> {t("Reproducir")}</button>
+          <button class="pildora oscura" onclick={() => reproducirAleatorio(a.canciones, a.nombre)}><Icono nombre="aleatorio" tam={20} /> {t("Aleatorio")}</button>
+        </div>
+      {/if}
 
       {#if a.canciones.length}
         <div class="titulo-seccion">{t("Populares")}</div>
@@ -84,7 +127,7 @@
         </div>
       {/if}
     </div>
-  {:else}
+  {:else if !tuyas.length && !sinConexion}
     <div class="cuerpo">{#each Array(5) as _}<div class="cargando-bloque" style="height:56px;margin:10px 0"></div>{/each}</div>
   {/if}
 </div>
@@ -109,4 +152,5 @@
   .ver { margin-top: 4px; font-weight: 700; color: var(--tenue); }
   .acciones { display: flex; gap: 12px; margin: 20px 0 4px; }
   .acciones .pildora { flex: 1; }
+  .sin-red { margin-top: 16px; font-size: 13.5px; }
 </style>

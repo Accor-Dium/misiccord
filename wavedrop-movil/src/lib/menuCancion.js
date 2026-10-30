@@ -3,7 +3,7 @@
 import { py } from "./api.js";
 import { compartir } from "./compartir.js";
 import { pedirEliminar } from "./eliminar.js";
-import { abrir, abrirAlbumDe, alternarMeGusta, aviso, cerrarReproductor, descargar, mostrarHoja, ui, verInfo } from "./estado.svelte.js";
+import { abrir, abrirAlbumDe, alternarMeGusta, aviso, cerrarReproductor, completarDatos, descargar, mostrarHoja, ui, verInfo } from "./estado.svelte.js";
 import { t } from "./idioma.svelte.js";
 import { agregarAlJam, puedoAgregar } from "./jam.svelte.js";
 import { agregarACola, reproducir, rep } from "./reproductor.svelte.js";
@@ -74,6 +74,7 @@ export async function menuCancion(c, extras = []) {
   if (c.album) ops.push({ texto: t("Ver álbum"), icono: "disco", accion: () => irA(() => abrirAlbumDe(c)) });
   if (c.artista) ops.push({ texto: t("Ver artista"), icono: "persona", accion: () => irA(() => abrir("buscar_artista", { nombre: primerArtista(c) })) });
   ops.push({ texto: c.ruta ? t("Información y etiquetas") : t("Información"), icono: "info", accion: () => verInfo(c) });
+  if (c.ruta) ops.push({ texto: t("Completar datos"), icono: "etiqueta", accion: () => completarDatos([c]) });
   if (c.db_id) ops.push({ texto: t("Eliminar de la biblioteca"), icono: "basura", peligro: true, accion: () =>
     pedirEliminar({ objetivo: { db_ids: [c.db_id] }, cuantas: 1, titulo: `“${c.titulo}”`, seBorra: (x) => x.ruta === c.ruta }) });
 

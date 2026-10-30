@@ -45,7 +45,43 @@ export const ORDENES = [
   ["artista", t("Artista (A–Z)")],
   ["album", t("Álbum")],
   ["recientes", t("Agregadas recientemente")],
+  ["reproducidas", t("Más reproducidas")],
 ];
+
+// Las demás pestañas: todas se pueden ordenar y agrupar por nombre
+export const ORDENES_LISTA = {
+  albumes: [["nombre", t("Nombre (A–Z)")], ["artista", t("Artista (A–Z)")], ["anio", t("Año")], ["canciones", t("Más canciones")]],
+  artistas: [["nombre", t("Nombre (A–Z)")], ["canciones", t("Más canciones")]],
+  playlists: [["nombre", t("Nombre (A–Z)")], ["canciones", t("Más canciones")]],
+  generos: [["nombre", t("Nombre (A–Z)")], ["canciones", t("Más canciones")]],
+};
+
+/** Álbumes, artistas, playlists o géneros ordenados y en grupos con encabezado: [{ titulo, items }]. */
+export function agruparLista(items, orden) {
+  if (orden === "artista") return agruparPorLetra(items, (x) => x.artista);
+  if (orden === "canciones") {
+    const lista = [...items].sort((a, b) => b.canciones - a.canciones || comparar(a.nombre, b.nombre));
+    return lista.length ? [{ titulo: t("Más canciones"), items: lista }] : [];
+  }
+  if (orden === "anio") {
+    const lista = [...items].sort((a, b) => comparar(String(b.anio || ""), String(a.anio || "")) || comparar(a.nombre, b.nombre));
+    const grupos = [];
+    for (const x of lista) {
+      const g = x.anio ? String(x.anio).slice(0, 4) : t("Sin año");
+      if (grupos.at(-1)?.titulo !== g) grupos.push({ titulo: g, items: [] });
+      grupos.at(-1).items.push(x);
+    }
+    return grupos;
+  }
+  return agruparPorLetra(items, (x) => x.nombre);
+}
+
+function puesto(i, c) {
+  if (!c.veces) return t("Sin reproducir");
+  if (i < 10) return t("Top 10");
+  if (i < 50) return t("Top 50");
+  return t("Las demás");
+}
 
 function periodo(segundos) {
   const dias = (Date.now() / 1000 - (segundos || 0)) / 86400;
@@ -72,6 +108,10 @@ export function agrupar(canciones, orden) {
   } else if (orden === "recientes") {
     lista.sort((a, b) => (b.agregada || 0) - (a.agregada || 0));
     grupoDe = (c) => periodo(c.agregada);
+  } else if (orden === "reproducidas") {
+    lista.sort((a, b) => (b.veces || 0) - (a.veces || 0) || comparar(sinArticulo(a.titulo), sinArticulo(b.titulo)));
+    const puestos = new Map(lista.map((c, i) => [c, puesto(i, c)]));
+    grupoDe = (c) => puestos.get(c);
   } else {
     lista.sort((a, b) => comparar(sinArticulo(a.titulo), sinArticulo(b.titulo)));
     grupoDe = (c) => letraDe(c.titulo);

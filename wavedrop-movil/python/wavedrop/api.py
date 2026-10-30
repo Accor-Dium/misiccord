@@ -36,7 +36,8 @@ AJUSTES_POR_DEFECTO = {
     "letra_traducir_a": "",  # idioma al que se traducen las letras ("" = no traducir)
     "letra_romanizar": True,  # mostrar la romanización de letras en coreano, japonés (kana), ruso…
     "eq_activo": False,    # ecualizador (Web Audio): apagado, el audio va directo como siempre
-    "eq_bandas": [0, 0, 0, 0, 0],  # dB de cada banda: 60 Hz, 230 Hz, 910 Hz, 3.6 kHz, 14 kHz
+    "eq_bandas": [0, 0, 0, 0, 0],  # dB de cada banda; cuántas hay (3, 5, 10, 15 o 31) dice qué frecuencias son
+    "eq_mono": False,      # sumar izquierda y derecha (también va por Web Audio)
 }
 
 
@@ -468,8 +469,10 @@ def artista(d: dict) -> dict:
 def biblioteca_(d: dict) -> dict:
     db = _db()
     carpeta = d.get("carpeta", "")  # "" = toda la biblioteca
+    veces = db.veces_por_ruta()
     return {
-        "canciones": [_local(c) for c in db.canciones(d.get("q", ""), carpeta)],
+        "canciones": [_local(c) | {"veces": veces.get(str(c.ruta), 0)} for c in db.canciones(d.get("q", ""), carpeta)],
+        "generos": [{"nombre": n, "canciones": k, "portada": p} for n, k, p in db.generos(carpeta)],
         "albumes": [_album_local(a) for a in db.albumes(carpeta)],
         "artistas": [{"nombre": n, "canciones": k} for n, k in db.artistas(carpeta)],
         "playlists": [{"id": i, "nombre": n, "canciones": k} for i, n, k in db.playlists()],
@@ -586,6 +589,22 @@ def _tras_editar(ruta: Path) -> dict:
     return {"cancion": _local(c) if c else None}
 
 
+def metadata_opciones(d: dict) -> dict:
+    """Las ediciones de MusicBrainz en las que sale una canción, para elegir de cuál completar sus datos."""
+    return {"opciones": musicbrainz.opciones(d.get("titulo", ""), d.get("artista", ""), d.get("duracion"), d.get("album", ""))}
+
+
+def metadata_aplicar(d: dict) -> dict:
+    """Escribe en el archivo la edición elegida y, si se pide, también su carátula."""
+    ruta = Path(d["ruta"])
+    o = d["opcion"]
+    campos = {k: o.get(k) for k in ("titulo", "artista", "album", "artista_album", "anio", "pista", "total_pistas", "genero",
+                                    "mbid", "mbid_album", "mbid_grupo")}
+    datos = musicbrainz.Datos(**{k: v or ("" if k not in ("pista", "total_pistas") else None) for k, v in campos.items()}, puntaje=o.get("puntaje", 0))
+    musicbrainz.escribir(ruta, datos, musicbrainz.portada(datos) if d.get("portada", True) else None)
+    return _tras_editar(ruta)
+
+
 def guardar_etiquetas(d: dict) -> dict:
     ruta = Path(d["ruta"])
     etiquetas.escribir(ruta, d.get("campos") or {})
@@ -662,7 +681,20 @@ def album_local(d: dict) -> dict:
 
 
 def artista_local(d: dict) -> dict:
-    return {"canciones": [_local(c) for c in _db().canciones_de_artista(d["nombre"])]}
+    """Lo que tienes de un artista: sale al instante y sirve sin internet."""
+    db = _db()
+    return {"canciones": [_local(c) for c in db.canciones_de_artista(d["nombre"])],
+            "albumes": [_album_local(a) for a in db.albumes_de_artista(d["nombre"])]}
+
+
+def genero_local(d: dict) -> dict:
+    return {"canciones": [_local(c) for c in _db().canciones_de_genero(d["nombre"])]}
+
+
+def album_local_buscar(d: dict) -> dict:
+    """¿Ya tienes este álbum? (al abrirlo desde una vista previa se prefiere el tuyo)"""
+    a = _db().album_por_nombre(d.get("nombre", ""), d.get("artista", ""))
+    return {"album": _album_local(a) if a else None}
 
 
 def playlist(d: dict) -> dict:
@@ -753,8 +785,8 @@ def reproduccion(d: dict) -> dict:
 
 
 def estadisticas(d: dict) -> dict:
-    """Lo que escuchaste en el último mes (dias=30) o los últimos 3 meses (dias=90), con porcentajes."""
-    dias = 90 if int(d.get("dias", 30)) >= 90 else 30
+    """Lo que escuchaste en los últimos `dias` (mes, 3 meses, lo que va del año o un resumen), con porcentajes."""
+    dias = max(1, min(366, int(d.get("dias", 30))))
     e = _db().estadisticas(dias)
     for c in e["canciones"]:
         ruta = c.pop("ruta")
@@ -1087,14 +1119,16 @@ FUNCIONES = {
     "iniciar": iniciar, "ajustes": ajustes, "guardar_ajustes": guardar_ajustes,
     "inicio": inicio, "recomendaciones": recomendaciones,
     "buscar": buscar, "album": album, "artista": artista,
-    "biblioteca": biblioteca_, "album_local": album_local, "artista_local": artista_local,
+    "biblioteca": biblioteca_, "album_local": album_local, "artista_local": artista_local, "album_local_buscar": album_local_buscar,
+    "genero_local": genero_local,
     "carpetas_biblioteca": carpetas_biblioteca, "agregar_carpeta_biblioteca": agregar_carpeta_biblioteca,
     "quitar_carpeta_biblioteca": quitar_carpeta_biblioteca, "subcarpetas": subcarpetas,
     "playlist": playlist, "crear_playlist": crear_playlist, "agregar_a_playlist": agregar_a_playlist,
     "quitar_de_playlist": quitar_de_playlist, "borrar_playlist": borrar_playlist,
     "eliminar_canciones": eliminar_canciones, "video": video, "descargar_video": descargar_video,
     "me_gusta": me_gusta, "me_gusta_es": me_gusta_es, "me_gusta_alternar": me_gusta_alternar,
-    "info_cancion": info_cancion, "guardar_etiquetas": guardar_etiquetas, "cambiar_portada": cambiar_portada,
+    "info_cancion": info_cancion, "guardar_etiquetas": guardar_etiquetas,
+    "metadata_opciones": metadata_opciones, "metadata_aplicar": metadata_aplicar, "cambiar_portada": cambiar_portada,
     "reproduccion": reproduccion, "estadisticas": estadisticas, "previa": previa, "precargar": precargar, "letra": letra,
     "letra_traduccion": letra_traduccion,
     "descargar": descargar, "descargas": descargas_, "cancelar_descarga": cancelar_descarga,

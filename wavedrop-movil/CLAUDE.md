@@ -157,7 +157,7 @@ Todo el trabajo real vive en Python: python/wavedrop/  (el mismo código en las 
 - `vistas/`: `Inicio` (con el buscador en vivo `componentes/Buscador.svelte`), `Explorar`, `Biblioteca` (selección para compartir o borrar), `Album`
   (también playlists de YouTube Music), `Artista`, `Playlist`, `MeGusta`, `Estadisticas`, `Jams`, `Descargas`, `Ajustes`.
 - `componentes/`: `FilaCancion` (menú ⋯, agregar al jam, eliminar), `Hoja` (menú inferior / ventana en escritorio), `MiniReproductor` (también muestra el jam),
-  `Reproductor`, `Letra`, `Tarjeta`, `Portada` (reintenta si una portada falla), `Icono` (íconos SVG por nombre), `Volumen`, `Navegacion`, `ListaVirtual` (solo dibuja las filas cerca de la pantalla),
+  `Reproductor`, `Cola`, `Ecualizador`, `Visualizador`, `Marquesina` (texto que se desliza si no cabe), `Resumen`, `CompletarDatos`, `Letra`, `Tarjeta`, `Portada` (reintenta si una portada falla), `Icono` (íconos SVG por nombre), `Volumen`, `Navegacion`, `ListaVirtual` (solo dibuja las filas cerca de la pantalla),
   `Avisos` (abajo, con acción y barra de avance: `aviso(texto, tipo, { id, duracion, accion, avance })`), `BotonDescarga`, `Paginas`, `InfoCancion`.
 - `app.css`: tokens de color, `--margen`, carruseles (`scroll-padding` evita que se "corran"), tamaño de artistas `--artista`.
 
@@ -220,6 +220,13 @@ Todo el trabajo real vive en Python: python/wavedrop/  (el mismo código en las 
   - **`ListaVirtual`**: las filas de un mismo `tipo` deben medir igual. Mide una sola vez por ancho: los textos en otros alfabetos usan otra fuente y cambian el alto 1 o 2 px,
     y medir con cada fila que entra crea un ciclo infinito entre listas (`effect_update_depth_exceeded`). Encabezados y `.ancla` siguen en el DOM: por eso funcionan `sticky` y el índice A–Z.
   - **El aviso `"biblioteca"` trae `sin_cambios`** si el escaneo no encontró nada: si no, cada arranque volvía a pedir y dibujar todo.
+- **La cola es el orden real** (`rep.cola`): con aleatorio se baraja de verdad (`mezclar`) y `original` guarda el orden para regresar a él. Nunca elijas la siguiente al azar
+  al momento: "A continuación" (`Cola.svelte`) debe decir lo que va a sonar. La que suena va hasta arriba; lo anterior se ve con "Ver las anteriores".
+- **Álbum y artista: primero lo local** (`artista_local`, `album_local_buscar`): sale al instante y funciona sin internet; lo de YouTube Music se agrega después y sus errores no se muestran si ya hay algo tuyo.
+- **Ecualizador en el reproductor** (`Ecualizador.svelte`): 3, 5, 10, 15 o 31 bandas; cuántas hay lo dice el largo de `eq_bandas` (`convertirBandas` interpola al cambiar). Mono es `channelCount = 1` en el primer nodo.
+  Mono y los visualizadores (`Visualizador.svelte`, `analizadorDeAudio`) también arman el grafo de Web Audio.
+- **Completar datos** (`CompletarDatos.svelte`, `musicbrainz.opciones`): una opción por grupo de MusicBrainz, primero su edición más antigua (si no, Thriller salía de 2022). Respeta el límite de 1 consulta por segundo de `_get`.
+- **Resumen** (`lib/resumen.js`, `Resumen.svelte`): el último día del mes, trimestre o año avisa una vez por periodo (`misiccord_resumen_visto`); lo más grande gana (31 de diciembre = año).
 - **Reproducir estando en un jam pregunta primero** (mandarla al jam o salir/cerrar el jam y escucharla aquí): todo pasa por `reproducir()`,
   y `jam.svelte.js` registra la pregunta con `preguntarAlReproducirEnJam` (el reproductor no importa al jam: el jam ya importa al reproductor).
   Si agregas otra forma de empezar a sonar, que pase por `reproducir()` o respete `{ aunEnJam }`.
