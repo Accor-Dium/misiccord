@@ -7,6 +7,7 @@
   import { aBody } from "../lib/aBody.js";
   import { pedirEliminar } from "../lib/eliminar.js";
   import { compartir } from "../lib/compartir.js";
+  import { menuCancion } from "../lib/menuCancion.js";
   import { canciones, t } from "../lib/idioma.svelte.js";
   import { agrupar, agruparPorLetra, coincide, ORDENES } from "../lib/ordenar.js";
   import FilaCancion from "../componentes/FilaCancion.svelte";
@@ -78,15 +79,36 @@
 
   // Índice A–Z a un lado (por título o artista, sin búsqueda): toca o desliza el dedo para saltar a una letra
   const indice = $derived(!texto && (orden === "titulo" || orden === "artista") && plana.length > 25 ? grupos.map((g) => g.titulo) : []);
-  let enIndice = false;
+  // Mientras el dedo está en el índice, una burbuja grande junto a él muestra la letra (el dedo tapa la del índice)
+  let enIndice = null; // pointerId del dedo que arrastra (otro dedo o el mouse que pasa no cuentan)
+  let burbuja = $state(null); // { letra, y, x }
   function tocarIndice(ev) {
     if (ev.type === "pointerdown") {
-      enIndice = true;
-      ev.currentTarget.setPointerCapture(ev.pointerId);
+      enIndice = ev.pointerId;
+      try { ev.currentTarget.setPointerCapture(ev.pointerId); } catch {}
     }
-    if (!enIndice) return;
-    const letra = document.elementFromPoint(ev.clientX, ev.clientY)?.closest?.("[data-letra]")?.dataset.letra;
-    if (letra) document.getElementById(`grupo-${letra}`)?.scrollIntoView({ block: "start" });
+    if (enIndice !== ev.pointerId) return;
+    // Con el dedo capturado, elementFromPoint fuera de las letras no da nada: se busca la más cercana por altura
+    const spans = [...ev.currentTarget.querySelectorAll("[data-letra]")];
+    let cerca = null, distancia = Infinity;
+    for (const sp of spans) {
+      const caja = sp.getBoundingClientRect();
+      const d = Math.abs(caja.top + caja.height / 2 - ev.clientY);
+      if (d < distancia) { distancia = d; cerca = sp; }
+    }
+    const letra = cerca?.dataset.letra;
+    if (!letra) return;
+    const caja = cerca.getBoundingClientRect();
+    if (burbuja?.letra !== letra) {
+      document.getElementById(`grupo-${letra}`)?.scrollIntoView({ block: "start" });
+      navigator.vibrate?.(8);
+    }
+    burbuja = { letra, y: caja.top + caja.height / 2, x: caja.left };
+  }
+  function soltarIndice(ev) {
+    if (enIndice !== ev.pointerId) return;
+    enIndice = null;
+    burbuja = null;
   }
 
   // Filtro por carpeta de música ("" = todas); se recuerda al volver a esta vista
@@ -199,6 +221,20 @@
   }
   const nombreCarpeta = (ruta) => ruta.split(/[\\/]/).filter(Boolean).pop() || ruta;
 
+  // ---------- Lista o cuadrícula ----------
+  // Cada pestaña recuerda la suya (los álbumes empiezan en cuadrícula, lo demás en lista)
+  const VISTAS_INICIALES = { canciones: "lista", albumes: "cuadricula", artistas: "lista", playlists: "lista" };
+  let vistas = $state(leerVistas());
+  function leerVistas() {
+    try { return { ...VISTAS_INICIALES, ...JSON.parse(localStorage.getItem("misiccord_vista_biblioteca") || "{}") }; }
+    catch { return { ...VISTAS_INICIALES }; }
+  }
+  const enCuadricula = $derived(vistas[pestana] === "cuadricula");
+  function alternarVista() {
+    vistas = { ...vistas, [pestana]: enCuadricula ? "lista" : "cuadricula" };
+    try { localStorage.setItem("misiccord_vista_biblioteca", JSON.stringify(vistas)); } catch {}
+  }
+
   const pestanas = [["canciones", t("Canciones")], ["albumes", t("Álbumes")], ["artistas", t("Artistas")], ["playlists", t("Playlists")]];
 
   // ---------- Selección múltiple para compartir/exportar o borrar ----------
@@ -297,12 +333,11 @@
     <h1 class="titulo-vista">{t("Biblioteca")}</h1>
     <div class="botones">
       <button class="redondo" onclick={() => abrir("estadisticas")} aria-label={t("Tus estadísticas")} title={t("Tus estadísticas")}><Icono nombre="estadisticas" tam={24} /></button>
+      <button class="redondo" onclick={alternarVista} aria-label={enCuadricula ? t("Ver como lista") : t("Ver como cuadrícula")}
+        title={enCuadricula ? t("Ver como lista") : t("Ver como cuadrícula")}><Icono nombre={enCuadricula ? "lista" : "cuadricula"} tam={22} /></button>
       <button class="redondo" onclick={abrirPanel} aria-label={t("Carpetas de música")} title={t("Carpetas de música")}><Icono nombre="carpeta" tam={24} /></button>
       <button class="redondo" class:activo-cian={seleccionando} onclick={() => (seleccionando ? salirSeleccion() : (seleccionando = true))}
         aria-label={t("Compartir o exportar")} title={t("Compartir o exportar")}><Icono nombre="compartir" tam={22} /></button>
-      {#if pestana === "playlists"}
-        <button class="redondo" onclick={() => (creando = !creando)} aria-label={t("Nueva playlist")}><Icono nombre="agregar" tam={26} /></button>
-      {/if}
     </div>
   </header>
   <form class="buscador" role="search" onsubmit={(ev) => { ev.preventDefault(); document.activeElement?.blur(); }}>
@@ -340,6 +375,16 @@
             <button class="texto-boton" onclick={alternarTodas}>{todas ? t("Quitar todas") : t("Elegir todas")}</button>
             <button class="pildora oscura chica" onclick={salirSeleccion}>{t("Listo")}</button>
           </div>
+          {#if enCuadricula}
+            <div class="mosaico">
+              {#each plana as c (c.db_id)}
+                <div class="eleccion-tarjeta" class:elegida={elegidas.has(c.db_id)}>
+                  <Tarjeta portada={c.portada} titulo={c.titulo} subtitulo={c.artista} icono="nota" ancho="100%" alTocar={() => alternarElegida(c.db_id)} />
+                  <span class="casilla">{#if elegidas.has(c.db_id)}<Icono nombre="check" tam={16} />{/if}</span>
+                </div>
+              {/each}
+            </div>
+          {:else}
           {#each plana as c (c.db_id)}
             <button class="fila-eleccion" class:elegida={elegidas.has(c.db_id)} onclick={() => alternarElegida(c.db_id)}>
               <span class="casilla">{#if elegidas.has(c.db_id)}<Icono nombre="check" tam={16} />{/if}</span>
@@ -347,6 +392,7 @@
               <span class="textos"><b class="cortar">{c.titulo}</b><small class="cortar">{c.artista}</small></span>
             </button>
           {/each}
+          {/if}
         {:else}
           <div class="acciones">
             <span class="tenue">{texto ? t("{n} de {total} canciones", { n: plana.length, total: b.canciones.length }) : canciones(plana.length)}</span>
@@ -363,10 +409,21 @@
             </div>
           </div>
           {#each grupos as g (g.titulo)}
-            <div class="grupo" id="grupo-{g.titulo}">{g.titulo}</div>
+            <!-- El salto del índice va al ancla: un encabezado fijo (sticky) que ya pasó no deja regresar a él -->
+            <span class="ancla" id="grupo-{g.titulo}"></span>
+            <div class="grupo">{g.titulo}</div>
+            {#if enCuadricula}
+              <div class="mosaico">
+                {#each g.canciones as c (c.db_id)}
+                  <Tarjeta portada={c.portada} titulo={c.titulo} subtitulo={c.artista} icono="nota" ancho="100%"
+                    alTocar={() => reproducir(plana, plana.indexOf(c), "Tu biblioteca")} alMantener={() => menuCancion(c)} />
+                {/each}
+              </div>
+            {:else}
             {#each g.canciones as c (c.db_id)}
               <FilaCancion cancion={c} alTocar={() => reproducir(plana, plana.indexOf(c), "Tu biblioteca")} />
             {/each}
+            {/if}
           {:else}
             <p class="vacio">{t("Nada en tu biblioteca con “{q}”.", { q: texto })}</p>
           {/each}
@@ -384,9 +441,22 @@
       {/if}
     </div>
   {:else if pestana === "albumes"}
-    <div class="rejilla" in:fade={{ duration: 220 }}>
+    <div class:rejilla={enCuadricula} in:fade={{ duration: 220 }}>
       {#each albumesVistos as a}
-        {#if seleccionando}
+        {#if !enCuadricula}
+          {#if seleccionando}
+            <button class="fila-eleccion" class:elegida={elegidos.has(claveAlbum(a))} onclick={() => alternarElegido(claveAlbum(a))}>
+              <span class="casilla">{#if elegidos.has(claveAlbum(a))}<Icono nombre="check" tam={16} />{/if}</span>
+              <Portada url={a.portada} tam="46px" radio="8px" />
+              <span class="textos"><b class="cortar">{a.nombre}</b><small class="cortar">{a.artista}</small></span>
+            </button>
+          {:else}
+            <button class="fila-artista" onclick={() => abrir("album", { local: a })}>
+              <Portada url={a.portada} tam="54px" radio="10px" />
+              <span class="textos"><b class="cortar">{a.nombre}</b><small class="cortar">{a.artista}</small></span>
+            </button>
+          {/if}
+        {:else if seleccionando}
           <div class="eleccion-tarjeta" class:elegida={elegidos.has(claveAlbum(a))}>
             <Tarjeta portada={a.portada} titulo={a.nombre} subtitulo={a.artista} ancho="100%" alTocar={() => alternarElegido(claveAlbum(a))} />
             <span class="casilla">{#if elegidos.has(claveAlbum(a))}<Icono nombre="check" tam={16} />{/if}</span>
@@ -402,6 +472,21 @@
     <div in:fade={{ duration: 220 }}>
       {#each gruposArtistas as g (g.titulo)}
         <div class="grupo">{g.titulo}</div>
+        {#if enCuadricula}
+          <div class="mosaico">
+            {#each g.items as a}
+              {#if seleccionando}
+                <div class="eleccion-tarjeta" class:elegida={elegidos.has(`artista:${a.nombre}`)}>
+                  <Tarjeta redonda icono="persona" titulo={a.nombre} subtitulo={canciones(a.canciones)} ancho="100%" alTocar={() => alternarElegido(`artista:${a.nombre}`)} />
+                  <span class="casilla">{#if elegidos.has(`artista:${a.nombre}`)}<Icono nombre="check" tam={16} />{/if}</span>
+                </div>
+              {:else}
+                <Tarjeta redonda icono="persona" titulo={a.nombre} subtitulo={canciones(a.canciones)} ancho="100%"
+                  alTocar={() => abrir("artista", { nombre: a.nombre })} alMantener={() => opcionesArtista(a)} />
+              {/if}
+            {/each}
+          </div>
+        {:else}
         {#each g.items as a}
           {#if seleccionando}
             <button class="fila-eleccion" class:elegida={elegidos.has(`artista:${a.nombre}`)} onclick={() => alternarElegido(`artista:${a.nombre}`)}>
@@ -419,12 +504,22 @@
           </div>
           {/if}
         {/each}
+        {/if}
       {:else}
         <p class="vacio">{texto ? t("Ningún artista con “{q}”.", { q: texto }) : t("Sin artistas todavía.")}</p>
       {/each}
     </div>
   {:else}
     <div in:fade={{ duration: 220 }}>
+      <!-- Aquí y no en el encabezado: con el botón de lista/cuadrícula ya no caben cinco botones en un cel angosto -->
+      {#if !seleccionando}
+        <div class="acciones">
+          <span></span>
+          <button class="pildora oscura chica" class:activo-cian={creando} onclick={() => (creando = !creando)}>
+            <Icono nombre="agregar" tam={18} /> {t("Nueva playlist")}
+          </button>
+        </div>
+      {/if}
       {#if creando}
         <form class="nueva" onsubmit={(ev) => { ev.preventDefault(); crear(); }}>
           <input bind:value={nombre} placeholder={t("Nombre de la playlist")} />
@@ -432,6 +527,25 @@
         </form>
       {/if}
       <!-- Me gusta va siempre primero: no es una playlist que se borre, guarda también canciones no descargadas -->
+      {#if enCuadricula}
+        <div class="mosaico">
+          {#if !seleccionando}
+            <button class="tarjeta-lista" onclick={() => abrir("me_gusta")}>
+              <span class="cubierta me-gusta"><Icono nombre="corazon" relleno tam={34} /></span>
+              <b class="cortar">{t("Me gusta")}</b><small>{canciones(b.me_gusta ?? 0)}</small>
+            </button>
+          {/if}
+          {#each playlistsVistas as p}
+            <button class="tarjeta-lista" class:eleccion-tarjeta={seleccionando} class:elegida={elegidos.has(`playlist:${p.id}`)}
+              onclick={() => (seleccionando ? alternarElegido(`playlist:${p.id}`) : abrir("playlist", { id: p.id, nombre: p.nombre }))}>
+              <span class="cubierta"><Icono nombre="lista" tam={34} /></span>
+              <b class="cortar">{p.nombre}</b><small>{canciones(p.canciones)}</small>
+              {#if seleccionando}<span class="casilla">{#if elegidos.has(`playlist:${p.id}`)}<Icono nombre="check" tam={16} />{/if}</span>{/if}
+            </button>
+          {/each}
+        </div>
+        {#if !playlistsVistas.length && !creando}<p class="vacio">{t("Crea tus playlists con el botón +.")}</p>{/if}
+      {:else}
       {#if !seleccionando}
       <button class="fila-artista" onclick={() => abrir("me_gusta")}>
         <span class="avatar cuadro me-gusta"><Icono nombre="corazon" relleno tam={22} /></span>
@@ -454,15 +568,21 @@
       {:else}
         {#if !creando}<p class="vacio">{t("Crea tus playlists con el botón +.")}</p>{/if}
       {/each}
+      {/if}
     </div>
   {/if}
 </div>
 
 {#if pestana === "canciones" && !seleccionando && indice.length > 4}
   <div class="indice" use:aBody role="navigation" aria-label={t("Saltar a una letra")}
-    onpointerdown={tocarIndice} onpointermove={tocarIndice} onpointerup={() => (enIndice = false)} onpointercancel={() => (enIndice = false)}>
-    {#each indice as letra}<span data-letra={letra}>{letra}</span>{/each}
+    onpointerdown={tocarIndice} onpointermove={tocarIndice} onpointerup={soltarIndice} onpointercancel={soltarIndice}>
+    {#each indice as letra}<span data-letra={letra} class:tocada={burbuja?.letra === letra}>{letra}</span>{/each}
   </div>
+  {#if burbuja}
+    <div class="burbuja" use:aBody style:top="{burbuja.y}px" style:left="{burbuja.x}px" transition:fade={{ duration: 120 }} aria-hidden="true">
+      <span>{burbuja.letra}</span>
+    </div>
+  {/if}
 {/if}
 
 {#if panelCarpetas}
@@ -550,6 +670,7 @@
     position: sticky; top: 0; z-index: 2; background: var(--fondo); padding: 10px 0 4px; margin-top: 4px;
     font-size: 15px; font-weight: 800; color: var(--cian); scroll-margin-top: 0;
   }
+  .ancla { display: block; height: 0; }
   .con-indice { padding-right: 16px; } /* que el índice no tape el ⋯ de las filas */
   .indice {
     position: fixed; z-index: 20; right: 2px; top: calc(var(--seguro-arriba) + 170px);
@@ -557,10 +678,28 @@
     display: flex; flex-direction: column; justify-content: space-evenly; align-items: center; padding: 2px 3px;
     touch-action: none; user-select: none; -webkit-user-select: none;
   }
-  .indice span { font-size: 11px; font-weight: 800; color: var(--cian); padding: 0 4px; line-height: 1; cursor: pointer; }
+  .indice span { font-size: 11px; font-weight: 800; color: var(--cian); padding: 0 4px; line-height: 1; cursor: pointer; transition: transform 0.12s; }
+  .indice span.tocada { transform: scale(1.5); color: #fff; }
+  /* La burbuja sale a la izquierda del dedo, a la altura de la letra */
+  .burbuja {
+    position: fixed; z-index: 40; width: 64px; height: 64px; margin: -32px 0 0 -84px; pointer-events: none;
+    display: grid; place-items: center; border-radius: 50% 50% 8px 50%; transform: rotate(-45deg);
+    background: var(--cian); color: #04121a; font-size: 30px; font-weight: 800; box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
+  }
+  .burbuja span { transform: rotate(45deg); }
   @media (min-width: 900px) {
     .indice { right: 10px; top: 200px; bottom: calc(var(--mini) + 30px); }
   }
+  /* Cuadrícula de canciones, artistas y playlists: 3 por fila en el cel, las que quepan en la PC */
+  .mosaico { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px 12px; margin: 6px 0 12px; }
+  .mosaico :global(.tarjeta b) { font-size: 13.5px; margin-top: 6px; }
+  .mosaico :global(.tarjeta small) { font-size: 12.5px; }
+  @media (min-width: 900px) { .mosaico { grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 22px 18px; } }
+  .tarjeta-lista { position: relative; display: flex; flex-direction: column; gap: 4px; text-align: left; min-width: 0; }
+  .tarjeta-lista b { margin-top: 6px; font-size: 13.5px; font-weight: 700; width: 100%; }
+  .tarjeta-lista small { color: var(--tenue); font-size: 12.5px; }
+  .cubierta { aspect-ratio: 1; border-radius: 12px; background: var(--tarjeta-2); display: grid; place-items: center; color: var(--tenue); }
+  .cubierta.me-gusta { background: linear-gradient(135deg, #ff4d6d, #7c3aed); color: #fff; }
   .rejilla { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 18px 14px; margin-top: 8px; }
   .acciones { display: flex; justify-content: space-between; align-items: center; margin: 6px 0 8px; }
   .chica { height: 38px; padding: 0 16px; font-size: 14px; }

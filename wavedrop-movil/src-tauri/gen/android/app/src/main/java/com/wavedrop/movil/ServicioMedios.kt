@@ -65,6 +65,19 @@ class ServicioMedios : Service() {
         private var portadaUrl: String? = null
         private var portada: Bitmap? = null
         private var instancia: ServicioMedios? = null
+        private var claveWidget: String? = null
+
+        /** ¿Está sonando algo ahora? (MainActivity no deja que Tauri cierre la app si es así) */
+        val sonando: Boolean get() = ultimo?.sonando == true
+
+        /** El widget solo se redibuja si cambió algo que se ve (no con cada avance de la canción). */
+        private fun avisarWidget(contexto: Context, estado: EstadoMedios?) {
+            val imagen = if (estado != null && portadaUrl == estado.portada) portada else null
+            val clave = estado?.let { "${it.titulo}|${it.artista}|${it.sonando}|${it.enJam}|${imagen?.hashCode()}" }
+            if (clave == claveWidget) return
+            claveWidget = clave
+            WidgetMisiccord.actualizar(contexto, estado, imagen)
+        }
 
         /** Llamado por PythonPlugin cada vez que cambia lo que suena. null = ya no hay nada: se quita todo. */
         fun actualizar(contexto: Context, estado: EstadoMedios?) {
@@ -72,6 +85,7 @@ class ServicioMedios : Service() {
             val intento = Intent(contexto, ServicioMedios::class.java)
             if (estado == null) {
                 contexto.stopService(intento)
+                avisarWidget(contexto, null)
                 return
             }
             // Si ya corre se actualiza directo: Android 12+ no deja ARRANCAR un servicio así desde segundo plano
@@ -124,6 +138,8 @@ class ServicioMedios : Service() {
         }
         val estado = ultimo
         if (estado == null) {
+            // Un botón del widget después de que Android cerró la app: se regresa a "Toca para abrir"
+            avisarWidget(this, null)
             stopSelf()
             return START_NOT_STICKY
         }
@@ -162,6 +178,7 @@ class ServicioMedios : Service() {
             meta.putBitmap(MediaMetadataCompat.METADATA_KEY_ALBUM_ART, portada)
         }
         s.setMetadata(meta.build())
+        avisarWidget(this, e)
         var acciones = PlaybackStateCompat.ACTION_PLAY or PlaybackStateCompat.ACTION_PAUSE or
             PlaybackStateCompat.ACTION_PLAY_PAUSE or PlaybackStateCompat.ACTION_SKIP_TO_NEXT
         if (!e.enJam) {

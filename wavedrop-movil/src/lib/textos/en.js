@@ -477,4 +477,9 @@ export const en = {
   "No se pudo copiar": "Couldn't copy",
   "Copiar link": "Copy link",
   "“{titulo}” a la cola": "“{titulo}” added to the queue",
+  "Ver como lista": "View as list",
+  "Ver como cuadrícula": "View as grid",
+  "Hay que reiniciar Misiccord": "Misiccord needs to restart",
+  "Para usar la cámara (la música se detiene)": "To use the camera (the music stops)",
+  "Reiniciar ahora": "Restart now",
 };

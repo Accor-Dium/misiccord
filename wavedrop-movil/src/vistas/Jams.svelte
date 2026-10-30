@@ -4,7 +4,7 @@
   import { flip } from "svelte/animate";
   import { fade, fly, scale, slide } from "svelte/transition";
   import { py, tiempo } from "../lib/api.js";
-  import { aviso, ui } from "../lib/estado.svelte.js";
+  import { aviso, mostrarHoja, ui } from "../lib/estado.svelte.js";
   import {
     agregar, agregarPropia, alternarEscuchar, bibliotecaAnfitrion, buscarCercanos, buscarEnAnfitrion, control, crear,
     jam, pistaActual, posicionJam, qrDelJam, reaccionar, salir, soyAnfitrion, unirse, unirseConDatos, urlJam, votar,
@@ -35,6 +35,16 @@
 
   async function escanear() {
     if (!nombre.trim()) return aviso(t("Escribe tu nombre primero"));
+    // Si la app volvió a una sesión que siguió sonando sin ella, la cámara ya no tiene su pantalla: hay que reiniciar
+    const { invoke } = await import("@tauri-apps/api/core");
+    const sesion = await invoke("sesion", { datos: {} }).catch(() => ({}));
+    if (sesion.reanudada) {
+      return mostrarHoja({
+        titulo: t("Hay que reiniciar Misiccord"),
+        subtitulo: t("Para usar la cámara (la música se detiene)"),
+        opciones: [{ texto: t("Reiniciar ahora"), icono: "actualizar", accion: () => invoke("sesion", { datos: { accion: "reiniciar" } }) }],
+      });
+    }
     try {
       // Cámara a pantalla completa con el escáner nativo (solo en el cel)
       const { scan, cancel, checkPermissions, requestPermissions, Format } = await import("@tauri-apps/plugin-barcode-scanner");

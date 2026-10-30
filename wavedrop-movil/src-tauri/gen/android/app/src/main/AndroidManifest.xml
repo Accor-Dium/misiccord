@@ -69,6 +69,18 @@
             android:name=".ServicioMedios"
             android:exported="false"
             android:foregroundServiceType="mediaPlayback" />
+        <!-- Widget de la pantalla de inicio (WidgetMisiccord.kt) -->
+        <receiver
+            android:name=".WidgetMisiccord"
+            android:label="@string/app_name"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/widget_misiccord" />
+        </receiver>
         <service
             android:name=".ServicioTareas"
             android:exported="false"

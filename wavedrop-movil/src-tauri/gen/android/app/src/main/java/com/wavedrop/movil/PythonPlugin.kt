@@ -8,6 +8,8 @@ import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
 import android.os.Environment
+import android.os.Handler
+import android.os.Looper
 import android.os.PowerManager
 import android.provider.Settings
 import androidx.core.app.ActivityCompat
@@ -37,6 +39,11 @@ class Llamada {
 @InvokeArg
 class Pedido {
     var pedir: Boolean = false
+}
+
+@InvokeArg
+class Sesion {
+    var accion: String = ""
 }
 
 @InvokeArg
@@ -96,6 +103,9 @@ class PythonPlugin(private val activity: Activity) : Plugin(activity) {
     private val eventos = LinkedBlockingQueue<String>().also { Medios.eventos = it }
     private val emisor = Emisor(eventos, activity.applicationContext)
 
+    // El plugin se crea con la primera Activity; si la app volvió a una sesión conservada (MainActivity), la visible es otra
+    private val pantalla: Activity get() = MainActivity.actual ?: activity
+
     private fun python(): Python {
         if (!Python.isStarted()) {
             Python.start(AndroidPlatform(activity.applicationContext))
@@ -153,12 +163,12 @@ class PythonPlugin(private val activity: Activity) : Plugin(activity) {
                 val intento = Intent(Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION,
                                      Uri.parse("package:${activity.packageName}"))
                 try {
-                    activity.startActivity(intento)
+                    pantalla.startActivity(intento)
                 } catch (e: Exception) {
-                    activity.startActivity(Intent(Settings.ACTION_MANAGE_ALL_FILES_ACCESS_PERMISSION))
+                    pantalla.startActivity(Intent(Settings.ACTION_MANAGE_ALL_FILES_ACCESS_PERMISSION))
                 }
             } else {
-                ActivityCompat.requestPermissions(activity, arrayOf(Manifest.permission.WRITE_EXTERNAL_STORAGE), 41)
+                ActivityCompat.requestPermissions(pantalla, arrayOf(Manifest.permission.WRITE_EXTERNAL_STORAGE), 41)
             }
         }
         invoke.resolve(JSObject().put("concedido", concedido))
@@ -171,7 +181,7 @@ class PythonPlugin(private val activity: Activity) : Plugin(activity) {
         val app = activity.applicationContext
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && !app.packageManager.canRequestPackageInstalls()) {
             // Primero hay que permitir que Misiccord instale apps (solo la primera vez)
-            activity.startActivity(Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES,
+            pantalla.startActivity(Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES,
                                           Uri.parse("package:${activity.packageName}")))
             invoke.resolve(JSObject().put("abierto", false).put("falta_permiso", true))
             return
@@ -181,7 +191,7 @@ class PythonPlugin(private val activity: Activity) : Plugin(activity) {
             setDataAndType(uri, "application/vnd.android.package-archive")
             addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_ACTIVITY_NEW_TASK)
         }
-        activity.startActivity(intento)
+        pantalla.startActivity(intento)
         invoke.resolve(JSObject().put("abierto", true))
     }
 
@@ -189,6 +199,21 @@ class PythonPlugin(private val activity: Activity) : Plugin(activity) {
      * Menú "Compartir" del sistema (WhatsApp, Telegram, Drive, Bluetooth, guardar en una USB con Archivos…)
      * con los archivos de las canciones, o con un texto/link si no hay archivos.
      */
+    /**
+     * Sesión conservada (ver MainActivity): { reanudada } dice si la app volvió a una WebView que siguió sonando tras
+     * quitarla de recientes; accion "reiniciar" la arranca de cero (lo que pide la Activity original, como la cámara).
+     */
+    @Command
+    fun sesion(invoke: Invoke) {
+        val args = invoke.parseArgs(Sesion::class.java)
+        if (args.accion == "reiniciar") {
+            invoke.resolve(JSObject())
+            Handler(Looper.getMainLooper()).postDelayed({ MainActivity.reiniciar(pantalla) }, 150)
+            return
+        }
+        invoke.resolve(JSObject().put("reanudada", MainActivity.reanudada))
+    }
+
     @Command
     fun compartir(invoke: Invoke) {
         val a = invoke.parseArgs(ArgsCompartir::class.java)
@@ -228,7 +253,7 @@ class PythonPlugin(private val activity: Activity) : Plugin(activity) {
             intento.clipData = clip
             intento.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
         }
-        activity.startActivity(Intent.createChooser(intento, a.titulo.ifEmpty { null }))
+        pantalla.startActivity(Intent.createChooser(intento, a.titulo.ifEmpty { null }))
         invoke.resolve(JSObject().put("compartidas", uris.size))
     }
 
@@ -262,18 +287,18 @@ class PythonPlugin(private val activity: Activity) : Plugin(activity) {
             val prefs = app.getSharedPreferences("misiccord", Context.MODE_PRIVATE)
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU && !prefs.getBoolean("pidio_notificaciones", false)) {
                 prefs.edit().putBoolean("pidio_notificaciones", true).apply()
-                ActivityCompat.requestPermissions(activity, arrayOf(Manifest.permission.POST_NOTIFICATIONS), 42)
+                ActivityCompat.requestPermissions(pantalla, arrayOf(Manifest.permission.POST_NOTIFICATIONS), 42)
             } else {
                 // Ya se negó una vez: Android no vuelve a mostrar el diálogo, hay que ir a los ajustes de la app
-                activity.startActivity(Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS)
+                pantalla.startActivity(Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS)
                     .putExtra(Settings.EXTRA_APP_PACKAGE, app.packageName))
             }
         } else if (a.pedir == "bateria" && !bateria()) {
             try {
-                activity.startActivity(Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS,
+                pantalla.startActivity(Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS,
                                               Uri.parse("package:${app.packageName}")))
             } catch (e: Exception) {
-                activity.startActivity(Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS))
+                pantalla.startActivity(Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS))
             }
         }
         invoke.resolve(JSObject().put("notificaciones", notificaciones()).put("bateria", bateria()))

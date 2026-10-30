@@ -447,6 +447,8 @@ export function anterior() {
 
 export function irA(segundos) {
   el().currentTime = Math.max(0, Math.min(segundos, rep.dur || segundos));
+  // Al instante: si se espera al siguiente timeupdate la barra regresa un momento a donde iba y "parpadea"
+  rep.pos = el().currentTime;
   avanceProgramado = false;
 }
 

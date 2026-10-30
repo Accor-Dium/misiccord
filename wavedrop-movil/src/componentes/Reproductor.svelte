@@ -68,6 +68,8 @@
 
   function tocarInicio(e) {
     if (panel !== "portada") return;
+    // Arrastrar la barra de avance o el volumen no cierra el reproductor
+    if (e.target.closest?.(".barra, .vol, input[type=range]")) return;
     inicioY = e.touches[0].clientY;
   }
   function tocarMover(e) {
@@ -218,7 +220,7 @@
         <Icono nombre="cola" tam={22} />
       </button>
       <button class="redondo relleno" class:encendido={vista === "letra"} onclick={() => alternarPanel("letra")} aria-label={t("Letra")}>
-        <Icono nombre="letra" tam={22} />
+        <Icono nombre="microfono" tam={22} />
       </button>
       <button class="redondo relleno" onclick={irAJams} aria-label={t("Jams")} title={t("Escuchar en grupo")}>
         <Icono nombre="jam" tam={22} />

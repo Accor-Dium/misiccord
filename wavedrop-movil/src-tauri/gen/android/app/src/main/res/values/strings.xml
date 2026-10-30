@@ -1,4 +1,10 @@
 <resources>
     <string name="app_name">"Misiccord"</string>
     <string name="main_activity_title">"Misiccord"</string>
+    <string name="widget_abrir">Toca para abrir</string>
+    <string name="widget_descripcion">Abre Misiccord y controla lo que suena</string>
+    <string name="widget_reproducir">Reproducir</string>
+    <string name="widget_pausar">Pausar</string>
+    <string name="widget_siguiente">Siguiente</string>
+    <string name="widget_anterior">Anterior</string>
 </resources>

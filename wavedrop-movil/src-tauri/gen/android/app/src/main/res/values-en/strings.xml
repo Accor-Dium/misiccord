@@ -1,0 +1,8 @@
+<resources>
+    <string name="widget_abrir">Tap to open</string>
+    <string name="widget_descripcion">Open Misiccord and control playback</string>
+    <string name="widget_reproducir">Play</string>
+    <string name="widget_pausar">Pause</string>
+    <string name="widget_siguiente">Next</string>
+    <string name="widget_anterior">Previous</string>
+</resources>

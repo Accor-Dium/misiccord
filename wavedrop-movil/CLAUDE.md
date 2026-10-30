@@ -12,15 +12,15 @@ documentada abajo; si algo no está documentado, pregunta antes de "arreglarlo".
 
 ---
 
-## Estado del proyecto (al 29 de octubre de 2026 · versión publicada: **1.0.10**)
+## Estado del proyecto (al 29 de octubre de 2026 · versión publicada: **2.0.1**)
 
 Resumen para que no tengas que leer todo el código. Actualiza esta sección cuando publiques una versión.
 
 ### Qué hace la app hoy
 - **Biblioteca local**: escanea la carpeta de descargas (y las que se agreguen), agrupa por canción/álbum/artista, playlists propias,
-  historial de reproducción. Eliminar canciones: una, varias (modo selección en Biblioteca), un álbum o un artista completo.
+  historial de reproducción, vista de lista o cuadrícula (cada pestaña recuerda la suya), índice A–Z con burbuja de la letra. Eliminar canciones: una, varias (modo selección en Biblioteca), un álbum o un artista completo.
 - **Reproductor**: fundido entre canciones (0–12 s, en Ajustes), aleatorio/repetir, volumen de 0 a 200 % con curva perceptual, reproductor grande con letra sincronizada (LRCLIB)
-  y cola, mini reproductor. En el cel: notificación de música, pantalla bloqueada, relojes (Wear OS/Galaxy Watch) y audífonos Bluetooth.
+  y cola, mini reproductor. En el cel: notificación de música, **widget de la pantalla de inicio** (abre la app; con música, canción y controles), pantalla bloqueada, relojes (Wear OS/Galaxy Watch) y audífonos Bluetooth.
 - **En línea (YouTube Music)**: buscador en vivo en **Inicio** (resultados mientras escribes), álbumes y artistas, recomendaciones "Para ti"
   (radio a partir de lo que más escuchas/descargas, caché de 6 h). Lo que no tienes suena **al instante por streaming progresivo** y se guarda en caché si se escucha completo.
 - **Inicio estilo YouTube Music** (sin cuenta): chips de estados de ánimo (sus playlists), "marcación rápida" 3×3 con tus recomendaciones,
@@ -45,6 +45,9 @@ Resumen para que no tengas que leer todo el código. Actualiza esta sección cua
 - **Actualizaciones automáticas** desde GitHub Releases (Windows instala solo; Android baja el APK y abre el instalador).
 
 ### Historial de versiones
+**Cómo se numera (desde 2.0.1)**: `MAYOR.MENOR.PARCHE`. Cambios grandes (funciones nuevas importantes) suben el **mayor**; arreglos de bugs
+medianos, el **menor**; detalles pequeños, el **parche**. Hasta 1.0.10 todo subía solo el último número (por eso se brincó a 2.x).
+
 | Versión | Qué trajo |
 |---|---|
 | 1.0.0 | Migración de WaveDrop (PySide6) a Tauri 2: Windows + Android con el mismo núcleo de Python; jams en red local. |
@@ -58,13 +61,14 @@ Resumen para que no tengas que leer todo el código. Actualiza esta sección cua
 | 1.0.8 | Info y edición de etiquetas/carátula, letras con traducción y romanización, estadísticas, Me gusta, ordenar biblioteca, ecualizador, pregunta al reproducir en un jam, mantener para agregar a la cola, descargas en segundo plano en Android (de Omar). |
 | 1.0.9 | Inicio estilo YouTube Music (estados de ánimo, marcación rápida, Explorar), jalar para actualizar, menú de canción al mantener presionada (compartir, radio), compartir/exportar (Android: menú del sistema; PC: portapapeles, USB o carpeta), avisos nuevos, idioma español/inglés. |
 | 1.0.10 | Volumen de 0 a 200 % con curva en decibeles (perceptual); arriba de 100 % refuerzo por Web Audio con limitador y recorte suave. |
+| 2.0.1 | La música sigue al quitar la app de recientes (Android), widget de la pantalla de inicio, Biblioteca en lista o cuadrícula, burbuja del índice A–Z (y salta hacia arriba), barra de avance sin parpadeo, deslizar barra/volumen no cierra el reproductor, ícono de micrófono en la letra. Empieza la numeración mayor.menor.parche. |
 
 ### Qué está probado y dónde
 - **En dispositivos reales** (lo probó quien administra el proyecto): app de Windows, Android en varios teléfonos (Samsung S25 Ultra, Pixel 7 Pro…),
   jams en red local, escáner QR, jam por internet abierto desde el cel.
 - **Solo en el emulador o con scripts**: controles de reloj (con `cmd media_session dispatch`), links en Android, eliminar canciones,
   tiempos de streaming, streaming progresivo (en Chromium con la red frenada).
-- **Sin probar todavía**: links y "una sola ventana" en Windows, panel de medios de Windows, un reloj real, un jam con YouTube Music entre teléfonos reales, videos musicales y carpetas de la biblioteca en el cel, lo de 1.0.8 (segundo plano, ecualizador, editar etiquetas) en teléfonos reales, y de 1.0.9: exportar a una USB real y todo en la app de Windows (se probó en navegador con el núcleo de Python y en el emulador: menú, compartir de Android, jalar para actualizar, idioma); de 1.0.10, el volumen arriba de 100 % con música real (la curva y el limitador se midieron en Chromium con señales de prueba).
+- **Sin probar todavía**: links y "una sola ventana" en Windows, panel de medios de Windows, un reloj real, un jam con YouTube Music entre teléfonos reales, videos musicales y carpetas de la biblioteca en el cel, lo de 1.0.8 (segundo plano, ecualizador, editar etiquetas) en teléfonos reales, y de 1.0.9: exportar a una USB real y todo en la app de Windows (se probó en navegador con el núcleo de Python y en el emulador: menú, compartir de Android, jalar para actualizar, idioma); de 1.0.10, el volumen arriba de 100 % con música real; de 2.0.1, el widget y quitar de recientes en teléfonos reales (en el emulador sí: sigue sonando, controles, reabrir, atrás, reiniciar para el QR) (la curva y el limitador se midieron en Chromium con señales de prueba).
 
 ### Dónde guarda las cosas
 | | Windows | Android |
@@ -160,6 +164,9 @@ Todo el trabajo real vive en Python: python/wavedrop/  (el mismo código en las 
 - `tauri.conf.json`: versión (la pone `publicar.ps1`), updater, deep-link `misiccord`, NSIS por usuario. `capabilities/{default,desktop,mobile}.json` (sin BOM).
 - `gen/android/` **está editado a mano y versionado** (no es desechable):
   - `app/src/main/java/com/wavedrop/movil/PythonPlugin.kt` (llamar Python, eventos, permisos, instalar APK, medios) y `ServicioMedios.kt` (servicio en primer plano + MediaSession).
+  - `WidgetMisiccord.kt` + `res/layout/widget_misiccord.xml` + `res/xml/widget_misiccord.xml`: widget 4×1. `ServicioMedios` lo actualiza solo cuando cambia algo que se ve
+    (no con cada avance); sus botones van al servicio igual que los de la notificación. Sin música, todo el widget solo abre la app (Python vive dentro de ella).
+    Textos en `res/values/strings.xml` y `res/values-en/`.
   - `app/src/main/AndroidManifest.xml` (permisos de archivos, cámara, servicio de medios, FileProvider, intent-filter `misiccord`).
   - `app/build.gradle.kts` (Chaquopy, Python 3.14, paquetes pip, ABIs, firma, `androidx.media`).
   - `app/misiccord.pro` (reglas R8: **sin ellas el lector QR truena**, ver abajo).
@@ -178,7 +185,7 @@ Todo el trabajo real vive en Python: python/wavedrop/  (el mismo código en las 
 ## No cambiar (aunque parezca mejora)
 
 - **Identificadores**: `identifier` = `com.wavedrop.movil` (cambiarlo = otra app; se pierden datos y actualizaciones), carpeta de datos `%LOCALAPPDATA%\WaveDrop`,
-  claves de `localStorage` (`wavedrop_nombre`, `wavedrop_volumen`, `misiccord_ultima_revision`, `misiccord_idioma`, `misiccord_orden`, `misiccord_volumen_escala`), esquema `misiccord://`, URL de la página
+  claves de `localStorage` (`wavedrop_nombre`, `wavedrop_volumen`, `misiccord_ultima_revision`, `misiccord_idioma`, `misiccord_orden`, `misiccord_volumen_escala`, `misiccord_vista_biblioteca`), esquema `misiccord://`, URL de la página
   `https://accor-dium.github.io/misiccord/jam/` (está en `lib/enlaces.svelte.js` y en `api.jam_qr`: cambia las dos o ninguna), repo `Accor-Dium/misiccord`.
 - **Llaves de firma**: si cambia la del APK, Android no deja actualizar encima; si cambia la del updater, las PCs instaladas no aceptan versiones nuevas.
 - **Python 3.14 + Chaquopy 17.2** y **solo ABIs arm64/x86_64** (Chaquopy no compila 3.14 para armeabi-v7a).
@@ -229,6 +236,15 @@ Todo el trabajo real vive en Python: python/wavedrop/  (el mismo código en las 
   `refuerzo` del grafo de Web Audio (el mismo del ecualizador, que se arma al subir de 100 %), seguido de un limitador (−1.5 dB) y un recorte suave tanh,
   sin sobremuestreo (con "2x"/"4x" el filtro rebota y pasa de 0 dB); los dos solo actúan con refuerzo. `wavedrop_volumen` antes guardaba la amplitud:
   `misiccord_volumen_escala = "2"` marca que ya se convirtió. El audio de los jams usa la misma curva, pero sin refuerzo (tope 100 %).
+- **Índice A–Z de Biblioteca**: salta a un `<span class="ancla">` antes de cada encabezado, no al encabezado: los encabezados son `sticky` y uno que ya
+  se quedó pegado arriba no deja regresar a él con `scrollIntoView`.
+- **Reproductor grande**: deslizar para cerrar no empieza sobre la barra de avance ni el volumen (`tocarInicio`), e `irA()` pone `rep.pos` al instante
+  (si no, la barra regresaba un momento a donde iba y parpadeaba).
+- **Quitar la app de recientes con música sonando (`MainActivity.kt`)**: Tauri cerraba el proceso al destruirse la Activity. Si algo suena,
+  `isChangingConfigurations()` devuelve true en ese `onDestroy` (tao y wry creen que es un giro de pantalla) y la WebView se guarda; al reabrir,
+  esa misma WebView se muda a la Activity nueva (Tauri no crea otra porque no conoce ese id). Consecuencias: los plugins siguen ligados a la
+  Activity original, por eso `PythonPlugin` abre pantallas con `pantalla` (la visible) y el lector QR pide reiniciar (`sesion` → `reiniciar`)
+  si `reanudada`. Si la Activity "mudada" se cierra sin música, se mata el proceso (Tauri no sabría que se cerró).
 - **El servicio de Python fuerza UTF-8** en stdin/stdout (`servicio.py`): Windows usaba cp1252 y rompía acentos.
 
 ## Convenciones
@@ -270,7 +286,7 @@ npx tauri android build --apk --target aarch64  # para teléfonos (firmado con f
 .\scripts\compilar_cloudflared.ps1              # necesita Go (portátil en %LOCALAPPDATA%\wd-go)
 
 # Publicar una versión (Windows + Android + Release en GitHub). Solo quien administra el proyecto, y cuando lo pida.
-.\scripts\publicar.ps1 -Version 1.0.7 -Notas "Qué cambió"
+.\scripts\publicar.ps1 -Version 2.0.1 -Notas "Qué cambió"
 ```
 
 `publicar.ps1` pone la versión en `tauri.conf.json`, empaqueta el servicio, compila y firma Windows (updater) y Android, arma `latest.json` y crea la Release.
