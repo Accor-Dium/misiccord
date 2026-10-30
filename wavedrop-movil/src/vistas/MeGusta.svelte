@@ -26,7 +26,7 @@
 
   function tocar(c) {
     const i = reproducibles.indexOf(c);
-    if (i >= 0) reproducir(reproducibles, i, "Me gusta");
+    if (i >= 0) reproducir(reproducibles, i, t("Me gusta"));
   }
 </script>
 

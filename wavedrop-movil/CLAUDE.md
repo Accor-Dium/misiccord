@@ -12,7 +12,7 @@ documentada abajo; si algo no está documentado, pregunta antes de "arreglarlo".
 
 ---
 
-## Estado del proyecto (al 29 de octubre de 2026 · versión publicada: **2.1.0**)
+## Estado del proyecto (al 30 de octubre de 2026 · versión publicada: **3.0.0**)
 
 Resumen para que no tengas que leer todo el código. Actualiza esta sección cuando publiques una versión.
 
@@ -64,6 +64,7 @@ medianos, el **menor**; detalles pequeños, el **parche**. Hasta 1.0.10 todo sub
 | 2.0.1 | La música sigue al quitar la app de recientes (Android), widget de la pantalla de inicio, Biblioteca en lista o cuadrícula, burbuja del índice A–Z (y salta hacia arriba), barra de avance sin parpadeo, deslizar barra/volumen no cierra el reproductor, ícono de micrófono en la letra. Empieza la numeración mayor.menor.parche. |
 | 2.0.2 | Los géneros de YouTube Music (Inicio y Explorar) ya abren sus playlists y álbumes. |
 | 2.1.0 | Links de Tidal (playlist, álbum o canción; hasta 50 canciones por playlist) y nuevo ícono de la letra (burbuja con comillas). |
+| 3.0.0 | Biblioteca instantánea (lista virtual, portadas en la base), pestaña Géneros y columnas de la cuadrícula, cola real con aleatorio, ecualizador de 3 a 31 bandas y mono, visualizadores, resumen del periodo, completar datos y editar álbum con MusicBrainz, kanji con `pykakasi`, álbum/artista primero lo local (de Omar). |
 
 ### Qué está probado y dónde
 - **En dispositivos reales** (lo probó quien administra el proyecto): app de Windows, Android en varios teléfonos (Samsung S25 Ultra, Pixel 7 Pro…),

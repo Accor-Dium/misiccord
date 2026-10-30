@@ -507,9 +507,9 @@
               {#snippet fila(c)}
                 {#if enCuadricula}
                   <Tarjeta portada={c.portada} titulo={c.titulo} subtitulo={c.artista} icono="nota" ancho="100%"
-                    alTocar={() => reproducir(plana, plana.indexOf(c), "Tu biblioteca")} alMantener={() => menuCancion(c)} />
+                    alTocar={() => reproducir(plana, plana.indexOf(c), t("Tu biblioteca"))} alMantener={() => menuCancion(c)} />
                 {:else}
-                  <FilaCancion cancion={c} alTocar={() => reproducir(plana, plana.indexOf(c), "Tu biblioteca")} />
+                  <FilaCancion cancion={c} alTocar={() => reproducir(plana, plana.indexOf(c), t("Tu biblioteca"))} />
                 {/if}
               {/snippet}
             </ListaVirtual>
