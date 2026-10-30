@@ -298,7 +298,7 @@ Todo el trabajo real vive en Python: python/wavedrop/  (el mismo código en las 
 
 ```powershell
 # Requisitos de escritorio: Node, Rust, Python 3.14 en ..\venv (raíz del repo) con:
-#   pip install yt-dlp yt-dlp-ejs ytmusicapi mutagen qrcode requests pykakasi pyinstaller
+#   pip install -r requirements.txt
 #   ffmpeg, ffprobe y deno en el PATH (winget). O WAVEDROP_PYTHON=ruta\python.exe
 npm install
 npx tauri dev                                   # escritorio con el Python del venv

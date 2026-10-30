@@ -1,0 +1,10 @@
+# Python de escritorio (el venv de la raíz). Android usa su propia lista en src-tauri/gen/android/app/build.gradle.kts.
+# Sin "[default]" en yt-dlp: ver "No cambiar" en CLAUDE.md.
+yt-dlp>=2026.10.26
+yt-dlp-ejs
+ytmusicapi
+mutagen
+qrcode
+requests
+pykakasi
+pyinstaller
