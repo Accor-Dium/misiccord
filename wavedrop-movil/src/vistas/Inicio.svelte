@@ -99,7 +99,7 @@
     if (ids.length) py("precargar", { ids }).catch(() => {});
   });
 
-  const porPagina = $derived(ui.amplio ? 12 : 9); // 3×3 en el cel, 6×2 en pantalla ancha
+  const porPagina = $derived(ui.amplio || ui.horizontal ? 12 : 9); // 3×3 en el cel, 6×2 en pantalla ancha o con el cel acostado
   const trozos = (lista, n) => Array.from({ length: Math.ceil(lista.length / n) }, (_, i) => lista.slice(i * n, i * n + n));
 
   const explorar = [
@@ -321,7 +321,11 @@
   .jalon.listo { color: var(--cian); }
   .jalon.cargando { color: var(--cian); animation: giro 0.8s linear infinite; }
   @keyframes giro { to { rotate: 360deg; } }
-  @media (min-width: 900px) {
+  @media (orientation: landscape) and (max-height: 560px) {
+    .marcacion { grid-template-columns: repeat(6, minmax(0, 1fr)); }
+    .explorar { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+  }
+  @media (min-width: 900px) and (min-height: 561px) {
     .marcacion { grid-template-columns: repeat(6, minmax(0, 1fr)); }
     .explorar { grid-template-columns: repeat(4, minmax(0, 1fr)); }
   }

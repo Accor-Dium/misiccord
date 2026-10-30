@@ -342,7 +342,7 @@
   @keyframes giro { to { transform: rotate(360deg); } }
 
   .derecha { display: none; }
-  @media (min-width: 900px) {
+  @media (min-width: 900px) and (min-height: 561px) {
     /* Dos columnas: portada y controles a la izquierda; letra o cola a la derecha */
     .reproductor {
       display: grid; grid-template-columns: minmax(360px, 440px) 1fr; column-gap: 64px;
@@ -364,5 +364,28 @@
     .pestanas button { padding: 8px 16px; border-radius: 999px; font-weight: 700; color: rgba(255, 255, 255, 0.6); }
     .pestanas .activa { background: rgba(255, 255, 255, 0.12); color: #fff; }
     .derecha .lado { flex: 1; min-height: 0; }
+  }
+
+  /* Cel acostado: la carátula (o la letra, la cola, el ecualizador) a la izquierda y todo lo demás a la derecha */
+  @media (orientation: landscape) and (max-height: 560px) {
+    .reproductor {
+      display: grid; grid-template-columns: minmax(0, 46%) minmax(0, 1fr); column-gap: 28px;
+      grid-template-rows: auto 1fr auto auto auto auto auto;
+      padding: calc(var(--seguro-arriba) + 8px) calc(env(safe-area-inset-right, 0px) + 22px) calc(var(--seguro-abajo) + 10px)
+        calc(env(safe-area-inset-left, 0px) + 22px);
+    }
+    .centro { grid-column: 1; grid-row: 1 / -1; margin: 0; min-height: 0; }
+    /* Cabe la carátula con el selector "Canción | Visual" encima (~56 px) */
+    .pila { width: min(100%, calc(100vh - var(--seguro-arriba) - var(--seguro-abajo) - 96px)); gap: 8px; }
+    header { grid-column: 2; grid-row: 1; }
+    .datos { grid-column: 2; grid-row: 3; }
+    .barra { grid-column: 2; grid-row: 4; margin-top: 8px; }
+    .controles { grid-column: 2; grid-row: 5; margin: 6px 0 8px; }
+    .vol { grid-column: 2; grid-row: 6; margin: -4px 0 4px; }
+    footer { grid-column: 2; grid-row: 7; justify-content: space-around; }
+    h2 { font-size: 21px; }
+    .titulos p { font-size: 15px; }
+    .grande { width: 50px; height: 50px; }
+    .play { width: 64px; height: 64px; }
   }
 </style>

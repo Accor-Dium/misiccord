@@ -101,9 +101,14 @@
   .saltar { width: auto; padding: 0 12px; gap: 4px; display: flex; align-items: center; border-radius: 999px; background: rgba(255, 255, 255, 0.1); }
   .saltar small { font-size: 12.5px; font-weight: 700; }
   .avance { position: absolute; left: 0; bottom: 0; height: 2px; background: var(--cian); transition: width 0.5s linear; }
+  /* Cel acostado: junto al riel de pestañas, más bajito */
+  @media (orientation: landscape) and (max-height: 560px) {
+    .mini { left: calc(var(--riel) + 10px); right: calc(10px + env(safe-area-inset-right, 0px)); bottom: calc(var(--seguro-abajo) + 8px); }
+    .play { width: 42px; height: 42px; }
+  }
   /* En la pestaña Jams del cel la sala ya muestra todo: la barra sobra */
   .solo-escritorio { display: none; }
-  @media (min-width: 900px) {
+  @media (min-width: 900px) and (min-height: 561px) {
     .mini { left: calc(var(--lateral) + 16px); right: 16px; bottom: 16px; padding: 0 16px; gap: 12px; }
     .solo-escritorio { display: flex; }
     .info { gap: 16px; }

@@ -34,6 +34,9 @@
     display: flex; flex-direction: column-reverse; align-items: center; gap: 8px; pointer-events: none;
   }
   .avisos.con-mini { bottom: calc(var(--nav) + var(--mini) + var(--seguro-abajo) + 14px); }
+  @media (orientation: landscape) and (max-height: 560px) {
+    .avisos, .avisos.con-mini { left: calc(var(--riel) + 12px); right: calc(12px + env(safe-area-inset-right, 0px)); }
+  }
   .aviso {
     position: relative; overflow: hidden; pointer-events: auto;
     display: flex; align-items: center; gap: 4px; width: fit-content; max-width: min(520px, 100%);
@@ -47,7 +50,7 @@
   .texto { font-size: 14.5px; font-weight: 600; line-height: 1.3; overflow-wrap: anywhere; }
   .accion { padding: 0 14px 0 6px; height: 40px; font-weight: 800; font-size: 14px; color: #0e7490; flex-shrink: 0; }
   .avance { position: absolute; left: 0; bottom: 0; height: 3px; background: var(--cian); transition: width 0.3s; }
-  @media (min-width: 900px) {
+  @media (min-width: 900px) and (min-height: 561px) {
     .avisos, .avisos.con-mini { left: calc(var(--lateral) + 24px); right: 24px; bottom: calc(var(--mini) + 28px); }
   }
 </style>

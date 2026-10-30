@@ -267,9 +267,11 @@
   function leerColumnas() {
     try { return JSON.parse(localStorage.getItem("misiccord_columnas") || "{}"); } catch { return {}; }
   }
-  const nColumnas = $derived(columnas[pestana] ?? (ui.amplio ? 6 : pestana === "albumes" ? 2 : 3));
+  // Con el cel acostado cabe el doble: se recuerdan aparte ("canciones:h") para no tener que cambiarlas al girarlo
+  const claveColumnas = $derived(ui.horizontal ? `${pestana}:h` : pestana);
+  const nColumnas = $derived(columnas[claveColumnas] ?? (ui.amplio || ui.horizontal ? 6 : pestana === "albumes" ? 2 : 3));
   function cambiarColumnas(paso) {
-    columnas = { ...columnas, [pestana]: Math.max(2, Math.min(MAX_COLUMNAS, nColumnas + paso)) };
+    columnas = { ...columnas, [claveColumnas]: Math.max(2, Math.min(MAX_COLUMNAS, nColumnas + paso)) };
     try { localStorage.setItem("misiccord_columnas", JSON.stringify(columnas)); } catch {}
   }
   // ListaVirtual mide por tipo: con otras columnas la fila mide distinto
@@ -806,14 +808,20 @@
     background: var(--cian); color: #04121a; font-size: 30px; font-weight: 800; box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
   }
   .burbuja span { transform: rotate(45deg); }
-  @media (min-width: 900px) {
+  @media (min-width: 900px) and (min-height: 561px) {
     .indice { right: 10px; top: 200px; bottom: calc(var(--mini) + 30px); }
+  }
+  /* Cel acostado: hay poca altura, así que el índice empieza más arriba y con letras más chicas para que quepan las 26 */
+  @media (orientation: landscape) and (max-height: 560px) {
+    .indice { top: calc(var(--seguro-arriba) + 92px); right: calc(2px + env(safe-area-inset-right, 0px)); }
+    .indice span { font-size: 9.5px; padding: 0 3px; }
+    .barra-seleccion { left: calc(var(--riel) + 10px); right: calc(10px + env(safe-area-inset-right, 0px)); bottom: calc(var(--seguro-abajo) + 8px); }
   }
   /* Cuadrícula: las columnas las eliges tú (--columnas, en .vista). Es global porque también la usa la caja de ListaVirtual */
   :global(.mosaico-biblioteca) { display: grid; grid-template-columns: repeat(var(--columnas, 3), minmax(0, 1fr)); gap: 16px 12px; margin: 6px 0 12px; }
   :global(.mosaico-biblioteca .tarjeta b) { font-size: 13.5px; margin-top: 6px; }
   :global(.mosaico-biblioteca .tarjeta small) { font-size: 12.5px; }
-  @media (min-width: 900px) { :global(.mosaico-biblioteca) { gap: 22px 18px; } }
+  @media (min-width: 900px) and (min-height: 561px) { :global(.mosaico-biblioteca) { gap: 22px 18px; } }
   .tarjeta-lista { position: relative; display: flex; flex-direction: column; gap: 4px; text-align: left; min-width: 0; }
   .tarjeta-lista b { margin-top: 6px; font-size: 13.5px; font-weight: 700; width: 100%; }
   .tarjeta-lista small { color: var(--tenue); font-size: 12.5px; }
@@ -853,7 +861,7 @@
   .eleccion-tarjeta .casilla { position: absolute; z-index: 2; top: 8px; right: 8px; background: rgba(0, 0, 0, 0.45); border-color: #fff; pointer-events: none; }
   .eleccion-tarjeta.elegida .casilla { background: var(--cian); border-color: var(--cian); }
   .eleccion-tarjeta:not(.elegida) { opacity: 0.85; }
-  @media (min-width: 900px) {
+  @media (min-width: 900px) and (min-height: 561px) {
     .barra-seleccion { left: calc(var(--lateral) + 16px); right: 16px; bottom: 16px; }
   }
   .leyendo { margin: 6px 0 0; font-size: 13px; color: var(--cian); }

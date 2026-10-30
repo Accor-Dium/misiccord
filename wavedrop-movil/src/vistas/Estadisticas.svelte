@@ -226,7 +226,7 @@
   .col.activa .llenado, .col:hover .llenado { opacity: 1; }
   .eje { display: flex; justify-content: space-between; color: var(--tenue); font-size: 12px; margin-top: 6px; }
   .etiqueta-hover { min-height: 20px; margin: 10px 0 0; font-weight: 600; font-variant-numeric: tabular-nums; }
-  @media (min-width: 900px) {
+  @media (min-width: 900px) and (min-height: 561px) {
     .tiles { grid-template-columns: repeat(4, minmax(0, 1fr)); }
   }
 </style>

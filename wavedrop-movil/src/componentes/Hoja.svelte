@@ -89,9 +89,13 @@
   .opcion:active, .opcion:hover { background: var(--tarjeta-2); }
   .peligro { color: var(--rojo); font-weight: 700; }
   .textos small:not(.cortar) { line-height: 1.4; margin-top: 2px; }
-  @media (min-width: 900px) {
+  @media (min-width: 900px) and (min-height: 561px) {
     /* En escritorio, ventana centrada en vez de hoja que sube */
     .hoja { left: calc(50% - 230px); right: auto; width: 460px; bottom: auto; top: 10vh; max-height: 80vh; border-radius: 20px; padding-bottom: 12px; }
     .asa { display: none; }
+  }
+  /* Cel acostado: centrada y no más ancha de lo cómodo (a todo lo ancho los renglones quedaban larguísimos) */
+  @media (orientation: landscape) and (max-height: 560px) {
+    .hoja { left: calc(50% - min(240px, 45vw)); right: auto; width: min(480px, 90vw); max-height: 92vh; }
   }
 </style>

@@ -4,7 +4,7 @@
   import { jam } from "../lib/jam.svelte.js";
   import Icono from "./Icono.svelte";
 
-  // Abajo en el cel; barra lateral con nombres en pantalla ancha.
+  // Abajo en el cel; riel a la izquierda (solo íconos) con el cel acostado; barra lateral con nombres en pantalla ancha.
   const pestanas = [
     { id: "inicio", icono: "inicio", texto: t("Inicio") },
     { id: "biblioteca", icono: "biblioteca", texto: t("Biblioteca") },
@@ -52,7 +52,19 @@
   }
   .globo.vivo { background: transparent; color: var(--verde); font-size: 14px; }
 
-  @media (min-width: 900px) {
+  @media (orientation: landscape) and (max-height: 560px) {
+    .barra {
+      top: 0; right: auto; width: var(--riel); height: auto;
+      padding: var(--seguro-arriba) 0 var(--seguro-abajo) env(safe-area-inset-left, 0px);
+      flex-direction: column; justify-content: center; gap: 4px;
+      background: var(--panel); border-right: 1px solid var(--borde); backdrop-filter: none;
+    }
+    .boton { flex: none; width: 100%; height: 64px; }
+    .pastilla { width: 52px; height: 36px; }
+    .globo { top: 4px; left: calc(50% + 6px); }
+  }
+
+  @media (min-width: 900px) and (min-height: 561px) {
     .barra {
       top: 0; right: auto; width: var(--lateral); height: auto; padding: 22px 14px;
       flex-direction: column; justify-content: flex-start; align-items: stretch; gap: 4px;

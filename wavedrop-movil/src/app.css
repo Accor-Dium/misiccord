@@ -106,7 +106,7 @@ img { display: block; }
 @keyframes brillo { to { background-position: -200% 0; } }
 
 /* ---------- Pantalla ancha (escritorio / tablet) ---------- */
-@media (min-width: 900px) {
+@media (min-width: 900px) and (min-height: 561px) {
   :root { --nav: 0px; --lateral: 248px; --mini: 84px; --margen: 36px; }
   .titulo-vista { font-size: 34px; }
   .carrusel { --hueco: 18px; padding-bottom: 6px; }
@@ -114,6 +114,19 @@ img { display: block; }
   /* Las vistas se centran con un ancho máximo cómodo de leer */
   main > div { max-width: 1280px; margin: 0 auto; }
   main .rejilla { grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)) !important; gap: 24px 20px !important; }
+}
+
+/* ---------- Cel en horizontal ---------- */
+/* La altura es lo que falta: las pestañas pasan a un riel a la izquierda (--riel) y nada va fijo abajo salvo el mini reproductor */
+:root { --riel: 0px; }
+@media (orientation: landscape) and (max-height: 560px) {
+  :root {
+    --nav: 0px; --mini: 60px; --margen: 22px;
+    --riel: calc(76px + env(safe-area-inset-left, 0px));
+    --artista: 96px;
+  }
+  .titulo-vista { font-size: 26px; }
+  main .rejilla { grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)) !important; }
 }
 
 /* ---------- Transiciones entre vistas (View Transitions API) ---------- */

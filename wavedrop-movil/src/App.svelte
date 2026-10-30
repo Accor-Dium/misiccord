@@ -106,7 +106,11 @@
   }
   main::-webkit-scrollbar { display: none; }
   main.con-mini { padding-bottom: calc(var(--nav) + var(--mini) + var(--seguro-abajo) + 34px); }
-  @media (min-width: 900px) {
+  /* Cel acostado: a la derecha del riel de pestañas y lejos de la muesca del otro lado */
+  @media (orientation: landscape) and (max-height: 560px) {
+    main { left: var(--riel); padding-right: env(safe-area-inset-right, 0px); }
+  }
+  @media (min-width: 900px) and (min-height: 561px) {
     main { left: var(--lateral); }
   }
   .arranque { position: fixed; inset: 0; display: grid; place-content: center; justify-items: center; gap: 18px; }

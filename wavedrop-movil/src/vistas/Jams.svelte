@@ -808,7 +808,7 @@
   .codigo-grande { font-size: 24px; letter-spacing: 5px; color: var(--cian); }
 
   /* ---------- Escritorio ---------- */
-  @media (min-width: 900px) {
+  @media (min-width: 900px) and (min-height: 561px) {
     .columnas { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 20px; }
     .panel { padding: 24px; }
     .yo { max-width: 460px; }

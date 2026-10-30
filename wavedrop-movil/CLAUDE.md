@@ -12,13 +12,14 @@ documentada abajo; si algo no está documentado, pregunta antes de "arreglarlo".
 
 ---
 
-## Estado del proyecto (al 30 de octubre de 2026 · versión publicada: **3.1.0**)
+## Estado del proyecto (al 30 de octubre de 2026 · versión publicada: **3.2.0**)
 
 Resumen para que no tengas que leer todo el código. Actualiza esta sección cuando publiques una versión.
 
 ### Qué hace la app hoy
 - **Biblioteca local**: escanea la carpeta de descargas (y las que se agreguen), agrupa por canción/álbum/artista, playlists propias,
   historial de reproducción, vista de lista o cuadrícula (cada pestaña recuerda la suya), índice A–Z con burbuja de la letra. Eliminar canciones: una, varias (modo selección en Biblioteca), un álbum o un artista completo.
+- **Cel en horizontal**: pestañas en un riel a la izquierda, reproductor grande en dos columnas (carátula, letra, cola o ecualizador a la izquierda y controles a la derecha), marcación rápida 6×2 y cuadrículas más anchas.
 - **Reproductor**: fundido entre canciones (0–12 s, en Ajustes), aleatorio/repetir, volumen de 0 a 200 % con curva perceptual, reproductor grande con letra sincronizada (LRCLIB)
   y cola, mini reproductor. En el cel: notificación de música, **widget de la pantalla de inicio** (abre la app; con música, canción y controles), pantalla bloqueada, relojes (Wear OS/Galaxy Watch) y audífonos Bluetooth.
 - **En línea (YouTube Music)**: buscador en vivo en **Inicio** (resultados mientras escribes), álbumes y artistas, recomendaciones "Para ti"
@@ -69,13 +70,14 @@ medianos, el **menor**; detalles pequeños, el **parche**. Hasta 1.0.10 todo sub
 | 2.1.0 | Links de Tidal (playlist, álbum o canción; hasta 50 canciones por playlist) y nuevo ícono de la letra (burbuja con comillas). |
 | 3.0.0 | Biblioteca instantánea (lista virtual, portadas en la base), pestaña Géneros y columnas de la cuadrícula, cola real con aleatorio, ecualizador de 3 a 31 bandas y mono, visualizadores, resumen del periodo, completar datos y editar álbum con MusicBrainz, kanji con `pykakasi`, álbum/artista primero lo local (de Omar). |
 | 3.1.0 | Escritorio: burbuja flotante al minimizar (opcional, en Ajustes) y, en Windows, controles en la vista previa de la barra de tareas y la canción en el título de la ventana. |
+| 3.2.0 | Cel en horizontal: riel de pestañas a la izquierda, reproductor en dos columnas, marcación rápida 6×2, cuadrículas más anchas (con sus propias columnas). |
 
 ### Qué está probado y dónde
 - **En dispositivos reales** (lo probó quien administra el proyecto): app de Windows, Android en varios teléfonos (Samsung S25 Ultra, Pixel 7 Pro…),
   jams en red local, escáner QR, jam por internet abierto desde el cel.
 - **Solo en el emulador o con scripts**: controles de reloj (con `cmd media_session dispatch`), links en Android, eliminar canciones,
   tiempos de streaming, streaming progresivo (en Chromium con la red frenada).
-- **Sin probar todavía**: links y "una sola ventana" en Windows, panel de medios de Windows, un reloj real, un jam con YouTube Music entre teléfonos reales, videos musicales y carpetas de la biblioteca en el cel, lo de 1.0.8 (segundo plano, ecualizador, editar etiquetas) en teléfonos reales, y de 1.0.9: exportar a una USB real y todo en la app de Windows (se probó en navegador con el núcleo de Python y en el emulador: menú, compartir de Android, jalar para actualizar, idioma); de 1.0.10, el volumen arriba de 100 % con música real; de 2.0.1, el widget y quitar de recientes en teléfonos reales (en el emulador sí: sigue sonando, controles, reabrir, atrás, reiniciar para el QR) (la curva y el limitador se midieron en Chromium con señales de prueba); de 3.1.0, la burbuja con dos monitores o con escalado distinto de 100 % (se probó en un monitor de 3440×1440).
+- **Sin probar todavía**: links y "una sola ventana" en Windows, panel de medios de Windows, un reloj real, un jam con YouTube Music entre teléfonos reales, videos musicales y carpetas de la biblioteca en el cel, lo de 1.0.8 (segundo plano, ecualizador, editar etiquetas) en teléfonos reales, y de 1.0.9: exportar a una USB real y todo en la app de Windows (se probó en navegador con el núcleo de Python y en el emulador: menú, compartir de Android, jalar para actualizar, idioma); de 1.0.10, el volumen arriba de 100 % con música real; de 2.0.1, el widget y quitar de recientes en teléfonos reales (en el emulador sí: sigue sonando, controles, reabrir, atrás, reiniciar para el QR) (la curva y el limitador se midieron en Chromium con señales de prueba); de 3.1.0, la burbuja con dos monitores o con escalado distinto de 100 % (se probó en un monitor de 3440×1440); de 3.2.0, el horizontal en teléfonos reales con muesca o bordes curvos (se probó en el navegador y en el emulador).
 
 ### Dónde guarda las cosas
 | | Windows | Android |
@@ -217,6 +219,7 @@ Todo el trabajo real vive en Python: python/wavedrop/  (el mismo código en las 
 - **Letra (`Letra.svelte`)**: el espacio arriba y abajo de la letra son divs medidos en px con el alto real de la caja. Con `padding` en vh la caja
   crecía más que su lugar y en el cel tapaba la barra para adelantar (tocabas una línea en vez de la barra). Y `scrollTo` en la caja, no `scrollIntoView`
   (ese movía al reproductor entero).
+- **Columnas de la cuadrícula** (`misiccord_columnas`): con el cel acostado se guardan aparte (`canciones:h`), así no hay que cambiarlas al girarlo.
 - **Biblioteca**: buscar, ordenar y agrupar es todo en la interfaz (`lib/ordenar.js`, sin acentos, "The" ignorado); solo lo que no tienes se pide a
   YouTube Music. El orden elegido vive en `localStorage` (`misiccord_orden`).
 - **Abrir Biblioteca debe ser instantáneo** (con 1,671 canciones llegó a tardar ~9 s en un cel simulado). Cuatro cosas lo sostienen:
@@ -302,7 +305,10 @@ Todo el trabajo real vive en Python: python/wavedrop/  (el mismo código en las 
 - Python: funciones de `api.py` reciben/devuelven `dict`; errores para el usuario con `RuntimeError("mensaje claro")`.
 - Nada de dependencias nuevas si la librería estándar alcanza (el jam y el flujo usan `http.server`). Si agregas paquete de Python, ponlo en **los dos lados**:
   `app/build.gradle.kts` (Chaquopy) y el venv/PyInstaller de Windows (`construir_servicio.py`, `--collect-*` si trae datos).
-- Responsive: <900 px es cel (barra inferior), ≥900 px escritorio (barra lateral, `ui.amplio`). Prueba los dos.
+- Responsive, tres modos: cel (barra inferior), **cel acostado** (`ui.horizontal`, `@media (orientation: landscape) and (max-height: 560px)`:
+  riel de pestañas a la izquierda `--riel`, reproductor en dos columnas, sin `--nav`) y escritorio/tablet (`ui.amplio`, `@media (min-width: 900px) and (min-height: 561px)`:
+  barra lateral). Lo de escritorio **siempre** lleva `min-height: 561px`: un cel acostado puede medir más de 900 de ancho (S25 Ultra: 915) y caería en el diseño de PC.
+  Con el cel acostado respeta la muesca con `env(safe-area-inset-left/right)`. Prueba los tres (en el navegador: 412×892, 892×412 y 1360×820).
 
 ## Trampas del entorno (Windows)
 

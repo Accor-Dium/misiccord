@@ -102,7 +102,7 @@
     background: var(--tarjeta-2); border-left: 5px solid var(--color); overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
   }
   .etiqueta:active { transform: scale(0.97); }
-  @media (min-width: 900px) {
+  @media (min-width: 900px) and (min-height: 561px) {
     .etiquetas { grid-template-columns: repeat(4, minmax(0, 1fr)); }
   }
 </style>

@@ -6,10 +6,14 @@ import { t } from "./idioma.svelte.js";
 /** Pila de vistas por pestaña. Cada entrada: { vista: "album", ...parámetros }. */
 export const nav = $state({ pestana: "inicio", pila: [{ vista: "inicio" }] });
 
-const pantallaAmplia = window.matchMedia("(min-width: 900px)");
+// Ancha = escritorio o tablet. Un cel acostado puede pasar de 900 de ancho, por eso también pide altura (ver `horizontal`)
+const pantallaAmplia = window.matchMedia("(min-width: 900px) and (min-height: 561px)");
+// Cel en horizontal: barra de pestañas a la izquierda y reproductor en dos columnas (mismo criterio que el CSS)
+const pantallaHorizontal = window.matchMedia("(orientation: landscape) and (max-height: 560px)");
 
 export const ui = $state({
   amplio: pantallaAmplia.matches, // escritorio o tablet: barra lateral y reproductor en dos columnas
+  horizontal: pantallaHorizontal.matches, // cel acostado
   reproductorAbierto: false,
   hoja: null, // { titulo, subtitulo, portada, opciones: [{ texto, icono, accion }] }
   avisos: [],
@@ -36,6 +40,7 @@ export function verInfo(c) {
 }
 
 pantallaAmplia.addEventListener("change", (e) => (ui.amplio = e.matches));
+pantallaHorizontal.addEventListener("change", (e) => (ui.horizontal = e.matches));
 
 export const descargas = $state({ trabajos: {} });
 
