@@ -5,9 +5,11 @@ MusicBrainz pide como máximo 1 consulta por segundo y un User-Agent que identif
 si quieres, pon tu correo o tu página en CONTACTO para que puedan avisarte si algo falla.
 """
 import base64
+import difflib
 import re
 import threading
 import time
+import unicodedata
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -36,7 +38,13 @@ def _get(url: str, params: dict | None = None, timeout: int = 15) -> requests.Re
             if espera > 0:
                 time.sleep(espera)
             _ultima = time.monotonic()
-        r = requests.get(url, params=params, headers=CABECERAS, timeout=timeout)
+        try:
+            r = requests.get(url, params=params, headers=CABECERAS, timeout=timeout)
+        except requests.RequestException as e:
+            if intento == 2:
+                raise RuntimeError("No pude conectar con MusicBrainz. ¿Hay internet?") from e
+            time.sleep(1 + intento)
+            continue
         if r.status_code == 503:  # demasiadas consultas: esperar y reintentar
             time.sleep(2 * (intento + 1))
             continue
@@ -211,8 +219,120 @@ def opciones(titulo: str, artista: str, duracion: float | None = None, album: st
     return salida
 
 
-def portada(datos: Datos, tam: int = 500) -> bytes | None:
-    for tipo, mbid in (("release", datos.mbid_album), ("release-group", datos.mbid_grupo)):
+def buscar_albumes(nombre: str, artista: str = "", limite: int = 25) -> list[dict]:
+    """Las ediciones de un álbum para elegir la tuya. Van por edición y no por álbum: la normal y la de lujo traen otras pistas."""
+    principal = artista_principal(artista)
+    sin_extra = re.sub(r"\s*[\(\[][^\)\]]*[\)\]]\s*$", "", nombre).strip() or nombre  # "Tour Fantasía Pop [Live]"
+    intentos = []
+    for titulo in dict.fromkeys((nombre, sin_extra)):
+        if principal:
+            intentos.append(f'release:"{_esc(titulo)}" AND artist:"{_esc(principal)}"')
+        intentos.append(f'release:"{_esc(titulo)}"')
+    candidatas = []
+    for consulta in intentos:
+        r = _get(f"{API}/release", {"query": consulta, "fmt": "json", "limit": 50})
+        if not r.ok:
+            raise RuntimeError(f"MusicBrainz respondió {r.status_code}")
+        candidatas = [x for x in r.json().get("releases", []) if x.get("score", 0) >= 60]
+        if candidatas:
+            break
+    objetivo = normalizar(sin_extra)
+    candidatas.sort(key=lambda x: (0 if normalizar(x.get("title", "")) == objetivo else 1, _valor_release(x, nombre), -x.get("score", 0)))
+
+    vistas, salida = set(), []
+    for rel in candidatas:
+        grupo = rel.get("release-group") or {}
+        clave = (grupo.get("id") or normalizar(rel.get("title", "")), rel.get("track-count"))
+        if clave in vistas:
+            continue
+        vistas.add(clave)
+        secundarios = grupo.get("secondary-types") or []
+        salida.append({
+            "mbid_album": rel.get("id", ""), "mbid_grupo": grupo.get("id", ""), "album": rel.get("title", ""),
+            "artista_album": _creditos(rel.get("artist-credit")), "anio": (rel.get("date") or "")[:4],
+            "tipo": secundarios[0] if secundarios else grupo.get("primary-type") or "", "pais": rel.get("country") or "",
+            "pistas": rel.get("track-count") or 0,
+            "miniatura": f"https://coverartarchive.org/release/{rel.get('id')}/front-250" if rel.get("id") else None,
+        })
+        if len(salida) >= limite:
+            break
+    return salida
+
+
+def album_detalle(mbid: str) -> dict:
+    """Una edición con todas sus pistas."""
+    r = _get(f"{API}/release/{mbid}", {"inc": "recordings artist-credits release-groups genres tags", "fmt": "json"})
+    if not r.ok:
+        raise RuntimeError(f"MusicBrainz respondió {r.status_code}")
+    rel = r.json()
+    grupo = rel.get("release-group") or {}
+    pistas = []
+    for medio in rel.get("media") or []:
+        for t in medio.get("tracks") or []:
+            rec = t.get("recording") or {}
+            largo = t.get("length") or rec.get("length")
+            pistas.append({
+                "disco": medio.get("position") or 1, "pista": t.get("position") or 0, "titulo": t.get("title") or rec.get("title") or "",
+                "artista": _creditos(t.get("artist-credit") or rec.get("artist-credit")) or _creditos(rel.get("artist-credit")),
+                "duracion": largo / 1000 if largo else None, "mbid": rec.get("id", ""),
+            })
+    etiquetas = rel.get("genres") or grupo.get("genres") or rel.get("tags") or grupo.get("tags") or []
+    etiquetas = sorted(etiquetas, key=lambda x: -x.get("count", 0))
+    return {
+        "mbid_album": rel.get("id", ""), "mbid_grupo": grupo.get("id", ""), "album": rel.get("title", ""),
+        "artista_album": _creditos(rel.get("artist-credit")), "anio": (rel.get("date") or grupo.get("first-release-date") or "")[:4],
+        "genero": etiquetas[0]["name"].title() if etiquetas else "", "pistas": pistas,
+        "discos": len(rel.get("media") or []) or 1,
+        "miniatura": f"https://coverartarchive.org/release/{rel.get('id')}/front-500",
+    }
+
+
+def _letras(texto: str) -> str:
+    """Solo letras y números, sin acentos: "Cada Que..." y "Cada que…" son iguales, "Rosa (en vivo)" y "Rosa" no."""
+    plano = unicodedata.normalize("NFKD", texto or "").encode("ascii", "ignore").decode().lower()
+    return re.sub(r"[^a-z0-9]+", "", plano)
+
+
+def emparejar(canciones: list[dict], pistas: list[dict]) -> list[dict]:
+    """A cada canción tuya, la pista del álbum que le toca: {"pista": índice o None, "estado": exacta|parecida|ninguna}.
+
+    Se reparten de la mejor pareja a la peor y cada pista se usa una sola vez. Si la duración se parece, ayuda a decidir.
+    """
+    parejas = []
+    for i, c in enumerate(canciones):
+        a = normalizar(c.get("titulo", ""))
+        for j, p in enumerate(pistas):
+            b = normalizar(p.get("titulo", ""))
+            if not a or not b:
+                continue
+            # normalizar() quita lo que va entre paréntesis: sirve para encontrar la pareja, pero "(en vivo)" no es exacta
+            if _letras(c.get("titulo")) == _letras(p.get("titulo")):
+                parecido = 1.0
+            elif a == b:
+                parecido = 0.95
+            else:
+                parecido = difflib.SequenceMatcher(None, a, b).ratio()
+                if a in b or b in a:
+                    parecido = max(parecido, 0.9)
+            if parecido < 0.55:
+                continue
+            ajuste = 0.0
+            if c.get("duracion") and p.get("duracion"):
+                dif = abs(c["duracion"] - p["duracion"])
+                ajuste = 0.05 if dif <= 3 else -0.1 if dif > 20 else 0.0
+            parejas.append((parecido + ajuste, parecido, i, j))
+    parejas.sort(key=lambda x: (-x[0], x[2], x[3]))
+    resultado = [{"pista": None, "estado": "ninguna"} for _ in canciones]
+    usadas: set[int] = set()
+    for _, parecido, i, j in parejas:
+        if resultado[i]["pista"] is None and j not in usadas:
+            usadas.add(j)
+            resultado[i] = {"pista": j, "estado": "exacta" if parecido >= 0.97 else "parecida"}
+    return resultado
+
+
+def portada_de(mbid_album: str, mbid_grupo: str = "", tam: int = 500) -> bytes | None:
+    for tipo, mbid in (("release", mbid_album), ("release-group", mbid_grupo)):
         if not mbid:
             continue
         url = f"https://coverartarchive.org/{tipo}/{mbid}/front-{tam}"
@@ -223,6 +343,10 @@ def portada(datos: Datos, tam: int = 500) -> bytes | None:
         if r.ok and r.headers.get("content-type", "").startswith("image/"):
             return r.content
     return None
+
+
+def portada(datos: Datos, tam: int = 500) -> bytes | None:
+    return portada_de(datos.mbid_album, datos.mbid_grupo, tam)
 
 
 def escribir(ruta: Path, datos: Datos, imagen: bytes | None) -> None:

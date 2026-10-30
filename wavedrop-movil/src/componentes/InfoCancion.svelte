@@ -3,6 +3,7 @@
   import { py, tiempo } from "../lib/api.js";
   import { aBody } from "../lib/aBody.js";
   import { aviso, completarDatos, ui } from "../lib/estado.svelte.js";
+  import { aJpeg } from "../lib/imagen.js";
   import { local, t } from "../lib/idioma.svelte.js";
   import { actualizarCancion } from "../lib/reproductor.svelte.js";
   import Icono from "./Icono.svelte";
@@ -60,17 +61,6 @@
     } finally {
       guardando = false;
     }
-  }
-
-  /** Cualquier imagen del teléfono o la PC se pasa a JPG de hasta 1200 px (así WebP o fotos enormes también sirven). */
-  async function aJpeg(archivo) {
-    const imagen = await createImageBitmap(archivo);
-    const escala = Math.min(1, 1200 / Math.max(imagen.width, imagen.height));
-    const lienzo = document.createElement("canvas");
-    lienzo.width = Math.round(imagen.width * escala);
-    lienzo.height = Math.round(imagen.height * escala);
-    lienzo.getContext("2d").drawImage(imagen, 0, 0, lienzo.width, lienzo.height);
-    return lienzo.toDataURL("image/jpeg", 0.9);
   }
 
   async function elegirImagen(ev) {

@@ -1,9 +1,9 @@
-"""Idioma de una letra y su romanización, sin internet (solo librería estándar: sirve igual en Android).
+"""Idioma de una letra y su romanización, sin internet.
 
 - idioma(): por el tipo de escritura (hiragana/katakana → japonés, hangul → coreano, cirílico → ruso…);
   en alfabeto latino, por palabras comunes de cada idioma.
-- romanizar(): coreano (Romanización Revisada), japonés (Hepburn para kana), cirílico (ruso/ucraniano) y griego.
-  Los kanji y el chino necesitan un diccionario que no viene aquí: esas líneas se dejan sin romanizar.
+- romanizar(): coreano (Romanización Revisada), japonés (Hepburn; los kanji se leen con el diccionario de pykakasi),
+  cirílico (ruso/ucraniano) y griego. El chino necesita un diccionario que no viene aquí: se deja sin romanizar.
 """
 import re
 import unicodedata
@@ -121,8 +121,8 @@ def _a_hiragana(ch: str) -> str:
     return chr(o - 0x60) if 0x30A1 <= o <= 0x30F6 else unicodedata.normalize("NFKC", ch) if 0xFF66 <= o <= 0xFF9D else ch
 
 
-def _japones(texto: str) -> str | None:
-    """Romaji de una línea; None si tiene kanji (necesitaría un diccionario para leerlos)."""
+def _kana(texto: str) -> str | None:
+    """Romaji de una línea sin diccionario; None si tiene kanji."""
     if any(_escritura(ch) == "han" for ch in texto):
         return None
     letras = [_a_hiragana(ch) for ch in texto]
@@ -161,6 +161,57 @@ def _japones(texto: str) -> str | None:
         salida.append(silaba)
         i += 1
     return "".join(salida)
+
+
+# ---------- Japonés: kanji (pykakasi) ----------
+# pykakasi lee palabra por palabra y da la lectura más común del diccionario, no la de la frase: estas son las que más
+# fallan en canciones ("君" salía "kun", "人" salía "nin", "愛してる" salía "itoshi teru")
+_LECTURAS = {"君": "kimi", "人": "hito", "日": "hi", "月": "tsuki", "愛し": "aishi", "今日は": "kyou wa"}
+_SIGNOS = str.maketrans({"、": ", ", "。": ". ", "「": ' "', "」": '" ', "『": ' "', "』": '" '})
+# Terminaciones de verbos y adjetivos: van pegadas a su palabra ("止ま" + "らない" = "tomaranai")
+_TERMINACIONES = ("て", "で", "た", "だ", "ない", "なか", "ま", "う", "ら", "れ", "る", "よう")
+_lector = None
+
+
+def _particulas(kana: str, romaji: str, tras_kanji: bool) -> str:
+    """は y へ se escriben "ha" y "he" pero como partícula se leen "wa" y "e"."""
+    if tras_kanji and kana[0] in "はへ":
+        romaji = ("wa" if kana[0] == "は" else "e") + romaji[2:]
+    elif kana.startswith(("では", "には", "とは")):
+        romaji = romaji[:2] + "wa" + romaji[4:]
+    separar = " " if any(_escritura(ch) == "han" for ch in kana) else ""
+    if kana.endswith("は"):
+        return romaji[:-2] + separar + "wa"
+    if kana.endswith("へ"):
+        return romaji[:-2] + separar + "e"
+    return romaji
+
+
+def _japones(texto: str) -> str | None:
+    """Romaji de una línea, con espacios entre palabras."""
+    global _lector
+    try:
+        if _lector is None:
+            import pykakasi  # aquí y no arriba: son 10 MB de diccionario y solo se ocupan con letras en japonés
+            _lector = pykakasi.kakasi()
+        partes = _lector.convert(texto)
+    except Exception:  # sin diccionario la letra debe seguir saliendo: se romaniza solo lo que no tenga kanji
+        return _kana(texto)
+    salida = ""
+    anterior = ""
+    for parte in partes:
+        original = parte["orig"]
+        if not any(_escritura(ch) in ("kana", "han") for ch in original):
+            salida += unicodedata.normalize("NFKC", original.translate(_SIGNOS))
+            anterior = ""
+            continue
+        lectura = _LECTURAS.get(original) or _particulas(original, parte["hepburn"], bool(anterior) and _escritura(anterior[-1]) == "han")
+        pegada = any(_escritura(ch) == "han" for ch in anterior) and _escritura(anterior[-1]) == "kana" and original.startswith(_TERMINACIONES)
+        if anterior and not pegada:
+            salida += " "
+        salida += lectura
+        anterior = original
+    return salida.strip()
 
 
 # ---------- Cirílico y griego ----------

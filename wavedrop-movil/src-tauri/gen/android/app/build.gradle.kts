@@ -112,7 +112,10 @@ chaquopy {
             install("ytmusicapi")
             install("mutagen")
             install("qrcode")  // QR para unirse a un jam (puro Python)
+            install("pykakasi")  // lee los kanji para la romanización de letras (puro Python)
         }
+        // Abre su diccionario con os.path.join(files(...)): dentro del APK eso no es una ruta real
+        extractPackages("pykakasi")
     }
 }
 

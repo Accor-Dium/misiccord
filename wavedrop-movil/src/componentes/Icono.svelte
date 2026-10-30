@@ -40,6 +40,7 @@
     camara: "M4 8h3l2-3h6l2 3h3v11H4zM12 17a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7z",
     subir: "M12 20V9m0 0-4.5 4.5M12 9l4.5 4.5M5 4h14",
     arrastrar: "M5 9h14M5 15h14",
+    lapiz: "M4 20l1-4L16.5 4.5a2.1 2.1 0 0 1 3 3L8 19zM14.5 6.5l3 3",
     expandir: "M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5",
     etiqueta: "M3 12V4h8l10 10-8 8zM7.5 8.5h.01",
     ecualizador: "M5 20v-6M5 10V4M12 20v-8M12 8V4M19 20v-4M19 12V4M2.5 14h5M9.5 8h5M16.5 16h5",

@@ -39,6 +39,7 @@ def main() -> None:
         "--collect-submodules=wavedrop",
         "--collect-all=yt_dlp_ejs",
         "--collect-data=ytmusicapi",
+        "--collect-data=pykakasi",
         "--hidden-import=qrcode.image.svg",
         # Lo de la app vieja de escritorio que está en el mismo venv y aquí no se usa
         "--exclude-module=PySide6", "--exclude-module=shiboken6", "--exclude-module=tkinter",

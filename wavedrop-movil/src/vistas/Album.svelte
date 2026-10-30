@@ -7,6 +7,7 @@
   import { pedirEliminar } from "../lib/eliminar.js";
   import { canciones, t } from "../lib/idioma.svelte.js";
   import { normalizar } from "../lib/ordenar.js";
+  import EditarAlbum from "../componentes/EditarAlbum.svelte";
   import FilaCancion from "../componentes/FilaCancion.svelte";
   import Icono from "../componentes/Icono.svelte";
   import Portada from "../componentes/Portada.svelte";
@@ -16,8 +17,11 @@
   let { e } = $props();
   const a = $derived(e.datos);
   let completo = $state(e.completo ?? null); // lo que te falta del álbum, según YouTube Music
+  let editando = $state(false);
+  let pedidoCarga = 0;
 
   async function cargar() {
+    const yo = ++pedidoCarga;
     try {
       // Primero lo tuyo: es instantáneo y funciona sin internet. Si lo tienes, internet solo agrega lo que falta
       if (!e.local && e.buscar && e.nombre) {
@@ -26,6 +30,7 @@
       }
       if (e.local) {
         const r = await py("album_local", { nombre: e.local.nombre, artista: e.local.artista, grupo: e.local.grupo });
+        if (yo !== pedidoCarga) return; // ya se pidió otro (p. ej. se le cambió el nombre al álbum)
         e.datos = { titulo: e.local.nombre, artista: e.local.artista, anio: e.local.anio, tipo: "Álbum",
                     portada: e.local.portada, canciones: r.canciones, local: true };
         buscarFaltantes();
@@ -79,6 +84,14 @@
     });
   }
 
+  /** Se guardó con otros datos: el álbum puede llamarse distinto, así que se vuelve a buscar con los nuevos. */
+  function alGuardarAlbum(nuevo) {
+    editando = false;
+    e.local = { ...e.local, ...nuevo };
+    completo = e.completo = null;
+    cargar();
+  }
+
   function descargarTodo() {
     if (a.lista) descargarLink(a.lista).catch(() => descargar(faltan, a.titulo));
     else descargar(faltan, a.titulo);
@@ -106,6 +119,7 @@
         <button class="redondo relleno" onclick={descargarTodo} aria-label={e.playlist ? t("Descargar playlist") : t("Descargar álbum")}><Icono nombre="descargas" tam={22} /></button>
       {/if}
       {#if a.local && a.canciones.length}
+        <button class="redondo relleno" onclick={() => (editando = true)} aria-label={t("Editar información")} title={t("Editar información")}><Icono nombre="lapiz" tam={21} /></button>
         <button class="redondo relleno borrar" onclick={eliminarAlbum} aria-label={t("Eliminar álbum")} title={t("Eliminar álbum")}><Icono nombre="basura" tam={22} /></button>
       {/if}
     </div>
@@ -127,6 +141,10 @@
     <div class="hero"><div class="cargando-bloque" style="width:62%;aspect-ratio:1;margin:0 auto"></div></div>
   {/if}
 </div>
+
+{#if editando}
+  <EditarAlbum album={a} alCerrar={() => (editando = false)} alGuardar={alGuardarAlbum} />
+{/if}
 
 <style>
   .vista { position: relative; padding: 0 var(--margen); }

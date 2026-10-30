@@ -137,7 +137,7 @@ Todo el trabajo real vive en Python: python/wavedrop/  (el mismo código en las 
 | `letras.py` | LRCLIB (letra sincronizada) con `.lrc` junto al archivo. **Nunca** imprimas ni registres letras en logs/salidas. |
 | `musicbrainz.py` | Completa álbum/año/pista/portada al descargar. |
 | `etiquetas.py` | Ver y editar etiquetas y carátula de una canción descargada (mutagen: mp3, m4a, flac, ogg/opus). La interfaz manda la imagen ya pasada a JPG. |
-| `romanizar.py` | Idioma de una letra (por escritura y palabras comunes) y romanización **sin internet**: coreano, kana, cirílico, griego. Kanji y chino no (necesitan diccionario). |
+| `romanizar.py` | Idioma de una letra (por escritura y palabras comunes) y romanización **sin internet**: coreano, japonés (kanji con `pykakasi`), cirílico, griego. Chino no (necesita diccionario). |
 | `idioma.py` | Idioma de lo que Python le manda a la interfaz (títulos de recomendaciones, avisos de segundo plano): `t("texto")` con su traducción en `_EN`. |
 | `exportar.py` | PC: memorias USB conectadas (`GetDriveTypeW`), copiar canciones a una carpeta (con `.m3u8`), archivos al portapapeles (`CF_HDROP`), mostrar en el Explorador. |
 | `traduccion.py` | Traducción de letras con **MyMemory** (gratis, sin clave, ~5000 caracteres/día por IP): caché en `cache/traducciones`, líneas repetidas una sola vez. |
@@ -226,6 +226,8 @@ Todo el trabajo real vive en Python: python/wavedrop/  (el mismo código en las 
 - **Ecualizador en el reproductor** (`Ecualizador.svelte`): 3, 5, 10, 15 o 31 bandas; cuántas hay lo dice el largo de `eq_bandas` (`convertirBandas` interpola al cambiar). Mono es `channelCount = 1` en el primer nodo.
   Mono y los visualizadores (`Visualizador.svelte`, `analizadorDeAudio`) también arman el grafo de Web Audio.
 - **Completar datos** (`CompletarDatos.svelte`, `musicbrainz.opciones`): una opción por grupo de MusicBrainz, primero su edición más antigua (si no, Thriller salía de 2022). Respeta el límite de 1 consulta por segundo de `_get`.
+- **Editar álbum** (`EditarAlbum.svelte`, `musicbrainz.buscar_albumes/album_detalle/emparejar`): las opciones van por edición (no por grupo) porque cambian las pistas. Solo es "exacta" si coinciden
+  todas las letras (`_letras`); `normalizar` ignora paréntesis y "(en vivo)" pasaría por exacta. Las canciones que se dejan fuera no se tocan y siguen a `completarDatos`.
 - **Resumen** (`lib/resumen.js`, `Resumen.svelte`): el último día del mes, trimestre o año avisa una vez por periodo (`misiccord_resumen_visto`); lo más grande gana (31 de diciembre = año).
 - **Reproducir estando en un jam pregunta primero** (mandarla al jam o salir/cerrar el jam y escucharla aquí): todo pasa por `reproducir()`,
   y `jam.svelte.js` registra la pregunta con `preguntarAlReproducirEnJam` (el reproductor no importa al jam: el jam ya importa al reproductor).
@@ -235,6 +237,8 @@ Todo el trabajo real vive en Python: python/wavedrop/  (el mismo código en las 
 - **Ecualizador (Web Audio)**: el grafo se arma solo la primera vez que se prende (`aplicarEcualizador`); entonces los `<audio>` llevan `crossOrigin`
   y todo lo que suena **debe mandar CORS**: el protocolo asset de Tauri ya lo hace y `flujo.py` manda `Access-Control-Allow-Origin: *`. Si agregas otra
   fuente de audio sin CORS, con el ecualizador prendido sonará en silencio. Los jams usan su propio `<audio>` y no pasan por él.
+- **Romanización de japonés (`pykakasi`)**: lee palabra por palabra, no entiende la frase: las lecturas equivocadas que más salen en canciones van en `romanizar._LECTURAS`.
+  Se importa dentro de la función (su diccionario pesa 10 MB) y si falla se romaniza solo lo que no tenga kanji: un error ahí nunca debe dejarte sin letra. En Android necesita `extractPackages("pykakasi")`.
 - **Traducción de letras**: el endpoint no oficial de Google (`translate_a/single`, cliente `gtx`) respondía 429 con captcha: no lo uses. Se usa MyMemory (`traduccion.py`).
 - **Historial (`eventos`)**: las vistas previas también se cuentan, con ruta `yt:<id>` (y `duracion`/`portada`, columnas agregadas por migración). Las
   consultas que hacen JOIN con `canciones` (recientes, más escuchadas) las excluyen solas; `estadisticas()` y `semillas()` sí las usan.
@@ -294,7 +298,7 @@ Todo el trabajo real vive en Python: python/wavedrop/  (el mismo código en las 
 
 ```powershell
 # Requisitos de escritorio: Node, Rust, Python 3.14 en ..\venv (raíz del repo) con:
-#   pip install yt-dlp yt-dlp-ejs ytmusicapi mutagen qrcode requests pyinstaller
+#   pip install yt-dlp yt-dlp-ejs ytmusicapi mutagen qrcode requests pykakasi pyinstaller
 #   ffmpeg, ffprobe y deno en el PATH (winget). O WAVEDROP_PYTHON=ruta\python.exe
 npm install
 npx tauri dev                                   # escritorio con el Python del venv

@@ -34,7 +34,7 @@ AJUSTES_POR_DEFECTO = {
     "video_ver": False,    # mostrar el interruptor de video sobre la carátula del reproductor
     "video_descargar": False,  # bajar también el videoclip (mp4) al descargar una canción
     "letra_traducir_a": "",  # idioma al que se traducen las letras ("" = no traducir)
-    "letra_romanizar": True,  # mostrar la romanización de letras en coreano, japonés (kana), ruso…
+    "letra_romanizar": True,  # mostrar la romanización de letras en coreano, japonés, ruso…
     "eq_activo": False,    # ecualizador (Web Audio): apagado, el audio va directo como siempre
     "eq_bandas": [0, 0, 0, 0, 0],  # dB de cada banda; cuántas hay (3, 5, 10, 15 o 31) dice qué frecuencias son
     "eq_mono": False,      # sumar izquierda y derecha (también va por Web Audio)
@@ -193,7 +193,7 @@ def _indexar(ruta: Path) -> None:
 
 def _local(c: biblioteca.Cancion) -> dict:
     return {"local": True, "ruta": str(c.ruta), "db_id": c.id, "titulo": c.titulo, "artista": c.artista,
-            "album": c.album, "artista_album": c.artista_album, "anio": c.anio, "pista": c.pista, "duracion": c.duracion, "agregada": c.agregada,
+            "album": c.album, "artista_album": c.artista_album, "anio": c.anio, "pista": c.pista, "genero": c.genero, "duracion": c.duracion, "agregada": c.agregada,
             "portada": c.portada or None}
 
 
@@ -603,6 +603,45 @@ def metadata_aplicar(d: dict) -> dict:
     datos = musicbrainz.Datos(**{k: v or ("" if k not in ("pista", "total_pistas") else None) for k, v in campos.items()}, puntaje=o.get("puntaje", 0))
     musicbrainz.escribir(ruta, datos, musicbrainz.portada(datos) if d.get("portada", True) else None)
     return _tras_editar(ruta)
+
+
+def album_opciones(d: dict) -> dict:
+    """Las ediciones de MusicBrainz de un álbum, para "Editar álbum"."""
+    return {"opciones": musicbrainz.buscar_albumes(d.get("nombre", ""), d.get("artista", ""))}
+
+
+def album_detalle(d: dict) -> dict:
+    """Las pistas de una edición y a cuál corresponde cada canción tuya."""
+    detalle = musicbrainz.album_detalle(d["mbid"])
+    return {"detalle": detalle, "parejas": musicbrainz.emparejar(d.get("canciones") or [], detalle["pistas"])}
+
+
+def album_guardar(d: dict) -> dict:
+    """Escribe los datos de varias canciones de un álbum y, si hay, la misma carátula en todas.
+
+    Recibe {"canciones": [{"ruta", "campos"}], "imagen": base64 o "mbid_album"/"mbid_grupo"}. Lo que falle no detiene lo demás.
+    """
+    import base64
+    imagen = None
+    if d.get("imagen"):
+        imagen = base64.b64decode(d["imagen"].split(",", 1)[-1])
+    elif d.get("mbid_album"):
+        imagen = musicbrainz.portada_de(d["mbid_album"], d.get("mbid_grupo", ""))
+    hechas, fallidas = [], []
+    for x in d.get("canciones") or []:
+        ruta = Path(x["ruta"])
+        try:
+            etiquetas.escribir(ruta, x.get("campos") or {})
+            if imagen:
+                etiquetas.poner_portada(ruta, imagen)
+            _indexar(ruta)
+            plataforma.archivo_nuevo(ruta)
+            hechas.append(ruta)
+        except Exception as e:
+            fallidas.append({"titulo": ruta.stem, "error": str(e)})
+    emitir("biblioteca", {"nuevas": 0, "quitadas": 0, "total": _db().total()})
+    canciones = [_db().cancion_por_ruta(r) for r in hechas]
+    return {"canciones": [_local(c) for c in canciones if c], "fallidas": fallidas}
 
 
 def guardar_etiquetas(d: dict) -> dict:
@@ -1128,7 +1167,8 @@ FUNCIONES = {
     "eliminar_canciones": eliminar_canciones, "video": video, "descargar_video": descargar_video,
     "me_gusta": me_gusta, "me_gusta_es": me_gusta_es, "me_gusta_alternar": me_gusta_alternar,
     "info_cancion": info_cancion, "guardar_etiquetas": guardar_etiquetas,
-    "metadata_opciones": metadata_opciones, "metadata_aplicar": metadata_aplicar, "cambiar_portada": cambiar_portada,
+    "metadata_opciones": metadata_opciones, "metadata_aplicar": metadata_aplicar,
+    "album_opciones": album_opciones, "album_detalle": album_detalle, "album_guardar": album_guardar, "cambiar_portada": cambiar_portada,
     "reproduccion": reproduccion, "estadisticas": estadisticas, "previa": previa, "precargar": precargar, "letra": letra,
     "letra_traduccion": letra_traduccion,
     "descargar": descargar, "descargas": descargas_, "cancelar_descarga": cancelar_descarga,

@@ -130,7 +130,7 @@
       <label class="opcion">
         <div class="texto">
           <b>{t("Romanización")}</b>
-          <small>{t("Coreano, japonés (kana), ruso, ucraniano y griego en letras latinas, debajo del original")}</small>
+          <small>{t("Coreano, japonés, ruso, ucraniano y griego en letras latinas, debajo del original")}</small>
         </div>
         <input type="checkbox" class="interruptor" checked={aj.letra_romanizar} onchange={(e) => guardar({ letra_romanizar: e.target.checked })} />
       </label>
