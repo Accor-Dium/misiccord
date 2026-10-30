@@ -12,7 +12,7 @@ documentada abajo; si algo no está documentado, pregunta antes de "arreglarlo".
 
 ---
 
-## Estado del proyecto (al 29 de octubre de 2026 · versión publicada: **2.0.1**)
+## Estado del proyecto (al 29 de octubre de 2026 · versión publicada: **2.0.2**)
 
 Resumen para que no tengas que leer todo el código. Actualiza esta sección cuando publiques una versión.
 
@@ -62,6 +62,7 @@ medianos, el **menor**; detalles pequeños, el **parche**. Hasta 1.0.10 todo sub
 | 1.0.9 | Inicio estilo YouTube Music (estados de ánimo, marcación rápida, Explorar), jalar para actualizar, menú de canción al mantener presionada (compartir, radio), compartir/exportar (Android: menú del sistema; PC: portapapeles, USB o carpeta), avisos nuevos, idioma español/inglés. |
 | 1.0.10 | Volumen de 0 a 200 % con curva en decibeles (perceptual); arriba de 100 % refuerzo por Web Audio con limitador y recorte suave. |
 | 2.0.1 | La música sigue al quitar la app de recientes (Android), widget de la pantalla de inicio, Biblioteca en lista o cuadrícula, burbuja del índice A–Z (y salta hacia arriba), barra de avance sin parpadeo, deslizar barra/volumen no cierra el reproductor, ícono de micrófono en la letra. Empieza la numeración mayor.menor.parche. |
+| 2.0.2 | Los géneros de YouTube Music (Inicio y Explorar) ya abren sus playlists y álbumes. |
 
 ### Qué está probado y dónde
 - **En dispositivos reales** (lo probó quien administra el proyecto): app de Windows, Android en varios teléfonos (Samsung S25 Ultra, Pixel 7 Pro…),
@@ -229,6 +230,8 @@ Todo el trabajo real vive en Python: python/wavedrop/  (el mismo código en las 
   Los permisos (notificaciones, sin límites de batería) se piden con el comando `segundo_plano` y se ven en Ajustes → Segundo plano (solo Android).
 - **YouTube Music en el idioma de la app solo para mostrar** (`explorar._yt_idioma`: inicio, estados de ánimo, explorar, playlists). Las búsquedas
   usan el cliente sin idioma (`_yt`): ytmusicapi reconoce cada resultado por su texto en inglés y con `language="es"` los filtros (canciones, álbumes) regresan vacíos.
+- **Géneros de YouTube Music** (`explorar.playlists_de_estado`): `get_mood_playlists` de ytmusicapi solo sirve para los estados de ánimo; en los géneros
+  truena ("Unable to find navigationEndpoint") porque vienen en secciones. Ahí se leen con `parse_mixed_content` (`_estado_por_secciones`).
 - **Compartir en Android** pasa por `FileProvider` (`res/xml/file_paths.xml` incluye `/storage` para tarjetas SD) con `ClipData`: sin ella WhatsApp no recibe
   permiso para leer todos los archivos.
 - **Volumen (`reproductor.svelte.js`)**: `rep.volumen` es la **posición de la barra (0–2)**, no la amplitud: `gananciaDe()` la pasa a decibeles

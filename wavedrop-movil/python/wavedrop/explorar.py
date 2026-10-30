@@ -398,7 +398,28 @@ def estados(forzar: bool = False) -> list[dict]:
 
 
 def playlists_de_estado(params: str) -> list[dict]:
-    return _guardado(f"estado:{params}", 6, lambda: [x for x in (_tarjeta(d) for d in _yt_idioma().get_mood_playlists(params)) if x])
+    def crear():
+        yt = _yt_idioma()
+        try:
+            elementos = yt.get_mood_playlists(params)
+        except KeyError:
+            elementos = _estado_por_secciones(yt, params)
+        return [x for x in (_tarjeta(d) for d in elementos) if x]
+    return _guardado(f"estado:{params}", 6, crear)
+
+
+def _estado_por_secciones(yt, params: str) -> list[dict]:
+    """Los géneros no vienen como rejilla de playlists sino en secciones (canciones, playlists destacadas, álbumes…)
+    y `get_mood_playlists` truena ("Unable to find navigationEndpoint": el título de la sección no es un link).
+    Se leen como las del inicio y se juntan sus tarjetas en orden."""
+    from ytmusicapi.navigation import SECTION_LIST, SINGLE_COLUMN_TAB, nav
+    from ytmusicapi.parsers.browsing import parse_mixed_content
+
+    r = yt._send_request("browse", {"browseId": "FEmusic_moods_and_genres_category", "params": params})
+    elementos = []
+    for seccion in parse_mixed_content(nav(r, SINGLE_COLUMN_TAB + SECTION_LIST)):
+        elementos += [d for d in seccion.get("contents") or [] if isinstance(d, dict) and not d.get("videoId")]
+    return elementos
 
 
 def explorar() -> dict:
