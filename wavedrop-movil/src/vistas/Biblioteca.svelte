@@ -1,3 +1,10 @@
+<script module>
+  // Lo último que respondió Python, por carpeta: volver a la pestaña no espera nada. Va aquí y no en `e` porque
+  // irPestana crea una entrada nueva, y porque `nav` es estado profundo: miles de canciones en Proxies tardan
+  // segundos en ordenarse en el cel.
+  const memoria = new Map(); // carpeta → { datos, carpetas, version }
+</script>
+
 <script>
   import { onMount } from "svelte";
   import { fade, scale } from "svelte/transition";
@@ -12,6 +19,7 @@
   import { agrupar, agruparPorLetra, coincide, ORDENES } from "../lib/ordenar.js";
   import FilaCancion from "../componentes/FilaCancion.svelte";
   import Icono from "../componentes/Icono.svelte";
+  import ListaVirtual from "../componentes/ListaVirtual.svelte";
   import Portada from "../componentes/Portada.svelte";
   import Tarjeta from "../componentes/Tarjeta.svelte";
 
@@ -20,7 +28,10 @@
   $effect(() => { e.pestana = pestana; });
   let creando = $state(false);
   let nombre = $state("");
-  const b = $derived(e.datos);
+  // Filtro por carpeta de música ("" = todas); se recuerda al volver a esta vista
+  let filtro = $state(e.filtro ?? "");
+  let b = $state.raw(memoria.get(filtro)?.datos ?? null);
+  const idDe = (c) => c.db_id;
 
   // ---------- Buscar, ordenar y agrupar ----------
   // Lo tuyo se filtra al instante; lo que no tienes se busca en YouTube Music cuando dejas de escribir.
@@ -111,12 +122,11 @@
     burbuja = null;
   }
 
-  // Filtro por carpeta de música ("" = todas); se recuerda al volver a esta vista
-  let filtro = $state(e.filtro ?? "");
   let pedido = 0;
 
   async function cargar() {
     const yo = ++pedido;
+    const pedida = ui.version;
     const [datos, c] = await Promise.all([py("biblioteca", { carpeta: filtro }), py("carpetas_biblioteca")]);
     if (yo !== pedido) return;
     carpetas = c;
@@ -125,16 +135,18 @@
       e.filtro = "";
       return cargar();
     }
-    e.datos = datos;
+    b = datos;
+    memoria.set(filtro, { datos, carpetas: c, version: pedida });
   }
   function filtrar(ruta) {
     if (ruta === filtro) return;
     filtro = ruta;
     e.filtro = ruta;
+    b = memoria.get(ruta)?.datos ?? b;
     salirSeleccion();
     cargar();
   }
-  onMount(() => { if (!e.datos) cargar(); });
+  onMount(() => { if (memoria.get(filtro)?.version !== ui.version) cargar(); });
   let version = ui.version;
   $effect(() => { if (ui.version !== version) { version = ui.version; cargar(); } });
 
@@ -153,7 +165,7 @@
 
   // ---------- Carpetas de música que ya tienes ----------
   let panelCarpetas = $state(false);
-  let carpetas = $state(null);      // { carpetas: [...], android }
+  let carpetas = $state(memoria.get(filtro)?.carpetas ?? null); // { carpetas: [...], android }
   let explorando = $state(null);    // Android: { ruta, padre, carpetas } mientras eliges una carpeta
   let escaneando = $state(false);
   let revisadas = $state(0);
@@ -230,6 +242,7 @@
     catch { return { ...VISTAS_INICIALES }; }
   }
   const enCuadricula = $derived(vistas[pestana] === "cuadricula");
+  const tipoFila = $derived(`${pestana}-${enCuadricula ? "cuadricula" : "lista"}${seleccionando ? "-eleccion" : ""}`);
   function alternarVista() {
     vistas = { ...vistas, [pestana]: enCuadricula ? "lista" : "cuadricula" };
     try { localStorage.setItem("misiccord_vista_biblioteca", JSON.stringify(vistas)); } catch {}
@@ -375,24 +388,22 @@
             <button class="texto-boton" onclick={alternarTodas}>{todas ? t("Quitar todas") : t("Elegir todas")}</button>
             <button class="pildora oscura chica" onclick={salirSeleccion}>{t("Listo")}</button>
           </div>
-          {#if enCuadricula}
-            <div class="mosaico">
-              {#each plana as c (c.db_id)}
+          <ListaVirtual items={plana} clave={idDe} tipo={tipoFila} clase={enCuadricula ? "mosaico-biblioteca" : ""}>
+            {#snippet fila(c)}
+              {#if enCuadricula}
                 <div class="eleccion-tarjeta" class:elegida={elegidas.has(c.db_id)}>
                   <Tarjeta portada={c.portada} titulo={c.titulo} subtitulo={c.artista} icono="nota" ancho="100%" alTocar={() => alternarElegida(c.db_id)} />
                   <span class="casilla">{#if elegidas.has(c.db_id)}<Icono nombre="check" tam={16} />{/if}</span>
                 </div>
-              {/each}
-            </div>
-          {:else}
-          {#each plana as c (c.db_id)}
-            <button class="fila-eleccion" class:elegida={elegidas.has(c.db_id)} onclick={() => alternarElegida(c.db_id)}>
-              <span class="casilla">{#if elegidas.has(c.db_id)}<Icono nombre="check" tam={16} />{/if}</span>
-              <Portada url={c.portada} tam="46px" radio="8px" />
-              <span class="textos"><b class="cortar">{c.titulo}</b><small class="cortar">{c.artista}</small></span>
-            </button>
-          {/each}
-          {/if}
+              {:else}
+                <button class="fila-eleccion" class:elegida={elegidas.has(c.db_id)} onclick={() => alternarElegida(c.db_id)}>
+                  <span class="casilla">{#if elegidas.has(c.db_id)}<Icono nombre="check" tam={16} />{/if}</span>
+                  <Portada url={c.portada} tam="46px" radio="8px" />
+                  <span class="textos"><b class="cortar">{c.titulo}</b><small class="cortar">{c.artista}</small></span>
+                </button>
+              {/if}
+            {/snippet}
+          </ListaVirtual>
         {:else}
           <div class="acciones">
             <span class="tenue">{texto ? t("{n} de {total} canciones", { n: plana.length, total: b.canciones.length }) : canciones(plana.length)}</span>
@@ -412,18 +423,16 @@
             <!-- El salto del índice va al ancla: un encabezado fijo (sticky) que ya pasó no deja regresar a él -->
             <span class="ancla" id="grupo-{g.titulo}"></span>
             <div class="grupo">{g.titulo}</div>
-            {#if enCuadricula}
-              <div class="mosaico">
-                {#each g.canciones as c (c.db_id)}
+            <ListaVirtual items={g.canciones} clave={idDe} tipo={tipoFila} clase={enCuadricula ? "mosaico-biblioteca" : ""}>
+              {#snippet fila(c)}
+                {#if enCuadricula}
                   <Tarjeta portada={c.portada} titulo={c.titulo} subtitulo={c.artista} icono="nota" ancho="100%"
                     alTocar={() => reproducir(plana, plana.indexOf(c), "Tu biblioteca")} alMantener={() => menuCancion(c)} />
-                {/each}
-              </div>
-            {:else}
-            {#each g.canciones as c (c.db_id)}
-              <FilaCancion cancion={c} alTocar={() => reproducir(plana, plana.indexOf(c), "Tu biblioteca")} />
-            {/each}
-            {/if}
+                {:else}
+                  <FilaCancion cancion={c} alTocar={() => reproducir(plana, plana.indexOf(c), "Tu biblioteca")} />
+                {/if}
+              {/snippet}
+            </ListaVirtual>
           {:else}
             <p class="vacio">{t("Nada en tu biblioteca con “{q}”.", { q: texto })}</p>
           {/each}
@@ -441,40 +450,44 @@
       {/if}
     </div>
   {:else if pestana === "albumes"}
-    <div class:rejilla={enCuadricula} in:fade={{ duration: 220 }}>
-      {#each albumesVistos as a}
-        {#if !enCuadricula}
-          {#if seleccionando}
-            <button class="fila-eleccion" class:elegida={elegidos.has(claveAlbum(a))} onclick={() => alternarElegido(claveAlbum(a))}>
-              <span class="casilla">{#if elegidos.has(claveAlbum(a))}<Icono nombre="check" tam={16} />{/if}</span>
-              <Portada url={a.portada} tam="46px" radio="8px" />
-              <span class="textos"><b class="cortar">{a.nombre}</b><small class="cortar">{a.artista}</small></span>
-            </button>
-          {:else}
-            <button class="fila-artista" onclick={() => abrir("album", { local: a })}>
-              <Portada url={a.portada} tam="54px" radio="10px" />
-              <span class="textos"><b class="cortar">{a.nombre}</b><small class="cortar">{a.artista}</small></span>
-            </button>
-          {/if}
-        {:else if seleccionando}
-          <div class="eleccion-tarjeta" class:elegida={elegidos.has(claveAlbum(a))}>
-            <Tarjeta portada={a.portada} titulo={a.nombre} subtitulo={a.artista} ancho="100%" alTocar={() => alternarElegido(claveAlbum(a))} />
-            <span class="casilla">{#if elegidos.has(claveAlbum(a))}<Icono nombre="check" tam={16} />{/if}</span>
-          </div>
-        {:else}
-          <Tarjeta portada={a.portada} titulo={a.nombre} subtitulo={a.artista} ancho="100%" alTocar={() => abrir("album", { local: a })} />
-        {/if}
+    <div in:fade={{ duration: 220 }}>
+      {#if albumesVistos.length}
+        <ListaVirtual items={albumesVistos} clave={claveAlbum} tipo={tipoFila} clase={enCuadricula ? "rejilla-biblioteca" : ""}>
+          {#snippet fila(a)}
+            {#if !enCuadricula}
+              {#if seleccionando}
+                <button class="fila-eleccion" class:elegida={elegidos.has(claveAlbum(a))} onclick={() => alternarElegido(claveAlbum(a))}>
+                  <span class="casilla">{#if elegidos.has(claveAlbum(a))}<Icono nombre="check" tam={16} />{/if}</span>
+                  <Portada url={a.portada} tam="46px" radio="8px" />
+                  <span class="textos"><b class="cortar">{a.nombre}</b><small class="cortar">{a.artista}</small></span>
+                </button>
+              {:else}
+                <button class="fila-artista" onclick={() => abrir("album", { local: a })}>
+                  <Portada url={a.portada} tam="54px" radio="10px" />
+                  <span class="textos"><b class="cortar">{a.nombre}</b><small class="cortar">{a.artista}</small></span>
+                </button>
+              {/if}
+            {:else if seleccionando}
+              <div class="eleccion-tarjeta" class:elegida={elegidos.has(claveAlbum(a))}>
+                <Tarjeta portada={a.portada} titulo={a.nombre} subtitulo={a.artista} ancho="100%" alTocar={() => alternarElegido(claveAlbum(a))} />
+                <span class="casilla">{#if elegidos.has(claveAlbum(a))}<Icono nombre="check" tam={16} />{/if}</span>
+              </div>
+            {:else}
+              <Tarjeta portada={a.portada} titulo={a.nombre} subtitulo={a.artista} ancho="100%" alTocar={() => abrir("album", { local: a })} />
+            {/if}
+          {/snippet}
+        </ListaVirtual>
       {:else}
         <p class="vacio">{texto ? t("Ningún álbum con “{q}”.", { q: texto }) : t("Sin álbumes todavía.")}</p>
-      {/each}
+      {/if}
     </div>
   {:else if pestana === "artistas"}
     <div in:fade={{ duration: 220 }}>
       {#each gruposArtistas as g (g.titulo)}
         <div class="grupo">{g.titulo}</div>
-        {#if enCuadricula}
-          <div class="mosaico">
-            {#each g.items as a}
+        <ListaVirtual items={g.items} clave={(a) => a.nombre} tipo={tipoFila} clase={enCuadricula ? "mosaico-biblioteca" : ""}>
+          {#snippet fila(a)}
+            {#if enCuadricula}
               {#if seleccionando}
                 <div class="eleccion-tarjeta" class:elegida={elegidos.has(`artista:${a.nombre}`)}>
                   <Tarjeta redonda icono="persona" titulo={a.nombre} subtitulo={canciones(a.canciones)} ancho="100%" alTocar={() => alternarElegido(`artista:${a.nombre}`)} />
@@ -484,27 +497,23 @@
                 <Tarjeta redonda icono="persona" titulo={a.nombre} subtitulo={canciones(a.canciones)} ancho="100%"
                   alTocar={() => abrir("artista", { nombre: a.nombre })} alMantener={() => opcionesArtista(a)} />
               {/if}
-            {/each}
-          </div>
-        {:else}
-        {#each g.items as a}
-          {#if seleccionando}
-            <button class="fila-eleccion" class:elegida={elegidos.has(`artista:${a.nombre}`)} onclick={() => alternarElegido(`artista:${a.nombre}`)}>
-              <span class="casilla">{#if elegidos.has(`artista:${a.nombre}`)}<Icono nombre="check" tam={16} />{/if}</span>
-              <span class="avatar chico"><Icono nombre="persona" tam={20} /></span>
-              <span class="textos"><b class="cortar">{a.nombre}</b><small>{canciones(a.canciones)}</small></span>
-            </button>
-          {:else}
-          <div class="fila-con-menu">
-            <button class="fila-artista" onclick={() => abrir("artista", { nombre: a.nombre })}>
-              <span class="avatar"><Icono nombre="persona" tam={22} /></span>
-              <span class="textos"><b class="cortar">{a.nombre}</b><small>{canciones(a.canciones)}</small></span>
-            </button>
-            <button class="mas" aria-label={t("Opciones de {nombre}", a)} onclick={() => opcionesArtista(a)}><Icono nombre="mas" tam={22} /></button>
-          </div>
-          {/if}
-        {/each}
-        {/if}
+            {:else if seleccionando}
+              <button class="fila-eleccion" class:elegida={elegidos.has(`artista:${a.nombre}`)} onclick={() => alternarElegido(`artista:${a.nombre}`)}>
+                <span class="casilla">{#if elegidos.has(`artista:${a.nombre}`)}<Icono nombre="check" tam={16} />{/if}</span>
+                <span class="avatar chico"><Icono nombre="persona" tam={20} /></span>
+                <span class="textos"><b class="cortar">{a.nombre}</b><small>{canciones(a.canciones)}</small></span>
+              </button>
+            {:else}
+              <div class="fila-con-menu">
+                <button class="fila-artista" onclick={() => abrir("artista", { nombre: a.nombre })}>
+                  <span class="avatar"><Icono nombre="persona" tam={22} /></span>
+                  <span class="textos"><b class="cortar">{a.nombre}</b><small>{canciones(a.canciones)}</small></span>
+                </button>
+                <button class="mas" aria-label={t("Opciones de {nombre}", a)} onclick={() => opcionesArtista(a)}><Icono nombre="mas" tam={22} /></button>
+              </div>
+            {/if}
+          {/snippet}
+        </ListaVirtual>
       {:else}
         <p class="vacio">{texto ? t("Ningún artista con “{q}”.", { q: texto }) : t("Sin artistas todavía.")}</p>
       {/each}
@@ -528,7 +537,7 @@
       {/if}
       <!-- Me gusta va siempre primero: no es una playlist que se borre, guarda también canciones no descargadas -->
       {#if enCuadricula}
-        <div class="mosaico">
+        <div class="mosaico-biblioteca">
           {#if !seleccionando}
             <button class="tarjeta-lista" onclick={() => abrir("me_gusta")}>
               <span class="cubierta me-gusta"><Icono nombre="corazon" relleno tam={34} /></span>
@@ -690,17 +699,18 @@
   @media (min-width: 900px) {
     .indice { right: 10px; top: 200px; bottom: calc(var(--mini) + 30px); }
   }
-  /* Cuadrícula de canciones, artistas y playlists: 3 por fila en el cel, las que quepan en la PC */
-  .mosaico { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px 12px; margin: 6px 0 12px; }
-  .mosaico :global(.tarjeta b) { font-size: 13.5px; margin-top: 6px; }
-  .mosaico :global(.tarjeta small) { font-size: 12.5px; }
-  @media (min-width: 900px) { .mosaico { grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 22px 18px; } }
+  /* Cuadrícula de canciones, artistas y playlists: 3 por fila en el cel, las que quepan en la PC.
+     Es global porque también la usa la caja de ListaVirtual */
+  :global(.mosaico-biblioteca) { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px 12px; margin: 6px 0 12px; }
+  :global(.mosaico-biblioteca .tarjeta b) { font-size: 13.5px; margin-top: 6px; }
+  :global(.mosaico-biblioteca .tarjeta small) { font-size: 12.5px; }
+  @media (min-width: 900px) { :global(.mosaico-biblioteca) { grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 22px 18px; } }
   .tarjeta-lista { position: relative; display: flex; flex-direction: column; gap: 4px; text-align: left; min-width: 0; }
   .tarjeta-lista b { margin-top: 6px; font-size: 13.5px; font-weight: 700; width: 100%; }
   .tarjeta-lista small { color: var(--tenue); font-size: 12.5px; }
   .cubierta { aspect-ratio: 1; border-radius: 12px; background: var(--tarjeta-2); display: grid; place-items: center; color: var(--tenue); }
   .cubierta.me-gusta { background: linear-gradient(135deg, #ff4d6d, #7c3aed); color: #fff; }
-  .rejilla { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 18px 14px; margin-top: 8px; }
+  :global(.rejilla-biblioteca) { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 18px 14px; margin-top: 8px; }
   .acciones { display: flex; justify-content: space-between; align-items: center; margin: 6px 0 8px; }
   .chica { height: 38px; padding: 0 16px; font-size: 14px; }
   .fila-artista { width: 100%; display: flex; align-items: center; gap: 14px; padding: 8px 0; text-align: left; }

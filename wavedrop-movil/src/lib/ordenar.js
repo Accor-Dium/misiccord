@@ -10,9 +10,16 @@ export function coincide(consulta, ...textos) {
   return normalizar(consulta).split(/\s+/).filter(Boolean).every((p) => donde.includes(p));
 }
 
-// "The Beatles" se ordena en la B, como en las demás apps de música
-const sinArticulo = (t) => normalizar(t).replace(/^the\s+/, "");
-const comparar = (a, b) => a.localeCompare(b, "es", { sensitivity: "base", numeric: true });
+// "The Beatles" se ordena en la B, como en las demás apps de música.
+// Ordenar compara miles de veces: cada texto se normaliza una sola vez y hay un solo Collator
+// (localeCompare con opciones es mucho más lento).
+const sinArticulos = new Map();
+function sinArticulo(texto) {
+  let r = sinArticulos.get(texto);
+  if (r === undefined) sinArticulos.set(texto, (r = normalizar(texto).replace(/^the\s+/, "")));
+  return r;
+}
+const comparar = new Intl.Collator("es", { sensitivity: "base", numeric: true }).compare;
 
 /** Letra del índice: A–Z, o "#" para números y otros alfabetos. */
 export function letraDe(texto) {
@@ -76,7 +83,8 @@ export function agrupar(canciones, orden) {
   const grupos = [];
   for (const c of lista) {
     const g = grupoDe(c);
-    if (grupos.at(-1)?.titulo !== g) grupos.push({ titulo: g, canciones: [] });
+    // Con `comparar`, como al ordenar: "Días de Fuego" y "Días de fuego" se intercalan y serían grupos repetidos
+    if (!grupos.length || comparar(grupos.at(-1).titulo, g)) grupos.push({ titulo: g, canciones: [] });
     grupos.at(-1).canciones.push(c);
   }
   return grupos;

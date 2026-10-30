@@ -157,7 +157,7 @@ Todo el trabajo real vive en Python: python/wavedrop/  (el mismo código en las 
 - `vistas/`: `Inicio` (con el buscador en vivo `componentes/Buscador.svelte`), `Explorar`, `Biblioteca` (selección para compartir o borrar), `Album`
   (también playlists de YouTube Music), `Artista`, `Playlist`, `MeGusta`, `Estadisticas`, `Jams`, `Descargas`, `Ajustes`.
 - `componentes/`: `FilaCancion` (menú ⋯, agregar al jam, eliminar), `Hoja` (menú inferior / ventana en escritorio), `MiniReproductor` (también muestra el jam),
-  `Reproductor`, `Letra`, `Tarjeta`, `Portada` (reintenta si una portada falla), `Icono` (íconos SVG por nombre), `Volumen`, `Navegacion`,
+  `Reproductor`, `Letra`, `Tarjeta`, `Portada` (reintenta si una portada falla), `Icono` (íconos SVG por nombre), `Volumen`, `Navegacion`, `ListaVirtual` (solo dibuja las filas cerca de la pantalla),
   `Avisos` (abajo, con acción y barra de avance: `aviso(texto, tipo, { id, duracion, accion, avance })`), `BotonDescarga`, `Paginas`, `InfoCancion`.
 - `app.css`: tokens de color, `--margen`, carruseles (`scroll-padding` evita que se "corran"), tamaño de artistas `--artista`.
 
@@ -212,6 +212,14 @@ Todo el trabajo real vive en Python: python/wavedrop/  (el mismo código en las 
   (ese movía al reproductor entero).
 - **Biblioteca**: buscar, ordenar y agrupar es todo en la interfaz (`lib/ordenar.js`, sin acentos, "The" ignorado); solo lo que no tienes se pide a
   YouTube Music. El orden elegido vive en `localStorage` (`misiccord_orden`).
+- **Abrir Biblioteca debe ser instantáneo** (con 1,671 canciones llegó a tardar ~9 s en un cel simulado). Cuatro cosas lo sostienen:
+  - **Listar no toca los archivos**: la portada está en la columna `canciones.portada` (ruta en la caché, `""` si no trae, `NULL` si falta buscarla). `api._completar_portadas`
+    llena las que falten después de cada escaneo y `revisar_portadas` recupera las que Android borre de la caché. No regreses `portada_local()` a `_local()`: abre el archivo de cada canción (FUSE en Android).
+  - **Los datos van fuera de `nav`**: `Biblioteca.svelte` los guarda en `memoria` (`<script module>`, `$state.raw`). En `e.datos` cada canción se vuelve un Proxy (`nav` es estado profundo)
+    y además se pierden, porque `irPestana` crea una entrada nueva.
+  - **`ListaVirtual`**: las filas de un mismo `tipo` deben medir igual. Mide una sola vez por ancho: los textos en otros alfabetos usan otra fuente y cambian el alto 1 o 2 px,
+    y medir con cada fila que entra crea un ciclo infinito entre listas (`effect_update_depth_exceeded`). Encabezados y `.ancla` siguen en el DOM: por eso funcionan `sticky` y el índice A–Z.
+  - **El aviso `"biblioteca"` trae `sin_cambios`** si el escaneo no encontró nada: si no, cada arranque volvía a pedir y dibujar todo.
 - **Reproducir estando en un jam pregunta primero** (mandarla al jam o salir/cerrar el jam y escucharla aquí): todo pasa por `reproducir()`,
   y `jam.svelte.js` registra la pregunta con `preguntarAlReproducirEnJam` (el reproductor no importa al jam: el jam ya importa al reproductor).
   Si agregas otra forma de empezar a sonar, que pase por `reproducir()` o respete `{ aunEnJam }`.

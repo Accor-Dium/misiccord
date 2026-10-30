@@ -168,7 +168,7 @@ alEvento("video_descarga", (d) => {
   if (d.estado === "listo") aviso(t("Video de “{titulo}” descargado", d), "ok");
   else if (d.estado === "error") aviso(t("No se pudo bajar el video de “{titulo}”: {error}", d), "error");
 });
-alEvento("biblioteca", () => ui.version++);
+alEvento("biblioteca", (d) => { if (!d.sin_cambios) ui.version++; });
 
 /**
  * Android: la primera vez que se baja algo se pide permiso para mostrar la notificación de avance (Android 13+).

@@ -130,16 +130,12 @@ def _ajustes() -> dict:
     return _estado["ajustes"]
 
 
-_portadas: dict[str, str | None] = {}
-
-
 def portada_local(ruta: Path) -> str | None:
-    """Extrae la portada incrustada a la caché (una vez por álbum) y devuelve la ruta del archivo."""
+    """Extrae la portada incrustada a la caché y devuelve la ruta del archivo.
+
+    Toca el archivo de la canción: para listas está la columna `portada` de la base (_completar_portadas)."""
     import base64
     import mutagen
-    clave = str(ruta.parent) + "|" + ruta.stem
-    if clave in _portadas:
-        return _portadas[clave]
     try:
         version = ruta.stat().st_mtime_ns  # cambia al editar la carátula: así la interfaz no se queda con la vieja
     except OSError:
@@ -170,14 +166,34 @@ def portada_local(ruta: Path) -> str | None:
                 resultado = str(destino)
         except Exception:
             resultado = None
-    _portadas[clave] = resultado
     return resultado
+
+
+def _completar_portadas() -> None:
+    """Anota en la base la portada de las canciones que no la tienen: listar canciones ya no toca sus archivos."""
+    db = _db()
+    carpeta = plataforma.carpeta_cache() / "portadas"
+    db.revisar_portadas({e.path for e in os.scandir(carpeta)} if carpeta.is_dir() else set())
+    rutas = db.sin_portada()
+    lote = []
+    for i, ruta in enumerate(rutas, 1):
+        lote.append((portada_local(ruta) or "", str(ruta)))
+        if i % 100 == 0 or i == len(rutas):  # con muchas, las portadas van apareciendo poco a poco
+            db.guardar_portadas(lote)
+            lote.clear()
+            emitir("biblioteca", {"nuevas": 0, "quitadas": 0, "total": db.total()})
+
+
+def _indexar(ruta: Path) -> None:
+    """Agrega o actualiza una canción con su portada ya lista."""
+    _db().indexar(ruta)
+    _db().guardar_portadas([(portada_local(ruta) or "", str(ruta))])
 
 
 def _local(c: biblioteca.Cancion) -> dict:
     return {"local": True, "ruta": str(c.ruta), "db_id": c.id, "titulo": c.titulo, "artista": c.artista,
             "album": c.album, "artista_album": c.artista_album, "anio": c.anio, "pista": c.pista, "duracion": c.duracion, "agregada": c.agregada,
-            "portada": portada_local(c.ruta)}
+            "portada": c.portada or None}
 
 
 def _en_linea(r: explorar.ResultadoCancion) -> dict:
@@ -189,7 +205,7 @@ def _en_linea(r: explorar.ResultadoCancion) -> dict:
 
 def _album_local(a: biblioteca.Album) -> dict:
     return {"nombre": a.nombre, "artista": a.artista, "grupo": a.grupo, "anio": a.anio,
-            "canciones": a.canciones, "portada": portada_local(a.ruta_portada)}
+            "canciones": a.canciones, "portada": a.portada}
 
 
 # ---------- Arranque y ajustes ----------
@@ -225,8 +241,11 @@ def _escanear(visible: bool = False):
     try:
         if visible:
             _fondo_actualizar("escaneo", _t("Leyendo tu música"))
-        nuevas, quitadas = _db().escanear(progreso=progreso)
-        emitir("biblioteca", {"nuevas": nuevas, "quitadas": quitadas, "total": _db().total()})
+        nuevas, quitadas, cambiadas = _db().escanear(progreso=progreso)
+        # sin_cambios: las vistas no recargan (cada arranque terminaba redibujando la biblioteca entera por nada)
+        emitir("biblioteca", {"nuevas": nuevas, "quitadas": quitadas, "total": _db().total(),
+                              "sin_cambios": not (nuevas or quitadas or cambiadas)})
+        _completar_portadas()
     except Exception as e:
         emitir("error", {"donde": "escaneo", "mensaje": str(e)})
     finally:
@@ -560,8 +579,7 @@ def info_cancion(d: dict) -> dict:
 
 
 def _tras_editar(ruta: Path) -> dict:
-    _portadas.pop(str(ruta.parent) + "|" + ruta.stem, None)
-    _db().indexar(ruta)
+    _indexar(ruta)
     plataforma.archivo_nuevo(ruta)  # Android: que las otras apps de música vean los datos nuevos
     c = _db().cancion_por_ruta(ruta)
     emitir("biblioteca", {"nuevas": 0, "quitadas": 0, "total": _db().total()})
@@ -639,7 +657,7 @@ def me_gusta(d: dict) -> dict:
 
 
 def album_local(d: dict) -> dict:
-    a = biblioteca.Album(d["nombre"], d.get("artista", ""), "", 0, Path(), d.get("grupo", ""))
+    a = biblioteca.Album(d["nombre"], d.get("artista", ""), "", 0, None, d.get("grupo", ""))
     return {"canciones": [_local(c) for c in _db().canciones_de_album(a)]}
 
 
@@ -680,7 +698,7 @@ def eliminar_canciones(d: dict) -> dict:
     db = _db()
     if d.get("album"):
         al = d["album"]
-        canciones = db.canciones_de_album(biblioteca.Album(al["nombre"], al.get("artista", ""), "", 0, Path(), al.get("grupo", "")))
+        canciones = db.canciones_de_album(biblioteca.Album(al["nombre"], al.get("artista", ""), "", 0, None, al.get("grupo", "")))
     elif d.get("artista"):
         canciones = db.canciones_de_artista(d["artista"])
     else:
@@ -900,7 +918,7 @@ class _Gestor:
                     musicbrainz.completar(ruta, datos["titulo"], datos["artista"], datos["duracion"], datos["album"])
                 except Exception:
                     pass
-            _db().indexar(ruta)
+            _indexar(ruta)
             plataforma.archivo_nuevo(ruta)
             c = _db().cancion_por_ruta(ruta)
             if c:

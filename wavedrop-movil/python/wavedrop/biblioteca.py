@@ -23,7 +23,8 @@ CREATE TABLE IF NOT EXISTS canciones (
     ruta TEXT UNIQUE NOT NULL,
     titulo TEXT, artista TEXT, artista_ppal TEXT, album TEXT, artista_album TEXT,
     anio TEXT, pista INTEGER, genero TEXT, duracion REAL,
-    mbid TEXT, clave TEXT, mtime REAL, agregada REAL
+    mbid TEXT, clave TEXT, mtime REAL, agregada REAL,
+    portada TEXT  -- archivo en la caché; "" si no trae, NULL si falta buscarla en la canción
 );
 CREATE INDEX IF NOT EXISTS idx_clave ON canciones(clave);
 CREATE INDEX IF NOT EXISTS idx_album ON canciones(album, artista_album);
@@ -65,6 +66,7 @@ class Cancion:
     duracion: float | None
     mbid: str
     agregada: float | None = None  # cuándo llegó a la biblioteca (para ordenar por recientes)
+    portada: str | None = None
 
 
 @dataclass
@@ -73,7 +75,7 @@ class Album:
     artista: str
     anio: str
     canciones: int
-    ruta_portada: Path  # una canción del álbum, para sacar la portada
+    portada: str | None  # la de alguna de sus canciones
     grupo: str = ""  # artista del álbum tal como viene en las etiquetas ("" si no trae)
 
 
@@ -169,6 +171,9 @@ class Biblioteca:
             self.con.execute("ALTER TABLE canciones ADD COLUMN artista_ppal TEXT")
             self.con.execute("UPDATE canciones SET mtime = 0")  # forzar relectura en el próximo escaneo
             self.con.commit()
+        if "portada" not in columnas:  # se llena sola después del escaneo (api._completar_portadas)
+            self.con.execute("ALTER TABLE canciones ADD COLUMN portada TEXT")
+            self.con.commit()
         de_eventos = {r[1] for r in self.con.execute("PRAGMA table_info(eventos)")}
         if "duracion" not in de_eventos:  # para las estadísticas: minutos escuchados y portada de las vistas previas
             self.con.execute("ALTER TABLE eventos ADD COLUMN duracion REAL")
@@ -190,7 +195,7 @@ class Biblioteca:
     def _cancion(r: sqlite3.Row) -> Cancion:
         return Cancion(r["id"], Path(r["ruta"]), r["titulo"] or "", r["artista"] or "", r["album"] or "",
                        r["artista_album"] or "", r["anio"] or "", r["pista"], r["genero"] or "", r["duracion"],
-                       r["mbid"] or "", r["agregada"] if "agregada" in r.keys() else None)
+                       r["mbid"] or "", r["agregada"] if "agregada" in r.keys() else None, r["portada"])
 
     # --- Carpetas ---
 
@@ -236,25 +241,27 @@ class Biblioteca:
                ON CONFLICT(ruta) DO UPDATE SET titulo=excluded.titulo, artista=excluded.artista,
                  artista_ppal=excluded.artista_ppal, album=excluded.album, artista_album=excluded.artista_album,
                  anio=excluded.anio, pista=excluded.pista, genero=excluded.genero, duracion=excluded.duracion,
-                 mbid=excluded.mbid, clave=excluded.clave, mtime=excluded.mtime""",
+                 mbid=excluded.mbid, clave=excluded.clave, mtime=excluded.mtime, portada=NULL""",
             (str(ruta), d["titulo"], d["artista"], d["artista_ppal"], d["album"], d["artista_album"], d["anio"],
              d["pista"], d["genero"], d["duracion"], d["mbid"], clave(d["artista"], d["titulo"]),
              ruta.stat().st_mtime, time.time()),
         )
 
     def escanear(self, progreso: Callable[[int], None] | None = None,
-                 cancelado: Callable[[], bool] = lambda: False) -> tuple[int, int]:
-        """Revisa todas las carpetas: agrega lo nuevo o cambiado y quita lo que ya no existe."""
+                 cancelado: Callable[[], bool] = lambda: False) -> tuple[int, int, int]:
+        """Revisa todas las carpetas: agrega lo nuevo o cambiado y quita lo que ya no existe.
+
+        Devuelve cuántas canciones hay (nuevas, quitadas, cambiadas)."""
         conocidas = {r["ruta"]: r["mtime"] for r in self._q("SELECT ruta, mtime FROM canciones")}
         vistas: set[str] = set()
-        nuevas = revisadas = 0
+        nuevas = cambiadas = revisadas = 0
         for carpeta in self.carpetas():
             if not carpeta.is_dir():
                 continue
             for raiz, _dirs, archivos in os.walk(carpeta):
                 for nombre in archivos:
                     if cancelado():
-                        return nuevas, 0
+                        return nuevas, 0, cambiadas
                     if Path(nombre).suffix.lower() not in EXTENSIONES:
                         continue
                     ruta = os.path.join(raiz, nombre)
@@ -266,14 +273,35 @@ class Biblioteca:
                         continue
                     if conocidas.get(ruta) != mtime:
                         self.indexar(Path(ruta))
-                        nuevas += ruta not in conocidas
+                        if ruta in conocidas:
+                            cambiadas += 1
+                        else:
+                            nuevas += 1
                     if progreso and revisadas % 50 == 0:
                         progreso(revisadas)
         quitadas = [r for r in conocidas if r not in vistas and not os.path.exists(r)]
         with self.candado:
             self.con.executemany("DELETE FROM canciones WHERE ruta = ?", [(r,) for r in quitadas])
             self.con.commit()
-        return nuevas, len(quitadas)
+        return nuevas, len(quitadas), cambiadas
+
+    def sin_portada(self) -> list[Path]:
+        """Canciones a las que todavía no se les ha buscado la portada en el archivo."""
+        return [Path(r["ruta"]) for r in self._q("SELECT ruta FROM canciones WHERE portada IS NULL")]
+
+    def guardar_portadas(self, pares: list[tuple[str, str]]) -> None:
+        """pares: (archivo de la portada o "" si no trae, ruta de la canción). Van juntas: un commit por canción es lento."""
+        with self.candado:
+            self.con.executemany("UPDATE canciones SET portada = ? WHERE ruta = ?", pares)
+            self.con.commit()
+
+    def revisar_portadas(self, existentes: set[str]) -> None:
+        """Android puede vaciar la caché: las portadas que ya no están se vuelven a buscar en su canción."""
+        perdidas = [(r["ruta"],) for r in self._q("SELECT ruta, portada FROM canciones WHERE portada != ''")
+                    if r["portada"] not in existentes]
+        with self.candado:
+            self.con.executemany("UPDATE canciones SET portada = NULL WHERE ruta = ?", perdidas)
+            self.con.commit()
 
     @staticmethod
     def _en_carpeta(carpeta: str) -> tuple[str, tuple]:
@@ -329,12 +357,12 @@ class Biblioteca:
         donde, params = self._en_carpeta(carpeta)
         filas = self._q(
             f"""SELECT album, COALESCE(artista_album, '') AS grupo, MIN(artista_ppal) AS ppal, MAX(anio) AS anio,
-                      COUNT(*) AS n, MIN(ruta) AS ruta
+                      COUNT(*) AS n, MIN(NULLIF(portada, '')) AS portada
                FROM canciones WHERE album != '' AND {donde}
                GROUP BY album COLLATE NOCASE, COALESCE(artista_album, '') COLLATE NOCASE
                ORDER BY COALESCE(NULLIF(artista_album, ''), MIN(artista_ppal)) COLLATE NOCASE, anio,
                         album COLLATE NOCASE""", params)
-        return [Album(r["album"], r["grupo"] or r["ppal"] or "", r["anio"] or "", r["n"], Path(r["ruta"]), r["grupo"])
+        return [Album(r["album"], r["grupo"] or r["ppal"] or "", r["anio"] or "", r["n"], r["portada"], r["grupo"])
                 for r in filas]
 
     def canciones_de_album(self, album: "Album") -> list[Cancion]:
