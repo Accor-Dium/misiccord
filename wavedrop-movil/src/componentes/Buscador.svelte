@@ -89,7 +89,7 @@
   <div class="resultados" in:fade={{ duration: 160 }}>
     {#if esLink}
       <div class="link">
-        <p>{t("¿Descargar todas las canciones de este link? Funciona con playlists y álbumes de YouTube, YT Music, Spotify y SoundCloud.")}</p>
+        <p>{t("¿Descargar todas las canciones de este link? Funciona con playlists y álbumes de YouTube, YT Music, Spotify, Tidal y SoundCloud.")}</p>
         <button class="pildora cian" onclick={() => descargarLink(texto).then(limpiar).catch(() => aviso(t("No pude leer ese link"), "error"))}>
           <Icono nombre="descargas" tam={20} /> Descargar playlist
         </button>

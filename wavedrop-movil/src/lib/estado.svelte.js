@@ -197,7 +197,12 @@ export async function descargarLink(url) {
   await pedirAvisosUnaVez();
   const r = await py("descargar", { url });
   for (const t of r.trabajos) descargas.trabajos[t.id] = t;
-  aviso(t("{n} canciones de “{coleccion}” en la cola", { n: r.trabajos.length, coleccion: r.coleccion }));
+  // Tidal solo deja leer las primeras 50 de una playlist: que se sepa que faltan
+  if (r.total > r.trabajos.length) {
+    aviso(t("{n} de {total} canciones de “{coleccion}” en la cola: el link solo deja leer esas", { n: r.trabajos.length, total: r.total, coleccion: r.coleccion }), "info", { duracion: 7000 });
+  } else {
+    aviso(t("{n} canciones de “{coleccion}” en la cola", { n: r.trabajos.length, coleccion: r.coleccion }));
+  }
 }
 
 /** Estado de descarga de una canción de YouTube Music, buscándola por título y artista. */

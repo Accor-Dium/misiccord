@@ -220,7 +220,7 @@
         <Icono nombre="cola" tam={22} />
       </button>
       <button class="redondo relleno" class:encendido={vista === "letra"} onclick={() => alternarPanel("letra")} aria-label={t("Letra")}>
-        <Icono nombre="microfono" tam={22} />
+        <Icono nombre="comillas" tam={22} />
       </button>
       <button class="redondo relleno" onclick={irAJams} aria-label={t("Jams")} title={t("Escuchar en grupo")}>
         <Icono nombre="jam" tam={22} />

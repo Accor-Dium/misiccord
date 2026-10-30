@@ -12,7 +12,7 @@ documentada abajo; si algo no está documentado, pregunta antes de "arreglarlo".
 
 ---
 
-## Estado del proyecto (al 29 de octubre de 2026 · versión publicada: **2.0.2**)
+## Estado del proyecto (al 29 de octubre de 2026 · versión publicada: **2.1.0**)
 
 Resumen para que no tengas que leer todo el código. Actualiza esta sección cuando publiques una versión.
 
@@ -32,7 +32,7 @@ Resumen para que no tengas que leer todo el código. Actualiza esta sección cua
   (WhatsApp, Telegram, Bluetooth…). PC: copiar los archivos al portapapeles (se pegan en WhatsApp/Telegram de escritorio), copiar a una USB conectada
   o a cualquier carpeta (`Misiccord/<álbum o playlist>/`, con `.m3u8` en las playlists). Lo no descargado se comparte como link de YouTube Music.
 - **Idioma**: español e inglés; por defecto el del dispositivo, se cambia en Ajustes → Idioma (la app se recarga).
-- **Descargas**: canciones sueltas o links de playlists/álbumes de YouTube, YouTube Music, **Spotify** (se lee la lista de la página *embed* de Spotify, que trae unas 100 canciones como máximo, y cada una se busca en YouTube Music) y SoundCloud.
+- **Descargas**: canciones sueltas o links de playlists/álbumes de YouTube, YouTube Music, **Spotify** (se lee la lista de la página *embed* de Spotify, que trae unas 100 canciones como máximo, y cada una se busca en YouTube Music), **Tidal** (igual, desde su página *embed*: hasta 50 canciones) y SoundCloud.
   Metadatos de MusicBrainz, carpetas por artista, 1–4 descargas a la vez, carpeta configurable (en Android: carpeta de la app o la pública
   `Music/Misiccord`, que pide "Acceso a todos los archivos").
 - **Jams** (escuchar juntos):
@@ -63,6 +63,7 @@ medianos, el **menor**; detalles pequeños, el **parche**. Hasta 1.0.10 todo sub
 | 1.0.10 | Volumen de 0 a 200 % con curva en decibeles (perceptual); arriba de 100 % refuerzo por Web Audio con limitador y recorte suave. |
 | 2.0.1 | La música sigue al quitar la app de recientes (Android), widget de la pantalla de inicio, Biblioteca en lista o cuadrícula, burbuja del índice A–Z (y salta hacia arriba), barra de avance sin parpadeo, deslizar barra/volumen no cierra el reproductor, ícono de micrófono en la letra. Empieza la numeración mayor.menor.parche. |
 | 2.0.2 | Los géneros de YouTube Music (Inicio y Explorar) ya abren sus playlists y álbumes. |
+| 2.1.0 | Links de Tidal (playlist, álbum o canción; hasta 50 canciones por playlist) y nuevo ícono de la letra (burbuja con comillas). |
 
 ### Qué está probado y dónde
 - **En dispositivos reales** (lo probó quien administra el proyecto): app de Windows, Android en varios teléfonos (Samsung S25 Ultra, Pixel 7 Pro…),
@@ -127,7 +128,7 @@ Todo el trabajo real vive en Python: python/wavedrop/  (el mismo código en las 
 |---|---|
 | `api.py` | Punto de entrada único: `despachar()` + `FUNCIONES`. Ajustes, biblioteca, playlists, descargas (`_Gestor`, pool de hilos), jams, eliminar, actualización del APK. |
 | `plataforma.py` | Rutas por plataforma (`carpeta_datos/musica/cache`), `es_android()`, herramientas (`ffmpeg`, `deno`), `lib_nativa()` (ejecutables del APK), `archivo_nuevo()` (avisa a MediaStore). |
-| `descargas.py` | yt-dlp: leer playlists/links (incluye Spotify por scraping), `Descargador`, `extraer()` con **respaldo de clientes** si YouTube pide "confirm you're not a bot", reintento si `descargados.txt` bloquea una canción borrada. Sin ffmpeg (Android) etiqueta con mutagen. |
+| `descargas.py` | yt-dlp: leer playlists/links (incluye Spotify y Tidal por scraping de su página embed), `Descargador`, `extraer()` con **respaldo de clientes** si YouTube pide "confirm you're not a bot", reintento si `descargados.txt` bloquea una canción borrada. Sin ffmpeg (Android) etiqueta con mutagen. |
 | `explorar.py` | ytmusicapi: búsqueda, álbum, artista, radio, recomendaciones (caché 6 h), `previa()` (descarga completa a caché: **solo respaldo**). |
 | `flujo.py` | **Streaming progresivo** de canciones que no tienes: servidor local `127.0.0.1:<puerto>/flujo/<id>?t=<token>` que pasa el audio de YouTube por pedazos (soporta Range) y lo guarda en caché si se escucha completo. Camino rápido con cliente `android_music` sin JS; precarga en segundo plano. `servir()` lo reutiliza el jam. |
 | `biblioteca.py` | SQLite: canciones, carpetas, playlists, historial (`eventos`). Álbumes por álbum+artista del álbum. `buscar_existente()` para no descargar dos veces. |
@@ -230,6 +231,9 @@ Todo el trabajo real vive en Python: python/wavedrop/  (el mismo código en las 
   Los permisos (notificaciones, sin límites de batería) se piden con el comando `segundo_plano` y se ven en Ajustes → Segundo plano (solo Android).
 - **YouTube Music en el idioma de la app solo para mostrar** (`explorar._yt_idioma`: inicio, estados de ánimo, explorar, playlists). Las búsquedas
   usan el cliente sin idioma (`_yt`): ytmusicapi reconoce cada resultado por su texto en inglés y con `language="es"` los filtros (canciones, álbumes) regresan vacíos.
+- **Tidal (`descargas._leer_tidal`)**: se lee `embed.tidal.com/<tipo>s/<id>` (canciones en `window.tidalMediaSessionMetadata`, orden y duración en
+  sus `<list-item>`); el nombre y el total salen del JSON-LD de `tidal.com/<tipo>/<id>`. La página no dice su charset: se decodifica como UTF-8 a mano.
+  Solo trae 50 canciones: `Coleccion.total` avisa cuántas faltan. **No** uses la API interna del reproductor web de Tidal (pide un token suyo).
 - **Géneros de YouTube Music** (`explorar.playlists_de_estado`): `get_mood_playlists` de ytmusicapi solo sirve para los estados de ánimo; en los géneros
   truena ("Unable to find navigationEndpoint") porque vienen en secciones. Ahí se leen con `parse_mixed_content` (`_estado_por_secciones`).
 - **Compartir en Android** pasa por `FileProvider` (`res/xml/file_paths.xml` incluye `/storage` para tarjetas SD) con `ClipData`: sin ella WhatsApp no recibe

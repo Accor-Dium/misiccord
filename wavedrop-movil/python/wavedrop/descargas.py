@@ -2,9 +2,10 @@
 
 Fuentes:
 - YouTube, YouTube Music, SoundCloud y cualquier otro sitio que soporte yt-dlp: se descargan directo.
-- Spotify: su audio está protegido, así que se lee la lista de canciones (título, artista)
-  y cada una se busca y descarga desde YouTube Music.
+- Spotify y Tidal: su audio está protegido, así que se lee la lista de canciones (título, artista)
+  de su página pública para insertar en otros sitios (embed) y cada una se busca y descarga desde YouTube Music.
 """
+import html
 import json
 import re
 import urllib.parse
@@ -30,6 +31,7 @@ ffmpeg_disponible = plataforma.hay_ffmpeg
 
 FUENTES = {
     "spotify": "Spotify",
+    "tidal": "Tidal",
     "ytmusic": "YT Music",
     "youtube": "YouTube",
     "soundcloud": "SoundCloud",
@@ -41,6 +43,8 @@ def detectar_fuente(url: str) -> str:
     host = urllib.parse.urlparse(url.strip()).netloc.lower()
     if "spotify.com" in host:
         return "spotify"
+    if "tidal.com" in host:
+        return "tidal"
     if "music.youtube.com" in host:
         return "ytmusic"
     if "youtube.com" in host or "youtu.be" in host:
@@ -82,7 +86,7 @@ class Entrada:
     id: str
     titulo: str
     artista: str
-    url: str  # página del video, o búsqueda en YouTube Music para Spotify
+    url: str  # página del video, o búsqueda en YouTube Music para Spotify y Tidal
     fuente: str
     duracion: float | None = None
     miniatura: str | None = None
@@ -91,7 +95,7 @@ class Entrada:
 
     @property
     def por_busqueda(self) -> bool:
-        return self.fuente == "spotify"
+        return self.fuente in ("spotify", "tidal")
 
 
 @dataclass
@@ -100,6 +104,7 @@ class Coleccion:
     fuente: str
     portada: str | None
     entradas: list[Entrada] = field(default_factory=list)
+    total: int | None = None  # canciones que tiene en realidad, si la página solo deja leer algunas
 
 
 class _Logger:
@@ -192,6 +197,8 @@ def obtener_coleccion(url: str) -> Coleccion:
     fuente = detectar_fuente(url)
     if fuente == "spotify":
         return _leer_spotify(url)
+    if fuente == "tidal":
+        return _leer_tidal(url)
     return _leer_ytdlp(url, fuente)
 
 
@@ -271,6 +278,96 @@ def _leer_spotify(url: str) -> Coleccion:
     return col
 
 
+_NAVEGADOR = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) "
+                            "Chrome/130.0 Safari/537.36"}
+
+
+def _leer_tidal(url: str) -> Coleccion:
+    """Tidal: la página de embed (la que usan otros sitios para poner el reproductor) trae cada canción con
+    título, artista, álbum y portada en `window.tidalMediaSessionMetadata`, y el orden y la duración en sus
+    `<list-item>`. Lee hasta 50 canciones (de una playlist más larga solo salen las primeras 50)."""
+    m = re.search(r"tidal\.com/(?:browse/|embed/)?(playlists?|albums?|tracks?)/([A-Za-z0-9-]+)", url)
+    if not m:
+        raise RuntimeError("Link de Tidal no reconocido. Usa un link de playlist, álbum o canción.")
+    tipo, id_ = m.group(1).rstrip("s"), m.group(2)
+    r = requests.get(f"https://embed.tidal.com/{tipo}s/{id_}", headers=_NAVEGADOR, timeout=20)
+    if r.status_code == 404:
+        raise RuntimeError("Tidal no encontró ese link (¿la playlist es privada o se borró?)")
+    r.raise_for_status()
+    pagina = r.content.decode("utf-8", "replace")  # Tidal no dice el charset y requests lo tomaría como latin-1
+    datos = re.search(r"window\.tidalMediaSessionMetadata\s*=\s*(\{.*?\});\s*</script>", pagina, re.S)
+    if not datos:
+        raise RuntimeError("Tidal no devolvió la lista de canciones")
+    canciones = json.loads(datos.group(1))  # {id: {title, artist, album, artwork}}, ordenado por id (no por lista)
+
+    # Orden y duración de la lista; una canción sola no trae <list-item>
+    pistas = re.findall(r'<list-item[^>]*product-id="(\d+)"[^>]*product-type="track"[^>]*>(.*?)</list-item>', pagina, re.S)
+    orden = [(pid, _segundos(re.search(r'<time slot="duration">([\d:]+)</time>', cuerpo))) for pid, cuerpo in pistas]
+    if not orden:
+        dur = re.search(r"<tidal-duration-time>(\d+)</tidal-duration-time>", pagina)
+        orden = [(pid, float(dur.group(1)) if dur else None) for pid in canciones]
+
+    nombre, portada, total = _datos_pagina_tidal(tipo, id_)
+    if tipo == "track":
+        nombre = (canciones.get(id_) or {}).get("title") or nombre
+    col = Coleccion(nombre or "Tidal", "tidal", portada, total=total if total and total > len(orden) else None)
+    for i, (pid, duracion) in enumerate(orden, start=1):
+        c = canciones.get(pid)
+        if not c:
+            continue
+        artista = c.get("artist") or ""
+        busqueda = f"{artista.split(',')[0].strip()} {c.get('title', '')}"
+        portadas = sorted(c.get("artwork") or [], key=lambda a: int((a.get("sizes") or "0x0").split("x")[0]))
+        miniatura = next((a["src"] for a in portadas if a.get("sizes", "").startswith(("320", "480", "640"))), None)
+        col.entradas.append(Entrada(
+            indice=i,
+            id=pid,
+            titulo=c.get("title") or pid,
+            artista=artista,
+            url=f"https://music.youtube.com/search?q={urllib.parse.quote(busqueda)}#songs",
+            fuente="tidal",
+            duracion=duracion,
+            miniatura=miniatura or (portadas[-1]["src"] if portadas else portada),
+            album=c.get("album") or None,
+            clave=f"tidal {pid}",
+        ))
+    if not col.portada and col.entradas:
+        col.portada = col.entradas[0].miniatura
+    return col
+
+
+def _segundos(m) -> float | None:
+    if not m:
+        return None
+    s = 0
+    for parte in m.group(1).split(":"):
+        s = s * 60 + int(parte)
+    return float(s)
+
+
+def _datos_pagina_tidal(tipo: str, id_: str) -> tuple[str | None, str | None, int | None]:
+    """Nombre, portada y número de canciones de la playlist o álbum (de los datos para buscadores de su página)."""
+    try:
+        r = requests.get(f"https://tidal.com/{tipo}/{id_}", headers=_NAVEGADOR, timeout=15)
+        texto = r.content.decode("utf-8", "replace")
+        for bloque in re.findall(r'<script type="application/ld\+json">(.*?)</script>', texto, re.S):
+            try:
+                d = json.loads(bloque)
+            except ValueError:
+                continue
+            if d.get("@type") in ("MusicPlaylist", "MusicAlbum", "MusicRecording"):
+                return html.unescape(d.get("name") or "") or None, d.get("image"), d.get("numTracks")
+        # Algunas playlists no traen esos datos: al menos el título de la pestaña
+        titulo = re.search(r"<title>([^<]*)</title>", texto)
+        if r.ok and titulo:
+            nombre = html.unescape(titulo.group(1)).removesuffix(" - TIDAL").strip()
+            if nombre and nombre != "TIDAL":
+                return nombre, None, None
+    except requests.RequestException:
+        pass
+    return None, None, None
+
+
 # ---------- Descarga ----------
 
 class Cancelado(Exception):
@@ -287,7 +384,7 @@ class Resultado:
 
 
 class _FijarMetadatos(PostProcessor):
-    """Antes de descargar: ajusta título/artista (los de Spotify mandan) y limpia " - Topic"."""
+    """Antes de descargar: ajusta título/artista (los de Spotify y Tidal mandan) y limpia " - Topic"."""
 
     def __init__(self, entrada: Entrada):
         super().__init__()

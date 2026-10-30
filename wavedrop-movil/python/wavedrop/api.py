@@ -937,7 +937,7 @@ def descargar(d: dict) -> dict:
     if d.get("url"):
         col = descargas.obtener_coleccion(d["url"])
         trabajos = [_gestor.agregar(e, col.titulo) for e in col.entradas]
-        return {"coleccion": col.titulo, "trabajos": trabajos}
+        return {"coleccion": col.titulo, "trabajos": trabajos, "total": col.total}
     trabajos = []
     for i, c in enumerate(d.get("canciones", []), start=1):
         r = explorar.ResultadoCancion(c["id"], c["titulo"], c["artista"], c.get("album", ""),

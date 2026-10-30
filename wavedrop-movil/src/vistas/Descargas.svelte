@@ -55,7 +55,7 @@
     <input bind:value={link} placeholder={t("Pega un link de playlist o álbum")} />
     <button class="pildora cian chica" disabled={leyendo || !link.trim()}>{leyendo ? t("Leyendo…") : t("Descargar")}</button>
   </form>
-  <p class="nota">{t("YouTube, YT Music, Spotify o SoundCloud. Las que ya tienes no se vuelven a bajar.")}</p>
+  <p class="nota">{t("YouTube, YT Music, Spotify, Tidal o SoundCloud. Las que ya tienes no se vuelven a bajar.")}</p>
 
   {#each lista as tr (tr.id)}
     <div class="trabajo" transition:slide={{ duration: 250 }}>
