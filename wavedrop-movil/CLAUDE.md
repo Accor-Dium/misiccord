@@ -12,7 +12,7 @@ documentada abajo; si algo no está documentado, pregunta antes de "arreglarlo".
 
 ---
 
-## Estado del proyecto (al 30 de octubre de 2026 · versión publicada: **3.0.0**)
+## Estado del proyecto (al 30 de octubre de 2026 · versión publicada: **3.1.0**)
 
 Resumen para que no tengas que leer todo el código. Actualiza esta sección cuando publiques una versión.
 
@@ -42,6 +42,9 @@ Resumen para que no tengas que leer todo el código. Actualiza esta sección cua
   - **Por internet**: el anfitrión (PC o cel) toca "Abrir" en Invitar; túnel de Cloudflare, sin cuenta ni configurar el módem.
 - **Videos musicales** (apagado por defecto, en Ajustes): ver el clip en el reproductor (sigue al audio, sin sonido propio) y descargarlo junto a la canción.
 - **Biblioteca por carpetas**: agregar o quitar carpetas de música y filtrar canciones, álbumes y artistas por carpeta.
+- **Escritorio**: burbuja flotante al minimizar (opcional, Ajustes → Ventana): círculo con la portada y el avance, siempre encima; al pasar el mouse
+  se abre con la canción y los controles, se arrastra a donde quieras y un clic regresa a la app. En Windows la vista previa del ícono de la barra
+  de tareas trae anterior / reproducir-pausar / siguiente y el título de la ventana dice qué suena.
 - **Actualizaciones automáticas** desde GitHub Releases (Windows instala solo; Android baja el APK y abre el instalador).
 
 ### Historial de versiones
@@ -65,13 +68,14 @@ medianos, el **menor**; detalles pequeños, el **parche**. Hasta 1.0.10 todo sub
 | 2.0.2 | Los géneros de YouTube Music (Inicio y Explorar) ya abren sus playlists y álbumes. |
 | 2.1.0 | Links de Tidal (playlist, álbum o canción; hasta 50 canciones por playlist) y nuevo ícono de la letra (burbuja con comillas). |
 | 3.0.0 | Biblioteca instantánea (lista virtual, portadas en la base), pestaña Géneros y columnas de la cuadrícula, cola real con aleatorio, ecualizador de 3 a 31 bandas y mono, visualizadores, resumen del periodo, completar datos y editar álbum con MusicBrainz, kanji con `pykakasi`, álbum/artista primero lo local (de Omar). |
+| 3.1.0 | Escritorio: burbuja flotante al minimizar (opcional, en Ajustes) y, en Windows, controles en la vista previa de la barra de tareas y la canción en el título de la ventana. |
 
 ### Qué está probado y dónde
 - **En dispositivos reales** (lo probó quien administra el proyecto): app de Windows, Android en varios teléfonos (Samsung S25 Ultra, Pixel 7 Pro…),
   jams en red local, escáner QR, jam por internet abierto desde el cel.
 - **Solo en el emulador o con scripts**: controles de reloj (con `cmd media_session dispatch`), links en Android, eliminar canciones,
   tiempos de streaming, streaming progresivo (en Chromium con la red frenada).
-- **Sin probar todavía**: links y "una sola ventana" en Windows, panel de medios de Windows, un reloj real, un jam con YouTube Music entre teléfonos reales, videos musicales y carpetas de la biblioteca en el cel, lo de 1.0.8 (segundo plano, ecualizador, editar etiquetas) en teléfonos reales, y de 1.0.9: exportar a una USB real y todo en la app de Windows (se probó en navegador con el núcleo de Python y en el emulador: menú, compartir de Android, jalar para actualizar, idioma); de 1.0.10, el volumen arriba de 100 % con música real; de 2.0.1, el widget y quitar de recientes en teléfonos reales (en el emulador sí: sigue sonando, controles, reabrir, atrás, reiniciar para el QR) (la curva y el limitador se midieron en Chromium con señales de prueba).
+- **Sin probar todavía**: links y "una sola ventana" en Windows, panel de medios de Windows, un reloj real, un jam con YouTube Music entre teléfonos reales, videos musicales y carpetas de la biblioteca en el cel, lo de 1.0.8 (segundo plano, ecualizador, editar etiquetas) en teléfonos reales, y de 1.0.9: exportar a una USB real y todo en la app de Windows (se probó en navegador con el núcleo de Python y en el emulador: menú, compartir de Android, jalar para actualizar, idioma); de 1.0.10, el volumen arriba de 100 % con música real; de 2.0.1, el widget y quitar de recientes en teléfonos reales (en el emulador sí: sigue sonando, controles, reabrir, atrás, reiniciar para el QR) (la curva y el limitador se midieron en Chromium con señales de prueba); de 3.1.0, la burbuja con dos monitores o con escalado distinto de 100 % (se probó en un monitor de 3440×1440).
 
 ### Dónde guarda las cosas
 | | Windows | Android |
@@ -154,16 +158,18 @@ Todo el trabajo real vive en Python: python/wavedrop/  (el mismo código en las 
   `lib/enlaces.svelte.js` (links de jam: deep link `misiccord://` y la página `https`) ·
   `lib/eliminar.js` (borrar canciones con confirmación) · `lib/actualizaciones.svelte.js` · `lib/aBody.js` ·
   `lib/idioma.svelte.js` (`t()`, idioma del dispositivo o el elegido) + `lib/textos/en.js` (traducción al inglés) ·
-  `lib/menuCancion.js` (el menú de una canción) · `lib/compartir.js` (compartir/exportar) · `lib/jalar.js` (jalar para actualizar).
+  `lib/menuCancion.js` (el menú de una canción) · `lib/compartir.js` (compartir/exportar) · `lib/jalar.js` (jalar para actualizar) ·
+  `lib/escritorio.svelte.js` (lo que suena para la burbuja y la barra de tareas, y sus órdenes).
 - `vistas/`: `Inicio` (con el buscador en vivo `componentes/Buscador.svelte`), `Explorar`, `Biblioteca` (selección para compartir o borrar), `Album`
   (también playlists de YouTube Music), `Artista`, `Playlist`, `MeGusta`, `Estadisticas`, `Jams`, `Descargas`, `Ajustes`.
 - `componentes/`: `FilaCancion` (menú ⋯, agregar al jam, eliminar), `Hoja` (menú inferior / ventana en escritorio), `MiniReproductor` (también muestra el jam),
   `Reproductor`, `Cola`, `Ecualizador`, `Visualizador`, `Marquesina` (texto que se desliza si no cabe), `Resumen`, `CompletarDatos`, `Letra`, `Tarjeta`, `Portada` (reintenta si una portada falla), `Icono` (íconos SVG por nombre), `Volumen`, `Navegacion`, `ListaVirtual` (solo dibuja las filas cerca de la pantalla),
-  `Avisos` (abajo, con acción y barra de avance: `aviso(texto, tipo, { id, duracion, accion, avance })`), `BotonDescarga`, `Paginas`, `InfoCancion`.
+  `Burbuja` (la ventana flotante: `main.js` la monta sola con `index.html?burbuja`), `Avisos` (abajo, con acción y barra de avance: `aviso(texto, tipo, { id, duracion, accion, avance })`), `BotonDescarga`, `Paginas`, `InfoCancion`.
 - `app.css`: tokens de color, `--margen`, carruseles (`scroll-padding` evita que se "corran"), tamaño de artistas `--artista`.
 
 ### `src-tauri/` — Rust y Android
-- `src-tauri/src/lib.rs`: comandos `py`, `permiso_archivos`, `instalar_apk`, `medios`; plugins; arranque/cierre del servicio en Windows; puente de eventos en Android.
+- `src-tauri/src/lib.rs`: comandos `py`, `permiso_archivos`, `instalar_apk`, `medios`, `burbuja`, `barra_tareas`; plugins; arranque/cierre del servicio en Windows;
+  puente de eventos en Android; módulo `burbuja` (la ventana flotante). `src-tauri/src/barra.rs`: botones de la vista previa de la barra de tareas (solo Windows).
 - `tauri.conf.json`: versión (la pone `publicar.ps1`), updater, deep-link `misiccord`, NSIS por usuario. `capabilities/{default,desktop,mobile}.json` (sin BOM).
 - `gen/android/` **está editado a mano y versionado** (no es desechable):
   - `app/src/main/java/com/wavedrop/movil/PythonPlugin.kt` (llamar Python, eventos, permisos, instalar APK, medios) y `ServicioMedios.kt` (servicio en primer plano + MediaSession).
@@ -188,7 +194,7 @@ Todo el trabajo real vive en Python: python/wavedrop/  (el mismo código en las 
 ## No cambiar (aunque parezca mejora)
 
 - **Identificadores**: `identifier` = `com.wavedrop.movil` (cambiarlo = otra app; se pierden datos y actualizaciones), carpeta de datos `%LOCALAPPDATA%\WaveDrop`,
-  claves de `localStorage` (`wavedrop_nombre`, `wavedrop_volumen`, `misiccord_ultima_revision`, `misiccord_idioma`, `misiccord_orden`, `misiccord_volumen_escala`, `misiccord_vista_biblioteca`), esquema `misiccord://`, URL de la página
+  claves de `localStorage` (`wavedrop_nombre`, `wavedrop_volumen`, `misiccord_ultima_revision`, `misiccord_idioma`, `misiccord_orden`, `misiccord_volumen_escala`, `misiccord_vista_biblioteca`, `misiccord_burbuja_posicion`), esquema `misiccord://`, URL de la página
   `https://accor-dium.github.io/misiccord/jam/` (está en `lib/enlaces.svelte.js` y en `api.jam_qr`: cambia las dos o ninguna), repo `Accor-Dium/misiccord`.
 - **Llaves de firma**: si cambia la del APK, Android no deja actualizar encima; si cambia la del updater, las PCs instaladas no aceptan versiones nuevas.
 - **Python 3.14 + Chaquopy 17.2** y **solo ABIs arm64/x86_64** (Chaquopy no compila 3.14 para armeabi-v7a).
@@ -272,6 +278,17 @@ Todo el trabajo real vive en Python: python/wavedrop/  (el mismo código en las 
   esa misma WebView se muda a la Activity nueva (Tauri no crea otra porque no conoce ese id). Consecuencias: los plugins siguen ligados a la
   Activity original, por eso `PythonPlugin` abre pantallas con `pantalla` (la visible) y el lector QR pide reiniciar (`sesion` → `reiniciar`)
   si `reanudada`. Si la Activity "mudada" se cierra sin música, se mata el proceso (Tauri no sabría que se cerró).
+- **Burbuja flotante (escritorio)**: es otra ventana de Tauri (`burbuja`, la misma página con `?burbuja`) que solo existe con el ajuste prendido y que
+  Rust muestra/esconde al minimizar o regresar a la principal (`burbuja::evento`, con `Resized` y `Focused`). No reproduce: la principal le manda
+  `burbuja-estado` y ella manda `burbuja-control` (`lib/escritorio.svelte.js`). Para que abrir sea inmediato y suave, la ventana crece de un jalón con
+  `SetWindowPos` (moverla y cambiar el tamaño en dos pasos hace brincar el círculo) y la píldora se estira con CSS; al cerrar, primero la píldora y luego
+  la ventana. Antes de cerrarse pregunta a Rust si el cursor sigue encima (`dentro`): WebView2 manda `mouseleave` falsos. Al esconderse se cierra en
+  círculo (`burbuja-oculta`): abierta, su parte transparente taparía clics. Su posición vive en `localStorage` (`misiccord_burbuja_posicion`) y no se
+  guarda la de cuando nace (Windows avisa ese movimiento antes de colocarla). La ventana principal, al cerrarse, destruye la burbuja: si no, la app no terminaría.
+- **Barra de tareas de Windows (`barra.rs`)**: `ITaskbarList3::ThumbBarAddButtons` y la ventana principal subclasificada para recibir `WM_COMMAND`/`THBN_CLICKED`
+  (llegan como evento `barra-control`). Se vuelven a poner con `TaskbarButtonCreated` (Explorer reiniciado). Los íconos se dibujan en Rust y su color sigue al
+  tema de la barra (`SystemUsesLightTheme`): con tema claro la vista previa es clara y un ícono blanco no se ve. Los clics simulados (`mouse_event`) no le
+  atinan a esos botones: pruébalos con el mouse de verdad.
 - **El servicio de Python fuerza UTF-8** en stdin/stdout (`servicio.py`): Windows usaba cp1252 y rompía acentos.
 
 ## Convenciones

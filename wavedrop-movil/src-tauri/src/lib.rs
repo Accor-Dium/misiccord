@@ -1,3 +1,6 @@
+#[cfg(windows)]
+mod barra;
+
 use tauri::plugin::{Builder, TauriPlugin};
 use tauri::{Manager, Runtime};
 
@@ -334,6 +337,147 @@ async fn sesion(app: tauri::AppHandle, datos: serde_json::Value) -> Result<serde
     }
 }
 
+/// Escritorio: burbuja flotante para controlar la música con la ventana minimizada (`src/componentes/Burbuja.svelte`).
+///
+/// Es otra ventana (pequeña, redonda, transparente y siempre encima) que solo muestra y manda órdenes: la música sigue
+/// sonando en la ventana principal, que le pasa lo que suena por eventos. Se crea solo si el ajuste está prendido.
+#[cfg(desktop)]
+mod burbuja {
+    use std::sync::atomic::{AtomicBool, Ordering};
+    use tauri::{AppHandle, Emitter, Manager, WebviewUrl, WebviewWindowBuilder, Window, WindowEvent};
+
+    pub const TAM: f64 = 64.0;
+    static ACTIVA: AtomicBool = AtomicBool::new(false);
+
+    pub fn activar(app: &AppHandle, activa: bool) {
+        ACTIVA.store(activa, Ordering::Relaxed);
+        let existe = app.get_webview_window("burbuja");
+        match (activa, existe) {
+            (true, None) => {
+                // En otro hilo: crear una WebView dentro de un comando o un evento puede trabar Windows
+                let app = app.clone();
+                std::thread::spawn(move || {
+                    let _ = WebviewWindowBuilder::new(&app, "burbuja", WebviewUrl::App("index.html?burbuja".into()))
+                        .title("Misiccord")
+                        .inner_size(TAM, TAM)
+                        .resizable(false)
+                        .decorations(false)
+                        .transparent(true)
+                        .shadow(false)
+                        .always_on_top(true)
+                        .skip_taskbar(true)
+                        .focused(false)
+                        .visible(false)
+                        .build();
+                });
+            }
+            (false, Some(b)) => {
+                let _ = b.destroy();
+            }
+            _ => {}
+        }
+    }
+
+    /// La burbuja aparece al minimizar la ventana principal y se va al regresar a ella
+    pub fn evento(ventana: &Window, evento: &WindowEvent) {
+        if ventana.label() != "main" {
+            return;
+        }
+        let Some(b) = ventana.app_handle().get_webview_window("burbuja") else { return };
+        match evento {
+            WindowEvent::Resized(_) | WindowEvent::Focused(_) => {
+                if ventana.is_minimized().unwrap_or(false) {
+                    if ACTIVA.load(Ordering::Relaxed) && !b.is_visible().unwrap_or(true) {
+                        let _ = b.show();
+                    }
+                } else if b.is_visible().unwrap_or(false) {
+                    ocultar(&b);
+                }
+            }
+            // Sin esto la app no se cerraría: la burbuja escondida seguiría siendo una ventana abierta
+            WindowEvent::Destroyed => {
+                let _ = b.destroy();
+            }
+            _ => {}
+        }
+    }
+
+    /// Mueve y cambia el tamaño en un solo paso (px lógicos): en dos pasos el círculo brinca un cuadro al crecer hacia la izquierda.
+    pub fn marco(app: &AppHandle, x: f64, y: f64, ancho: f64) {
+        let Some(b) = app.get_webview_window("burbuja") else { return };
+        let f = b.scale_factor().unwrap_or(1.0);
+        let (px, py, pw, ph) = ((x * f).round() as i32, (y * f).round() as i32, (ancho * f).round() as i32, (TAM * f).round() as i32);
+        #[cfg(windows)]
+        if let Ok(h) = b.hwnd() {
+            use windows::Win32::UI::WindowsAndMessaging::{SetWindowPos, SWP_NOACTIVATE, SWP_NOZORDER};
+            unsafe {
+                let _ = SetWindowPos(windows::Win32::Foundation::HWND(h.0), None, px, py, pw, ph, SWP_NOZORDER | SWP_NOACTIVATE);
+            }
+            return;
+        }
+        let _ = b.set_size(tauri::PhysicalSize::new(pw, ph));
+        let _ = b.set_position(tauri::PhysicalPosition::new(px, py));
+    }
+
+    /// Escondida se vuelve a cerrar en círculo: abierta, su parte transparente taparía clics al volver a salir
+    fn ocultar(b: &tauri::WebviewWindow) {
+        let _ = b.hide();
+        let _ = b.emit_to("burbuja", "burbuja-oculta", ());
+    }
+
+    /// ¿El cursor sigue sobre la burbuja? WebView2 a veces avisa que el mouse salió sin que se haya movido
+    pub fn dentro(app: &AppHandle) -> bool {
+        let Some(b) = app.get_webview_window("burbuja") else { return false };
+        let (Ok(c), Ok(p), Ok(t)) = (app.cursor_position(), b.outer_position(), b.outer_size()) else { return false };
+        c.x >= p.x as f64 && c.x < (p.x + t.width as i32) as f64 && c.y >= p.y as f64 && c.y < (p.y + t.height as i32) as f64
+    }
+
+    pub fn abrir(app: &AppHandle) {
+        if let Some(b) = app.get_webview_window("burbuja") {
+            ocultar(&b);
+        }
+        if let Some(v) = app.get_webview_window("main") {
+            let _ = v.unminimize();
+            let _ = v.show();
+            let _ = v.set_focus();
+        }
+    }
+}
+
+/// Burbuja flotante (solo escritorio): { accion: "activar", activa } desde Ajustes o al arrancar; desde la burbuja,
+/// { accion: "abrir" } (volver a la app), { accion: "marco", x, y, ancho } (crecer o encogerse sin brincar) y
+/// { accion: "dentro" } (true si el cursor está sobre ella).
+#[tauri::command]
+fn burbuja(app: tauri::AppHandle, accion: String, activa: Option<bool>, x: Option<f64>, y: Option<f64>, ancho: Option<f64>) -> bool {
+    #[cfg(desktop)]
+    match accion.as_str() {
+        "activar" => burbuja::activar(&app, activa.unwrap_or(false)),
+        "abrir" => burbuja::abrir(&app),
+        "marco" => burbuja::marco(&app, x.unwrap_or(0.0), y.unwrap_or(0.0), ancho.unwrap_or(burbuja::TAM)),
+        "dentro" => return burbuja::dentro(&app),
+        _ => {}
+    }
+    #[cfg(mobile)]
+    let _ = (app, accion, activa, x, y, ancho);
+    false
+}
+
+/// Windows: lo que suena, para la vista previa de la barra de tareas (título de la ventana y botón de reproducir/pausar).
+/// `textos`: anterior, reproducir, pausar y siguiente en el idioma de la app.
+#[tauri::command]
+fn barra_tareas(app: tauri::AppHandle, titulo: String, artista: String, hay: bool, sonando: bool, textos: Vec<String>) {
+    #[cfg(windows)]
+    {
+        let mut t: [String; 4] = Default::default();
+        for (i, x) in textos.into_iter().take(4).enumerate() {
+            t[i] = x;
+        }
+        barra::actualizar(&app, titulo, artista, hay, sonando, t);
+    }
+    #[cfg(not(windows))]
+    let _ = (app, titulo, artista, hay, sonando, textos);
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     let constructor = tauri::Builder::default().plugin(tauri_plugin_process::init());
@@ -347,7 +491,8 @@ pub fn run() {
                 let _ = ventana.set_focus();
             }
         }))
-        .plugin(tauri_plugin_updater::Builder::new().build());
+        .plugin(tauri_plugin_updater::Builder::new().build())
+        .on_window_event(burbuja::evento);
     // El escáner de QR (cámara) solo existe en el cel
     #[cfg(mobile)]
     let constructor = constructor.plugin(tauri_plugin_barcode_scanner::init());
@@ -364,10 +509,12 @@ pub fn run() {
                 // Windows: que los links misiccord:// abran esta app (el instalador también lo registra)
                 use tauri_plugin_deep_link::DeepLinkExt;
                 let _ = _app.deep_link().register_all();
+                #[cfg(windows)]
+                barra::iniciar(_app.handle());
             }
             Ok(())
         })
-        .invoke_handler(tauri::generate_handler![py, permiso_archivos, instalar_apk, medios, segundo_plano, compartir, sesion])
+        .invoke_handler(tauri::generate_handler![py, permiso_archivos, instalar_apk, medios, segundo_plano, compartir, sesion, burbuja, barra_tareas])
         .build(tauri::generate_context!())
         .expect("error while running tauri application");
 

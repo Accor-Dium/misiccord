@@ -5,6 +5,7 @@
   import { act, buscarActualizacion, instalarActualizacion, REPO } from "../lib/actualizaciones.svelte.js";
   import { getVersion } from "@tauri-apps/api/app";
   import { aplicarAjustesVideo, rep } from "../lib/reproductor.svelte.js";
+  import { aplicarAjusteBurbuja } from "../lib/escritorio.svelte.js";
   import Icono from "../componentes/Icono.svelte";
   import { idioma, idiomaElegido, IDIOMAS as IDIOMAS_APP, ponerIdioma, t } from "../lib/idioma.svelte.js";
 
@@ -44,6 +45,7 @@
     if ("fundido" in cambios) rep.fundido = cambios.fundido;
     if ("video_ver" in cambios || "video_descargar" in cambios) aplicarAjustesVideo(aj);
     if ("letra_traducir_a" in cambios || "letra_romanizar" in cambios) aplicarAjustesLetra(aj);
+    if ("burbuja" in cambios) aplicarAjusteBurbuja(cambios.burbuja);
     try {
       info = await py("guardar_ajustes", cambios);
       aj = info.ajustes;
@@ -135,6 +137,19 @@
         <input type="checkbox" class="interruptor" checked={aj.letra_romanizar} onchange={(e) => guardar({ letra_romanizar: e.target.checked })} />
       </label>
     </section>
+
+    {#if !info.android}
+      <section>
+        <h2>{t("Ventana")}</h2>
+        <label class="opcion">
+          <div class="texto">
+            <b><Icono nombre="burbuja" tam={18} /> {t("Burbuja flotante al minimizar")}</b>
+            <small>{t("Al minimizar Misiccord queda una burbuja siempre encima con la canción: pasa el mouse para pausar o cambiar de canción, arrástrala a donde quieras y haz clic en ella para volver a la app")}</small>
+          </div>
+          <input type="checkbox" class="interruptor" checked={aj.burbuja} onchange={(e) => guardar({ burbuja: e.target.checked })} />
+        </label>
+      </section>
+    {/if}
 
     <section>
       <h2>{t("Video")}</h2>

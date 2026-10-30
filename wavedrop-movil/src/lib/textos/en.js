@@ -479,6 +479,12 @@ export const en = {
   "“{titulo}” a la cola": "“{titulo}” added to the queue",
   "Ver como lista": "View as list",
   "Ver como cuadrícula": "View as grid",
+  "Ventana": "Window",
+  "Burbuja flotante al minimizar": "Floating bubble when minimized",
+  "Al minimizar Misiccord queda una burbuja siempre encima con la canción: pasa el mouse para pausar o cambiar de canción, arrástrala a donde quieras y haz clic en ella para volver a la app":
+    "When you minimize Misiccord, a bubble with the song stays on top: hover it to pause or change songs, drag it anywhere and click it to return to the app",
+  "Abrir Misiccord": "Open Misiccord",
+  "No hay nada sonando": "Nothing playing",
   "{n} de {total} canciones de “{coleccion}” en la cola: el link solo deja leer esas": "{n} of {total} songs from “{coleccion}” queued: the link only lets us read those",
   "Hay que reiniciar Misiccord": "Misiccord needs to restart",
   "Para usar la cámara (la música se detiene)": "To use the camera (the music stops)",

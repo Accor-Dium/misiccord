@@ -11,6 +11,7 @@
   import "./lib/medios.svelte.js"; // notificación, pantalla bloqueada, relojes y teclas multimedia
   import "./lib/carrusel.js"; // carruseles con mouse: arrastrar y flechas
   import { aplicarAjustesVideo, aplicarEcualizador, rep } from "./lib/reproductor.svelte.js";
+  import { aplicarAjusteBurbuja } from "./lib/escritorio.svelte.js";
   import Avisos from "./componentes/Avisos.svelte";
   import Hoja from "./componentes/Hoja.svelte";
   import CompletarDatos from "./componentes/CompletarDatos.svelte";
@@ -50,6 +51,7 @@
       aplicarAjustesVideo(r.ajustes);
       aplicarAjustesLetra(r.ajustes);
       aplicarEcualizador(r.ajustes.eq_activo, r.ajustes.eq_bandas, r.ajustes.eq_mono);
+      aplicarAjusteBurbuja(r.ajustes.burbuja);
       listo = true;
       revisarAlIniciar();
       revisarResumen();
