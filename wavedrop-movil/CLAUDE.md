@@ -12,7 +12,7 @@ documentada abajo; si algo no está documentado, pregunta antes de "arreglarlo".
 
 ---
 
-## Estado del proyecto (al 30 de octubre de 2026 · versión publicada: **3.2.0**)
+## Estado del proyecto (al 30 de octubre de 2026 · versión publicada: **3.3.0**)
 
 Resumen para que no tengas que leer todo el código. Actualiza esta sección cuando publiques una versión.
 
@@ -71,13 +71,14 @@ medianos, el **menor**; detalles pequeños, el **parche**. Hasta 1.0.10 todo sub
 | 3.0.0 | Biblioteca instantánea (lista virtual, portadas en la base), pestaña Géneros y columnas de la cuadrícula, cola real con aleatorio, ecualizador de 3 a 31 bandas y mono, visualizadores, resumen del periodo, completar datos y editar álbum con MusicBrainz, kanji con `pykakasi`, álbum/artista primero lo local (de Omar). |
 | 3.1.0 | Escritorio: burbuja flotante al minimizar (opcional, en Ajustes) y, en Windows, controles en la vista previa de la barra de tareas y la canción en el título de la ventana. |
 | 3.2.0 | Cel en horizontal: riel de pestañas a la izquierda, reproductor en dos columnas, marcación rápida 6×2, cuadrículas más anchas (con sus propias columnas). |
+| 3.3.0 | (Omar) Carátulas como estuche de CD o vinilo (Ajustes → Apariencia), con el disco girando en el reproductor y lomos en la lista de álbumes; volumen en la burbuja flotante. |
 
 ### Qué está probado y dónde
 - **En dispositivos reales** (lo probó quien administra el proyecto): app de Windows, Android en varios teléfonos (Samsung S25 Ultra, Pixel 7 Pro…),
   jams en red local, escáner QR, jam por internet abierto desde el cel.
 - **Solo en el emulador o con scripts**: controles de reloj (con `cmd media_session dispatch`), links en Android, eliminar canciones,
   tiempos de streaming, streaming progresivo (en Chromium con la red frenada).
-- **Sin probar todavía**: links y "una sola ventana" en Windows, panel de medios de Windows, un reloj real, un jam con YouTube Music entre teléfonos reales, videos musicales y carpetas de la biblioteca en el cel, lo de 1.0.8 (segundo plano, ecualizador, editar etiquetas) en teléfonos reales, y de 1.0.9: exportar a una USB real y todo en la app de Windows (se probó en navegador con el núcleo de Python y en el emulador: menú, compartir de Android, jalar para actualizar, idioma); de 1.0.10, el volumen arriba de 100 % con música real; de 2.0.1, el widget y quitar de recientes en teléfonos reales (en el emulador sí: sigue sonando, controles, reabrir, atrás, reiniciar para el QR) (la curva y el limitador se midieron en Chromium con señales de prueba); de 3.1.0, la burbuja con dos monitores o con escalado distinto de 100 % (se probó en un monitor de 3440×1440); de 3.2.0, el horizontal en teléfonos reales con muesca o bordes curvos (se probó en el navegador y en el emulador).
+- **Sin probar todavía**: links y "una sola ventana" en Windows, panel de medios de Windows, un reloj real, un jam con YouTube Music entre teléfonos reales, videos musicales y carpetas de la biblioteca en el cel, lo de 1.0.8 (segundo plano, ecualizador, editar etiquetas) en teléfonos reales, y de 1.0.9: exportar a una USB real y todo en la app de Windows (se probó en navegador con el núcleo de Python y en el emulador: menú, compartir de Android, jalar para actualizar, idioma); de 1.0.10, el volumen arriba de 100 % con música real; de 2.0.1, el widget y quitar de recientes en teléfonos reales (en el emulador sí: sigue sonando, controles, reabrir, atrás, reiniciar para el QR) (la curva y el limitador se midieron en Chromium con señales de prueba); de 3.1.0, la burbuja con dos monitores o con escalado distinto de 100 % (se probó en un monitor de 3440×1440); de 3.2.0, el horizontal en teléfonos reales con muesca o bordes curvos (se probó en el navegador y en el emulador); de 3.3.0, la carátula de vinilo y CD en el cel y el volumen de la burbuja con música real (se vio en el navegador).
 
 ### Dónde guarda las cosas
 | | Windows | Android |
