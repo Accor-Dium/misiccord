@@ -1,7 +1,6 @@
 <script module>
   // Lo último que respondió Python, por carpeta: volver a la pestaña no espera nada. Va aquí y no en `e` porque
-  // irPestana crea una entrada nueva, y porque `nav` es estado profundo: miles de canciones en Proxies tardan
-  // segundos en ordenarse en el cel.
+  // `nav` es estado profundo: miles de canciones en Proxies tardan segundos en ordenarse en el cel.
   const memoria = new Map(); // carpeta → { datos, carpetas, version }
 </script>
 

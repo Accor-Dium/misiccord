@@ -1,6 +1,6 @@
 <script>
   import { t } from "../lib/idioma.svelte.js";
-  import { activas, irPestana, nav } from "../lib/estado.svelte.js";
+  import { abrir, activas, irPestana, nav } from "../lib/estado.svelte.js";
   import { jam } from "../lib/jam.svelte.js";
   import Icono from "./Icono.svelte";
 
@@ -12,6 +12,8 @@
     { id: "descargas", icono: "descargas", texto: t("Descargas") },
   ];
   const pendientes = $derived(activas());
+  // Ajustes no es una pestaña: va encima de lo que estés viendo y al regresar sigues ahí, en cualquier pantalla
+  const enAjustes = $derived(nav.pila.at(-1).vista === "ajustes");
 </script>
 
 <nav class="barra">
@@ -20,13 +22,17 @@
     <b>Misiccord</b>
   </div>
   {#each pestanas as p}
-    <button class="boton" class:activo={nav.pestana === p.id} onclick={() => irPestana(p.id)} aria-label={p.texto}>
+    <button class="boton" class:activo={nav.pestana === p.id && !enAjustes} onclick={() => irPestana(p.id)} aria-label={p.texto}>
       <span class="pastilla"><Icono nombre={p.icono} tam={23} /></span>
       <span class="texto">{p.texto}</span>
       {#if p.id === "descargas" && pendientes}<span class="globo">{pendientes}</span>{/if}
       {#if p.id === "jams" && jam.sala}<span class="globo vivo">●</span>{/if}
     </button>
   {/each}
+  <button class="boton ajustes" class:activo={enAjustes} onclick={() => enAjustes || abrir("ajustes")} aria-label={t("Ajustes")}>
+    <span class="pastilla"><Icono nombre="ajustes" tam={23} /></span>
+    <span class="texto">{t("Ajustes")}</span>
+  </button>
 </nav>
 
 <style>
@@ -77,6 +83,7 @@
     .ondas i:nth-child(1) { height: 10px; } .ondas i:nth-child(2) { height: 24px; }
     .ondas i:nth-child(3) { height: 16px; } .ondas i:nth-child(4) { height: 8px; }
     .boton { flex: none; height: 48px; display: flex; align-items: center; gap: 6px; padding: 0 6px; border-radius: 12px; }
+    .ajustes { margin-top: auto; }
     .boton:hover { background: var(--tarjeta); color: var(--texto); }
     .activo { background: var(--tarjeta-2); }
     .activo .pastilla { background: none; }

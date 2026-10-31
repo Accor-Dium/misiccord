@@ -718,7 +718,10 @@ def me_gusta(d: dict) -> dict:
 
 def album_local(d: dict) -> dict:
     a = biblioteca.Album(d["nombre"], d.get("artista", ""), "", 0, None, d.get("grupo", ""))
-    return {"canciones": [_local(c) for c in _db().canciones_de_album(a)]}
+    canciones = _db().canciones_de_album(a)
+    # La biblioteca agrupa por artista principal: "Varios artistas" o una colaboración no existen como artista
+    nombres = [biblioteca.artista_principal(c.artista) for c in canciones]
+    return {"canciones": [_local(c) for c in canciones], "artista_principal": max(nombres, key=nombres.count, default="")}
 
 
 def artista_local(d: dict) -> dict:

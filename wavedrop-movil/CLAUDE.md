@@ -226,8 +226,7 @@ Todo el trabajo real vive en Python: python/wavedrop/  (el mismo código en las 
 - **Abrir Biblioteca debe ser instantáneo** (con 1,671 canciones llegó a tardar ~9 s en un cel simulado). Cuatro cosas lo sostienen:
   - **Listar no toca los archivos**: la portada está en la columna `canciones.portada` (ruta en la caché, `""` si no trae, `NULL` si falta buscarla). `api._completar_portadas`
     llena las que falten después de cada escaneo y `revisar_portadas` recupera las que Android borre de la caché. No regreses `portada_local()` a `_local()`: abre el archivo de cada canción (FUSE en Android).
-  - **Los datos van fuera de `nav`**: `Biblioteca.svelte` los guarda en `memoria` (`<script module>`, `$state.raw`). En `e.datos` cada canción se vuelve un Proxy (`nav` es estado profundo)
-    y además se pierden, porque `irPestana` crea una entrada nueva.
+  - **Los datos van fuera de `nav`**: `Biblioteca.svelte` los guarda en `memoria` (`<script module>`, `$state.raw`). En `e.datos` cada canción se vuelve un Proxy (`nav` es estado profundo).
   - **`ListaVirtual`**: las filas de un mismo `tipo` deben medir igual. Mide una sola vez por ancho: los textos en otros alfabetos usan otra fuente y cambian el alto 1 o 2 px,
     y medir con cada fila que entra crea un ciclo infinito entre listas (`effect_update_depth_exceeded`). Encabezados y `.ancla` siguen en el DOM: por eso funcionan `sticky` y el índice A–Z.
   - **El aviso `"biblioteca"` trae `sin_cambios`** si el escaneo no encontró nada: si no, cada arranque volvía a pedir y dibujar todo.
@@ -282,6 +281,10 @@ Todo el trabajo real vive en Python: python/wavedrop/  (el mismo código en las 
   `refuerzo` del grafo de Web Audio (el mismo del ecualizador, que se arma al subir de 100 %), seguido de un limitador (−1.5 dB) y un recorte suave tanh,
   sin sobremuestreo (con "2x"/"4x" el filtro rebota y pasa de 0 dB); los dos solo actúan con refuerzo. `wavedrop_volumen` antes guardaba la amplitud:
   `misiccord_volumen_escala = "2"` marca que ya se convirtió. El audio de los jams usa la misma curva, pero sin refuerzo (tope 100 %).
+- **Regresar a donde estabas**: cada entrada de la pila guarda lo suyo (`scroll`, y `pestana`, `filtro` y `q` en Biblioteca) y `irPestana` conserva la raíz de cada pestaña (`raices`).
+  El scroll se guarda **antes** de cambiar de vista (`recordarScroll`): en un `$effect` el contenido ya es otro y el navegador lo recortó, y por eso siempre regresaba arriba. Al volver se insiste hasta 2 s (`App.svelte`) porque lo que llega de Python tarda; tocar la pantalla lo cancela.
+- **Ajustes va en `Navegacion`**, no en una vista: así se ve en todas las pantallas y los tres modos. No es pestaña: se abre encima de lo que estés viendo.
+- **Artista de un álbum local** (`album_local` → `artista_principal`): el del más común de sus canciones. `artista_local` busca por artista principal exacto y "Varios artistas" o una colaboración no existen como artista.
 - **Índice A–Z de Biblioteca**: salta a un `<span class="ancla">` antes de cada encabezado, no al encabezado: los encabezados son `sticky` y uno que ya
   se quedó pegado arriba no deja regresar a él con `scrollIntoView`.
 - **Reproductor grande**: deslizar para cerrar no empieza sobre la barra de avance ni el volumen (`tocarInicio`), e `irA()` pone `rep.pos` al instante

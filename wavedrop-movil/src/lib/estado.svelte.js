@@ -59,18 +59,29 @@ function transicion(cambio, direccion) {
   document.startViewTransition(() => flushSync(cambio));
 }
 
+// La raíz de cada pestaña: al volver a ella sigue como la dejaste (lista, filtro, búsqueda y scroll)
+const raices = { inicio: nav.pila[0] };
+
+/** Antes de salir de una vista: después del cambio ya sería tarde, el contenido es otro y el scroll quedaría recortado. */
+function recordarScroll() {
+  nav.pila.at(-1).scroll = document.querySelector("main")?.scrollTop ?? 0;
+}
+
 export function irPestana(pestana) {
   if (nav.pestana === pestana && nav.pila.length === 1) {
     document.querySelector("main")?.scrollTo({ top: 0, behavior: "smooth" });
     return;
   }
+  recordarScroll();
   transicion(() => {
     nav.pestana = pestana;
-    nav.pila = [{ vista: pestana }];
+    nav.pila = [raices[pestana] ?? { vista: pestana }];
+    raices[pestana] = nav.pila[0];
   }, "lado");
 }
 
 export function abrir(vista, parametros = {}) {
+  recordarScroll();
   transicion(() => nav.pila.push({ vista, ...parametros }), "adelante");
   history.pushState({ wavedrop: true }, "");
 }

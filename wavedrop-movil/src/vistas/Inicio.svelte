@@ -35,7 +35,7 @@
   }
 
   onMount(() => {
-    if (!e.datos) cargar();
+    cargar(); // aunque ya haya datos: lo que escuchaste mientras estabas en otra pestaña
     if (!e.linea) cargarLinea();
     const quitar = alEvento("recomendaciones", ({ secciones }) => {
       e.datos = { ...(e.datos ?? {}), secciones };
@@ -124,7 +124,6 @@
   <div style:transform={jalon.distancia ? `translateY(${jalon.distancia * 0.35}px)` : null} class="contenido" class:suelto={!jalon.distancia}>
   <header>
     <h1 class="titulo-vista">{t("Inicio")}</h1>
-    <button class="redondo" onclick={() => abrir("ajustes")} aria-label={t("Ajustes")}><Icono nombre="ajustes" tam={24} /></button>
   </header>
 
   <Buscador {e} bind:activo={buscandoAlgo} />

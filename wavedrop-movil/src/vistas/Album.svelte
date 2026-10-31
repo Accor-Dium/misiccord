@@ -16,6 +16,7 @@
   // o álbum de tu biblioteca (e.local).
   let { e } = $props();
   const a = $derived(e.datos);
+  const alArtista = $derived(a?.artista_id ? { id: a.artista_id, nombre: a.artista } : a?.artista_principal ? { nombre: a.artista_principal } : null);
   let completo = $state(e.completo ?? null); // lo que te falta del álbum, según YouTube Music
   let editando = $state(false);
   let pedidoCarga = 0;
@@ -32,7 +33,7 @@
         const r = await py("album_local", { nombre: e.local.nombre, artista: e.local.artista, grupo: e.local.grupo });
         if (yo !== pedidoCarga) return; // ya se pidió otro (p. ej. se le cambió el nombre al álbum)
         e.datos = { titulo: e.local.nombre, artista: e.local.artista, anio: e.local.anio, tipo: "Álbum",
-                    portada: e.local.portada, canciones: r.canciones, local: true };
+                    portada: e.local.portada, canciones: r.canciones, local: true, artista_principal: r.artista_principal };
         buscarFaltantes();
       } else if (e.playlist) {
         e.datos = (await py("playlist_yt", { id: e.playlist })).album;
@@ -105,8 +106,8 @@
       <div class="ambiente" style:background-image={a.portada ? `url("${src(a.portada)}")` : "none"}></div>
       <div class="tapa"><Portada url={a.portada} radio="12px" sombra objeto /></div>
       <h1>{a.titulo}</h1>
-      {#if a.artista_id}
-        <button class="artista" onclick={() => abrir("artista", { id: a.artista_id, nombre: a.artista })}>{a.artista}</button>
+      {#if alArtista}
+        <button class="artista" onclick={() => abrir("artista", alArtista)}>{a.artista}</button>
       {:else}
         <p class="artista">{a.artista}</p>
       {/if}

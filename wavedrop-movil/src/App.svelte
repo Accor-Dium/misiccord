@@ -65,14 +65,21 @@
     }
   });
 
-  // Al cambiar de vista: volver a donde estabas (si regresas) o al principio (si entras)
-  let anterior = null;
+  // Al cambiar de vista: volver a donde estabas (si regresas) o al principio (si entras). El lugar lo guarda
+  // `recordarScroll` antes de salir. Lo que tarda en cargar llega después: se insiste hasta que quepa o se toque la pantalla
+  let pedidoScroll = 0;
   $effect(() => {
     const e = entrada;
     if (!principal) return;
-    if (anterior && anterior !== e) anterior.scroll = principal.scrollTop;
-    anterior = e;
-    requestAnimationFrame(() => (principal.scrollTop = e.scroll ?? 0));
+    const yo = ++pedidoScroll;
+    const inicio = performance.now();
+    function ir() {
+      if (yo !== pedidoScroll) return;
+      const destino = e.scroll ?? 0;
+      principal.scrollTop = destino;
+      if (principal.scrollTop < destino - 1 && performance.now() - inicio < 2000) requestAnimationFrame(ir);
+    }
+    requestAnimationFrame(ir);
   });
 </script>
 
@@ -85,7 +92,7 @@
     {#if error}<p class="error">{t("No se pudo iniciar: {error}", { error })}</p>{/if}
   </div>
 {:else}
-  <main bind:this={principal} class:con-mini={rep.actual || jam.sala}>
+  <main bind:this={principal} class:con-mini={rep.actual || jam.sala} onwheel={() => pedidoScroll++} ontouchstart={() => pedidoScroll++}>
     {#key entrada}
       {@const Vista = vistas[entrada.vista]}
       <Vista e={entrada} />
