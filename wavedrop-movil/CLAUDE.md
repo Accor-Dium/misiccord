@@ -42,7 +42,8 @@ Resumen para que no tengas que leer todo el código. Actualiza esta sección cua
   - Unirse: QR (escáner de la app o cámara normal), **link** que abre la app y entra solo, jams cercanos (UDP en la red) o IP + código.
   - **Por internet**: el anfitrión (PC o cel) toca "Abrir" en Invitar; túnel de Cloudflare, sin cuenta ni configurar el módem.
 - **Videos musicales** (apagado por defecto, en Ajustes): ver el clip en el reproductor (sigue al audio, sin sonido propio) y descargarlo junto a la canción.
-- **Biblioteca por carpetas**: agregar o quitar carpetas de música y filtrar canciones, álbumes y artistas por carpeta.
+- **Biblioteca por carpetas**: agregar o quitar carpetas de música, filtrar por carpeta y navegarlas en la pestaña Carpetas.
+- **Filtros de Biblioteca**: por década y por categoría (Jazz, Pop, Rock, Soundtrack, Videojuegos, Anime), juntables y corregibles a mano por álbum. Fotos de artistas y playlists con nombre, carátula y orden editables.
 - **Escritorio**: burbuja flotante al minimizar (opcional, Ajustes → Ventana): círculo con la portada y el avance, siempre encima; al pasar el mouse
   se abre con la canción, los controles y el volumen (bocina: pasar el mouse muestra la barra, un clic silencia), se arrastra a donde quieras y un clic regresa a la app. En Windows la vista previa del ícono de la barra
   de tareas trae anterior / reproducir-pausar / siguiente y el título de la ventana dice qué suena.
@@ -252,6 +253,12 @@ Todo el trabajo real vive en Python: python/wavedrop/  (el mismo código en las 
   `medios.svelte.js` no manda nada antes de `rep.sesionLista`: el "no hay canción" del arranque borraría la que recuerda el widget. La canción restaurada ya tiene notificación en pausa, por eso los audífonos también la retoman.
 - **Play del widget (`ReanudarWidget.kt`)**: es una Activity y no el servicio porque un servicio no puede abrir la app desde segundo plano, y el widget no se entera de que la app se cerró (su botón sigue igual).
   Si `Medios.eventos` existe la app está viva y es un Play normal; si no, abre la app con `Medios.playAlAbrir` y la interfaz lo pregunta al arrancar (`revisarWidget`).
+- **Filtros de Biblioteca** (`lib/categorias.js`): se deducen en la interfaz del género, el álbum y las 3 carpetas más cercanas al archivo, no de toda la ruta ("C:\Users\Anime Fan\…"). No se tocan las etiquetas: lo corregido a mano va en `categorias_albumes` y **reemplaza** a lo deducido.
+  "Soundtrack" es de películas y series: lo de videojuegos o anime no sale ahí. Las reglas corren una vez por canción (`WeakMap`): filtrar 1,500 tarda ~14 ms.
+- **Fotos de artistas** (`lib/fotosArtistas.svelte.js`, `api.artista_foto`): mientras no haya, se usa una carátula suya (`artistas()` ya la trae, sin red). Solo se piden las de filas dibujadas, de una en una, y se detienen con una canción en línea sonando, en segundo plano o, en el cel, fuera de Wi-Fi (`navigator.connection.type`).
+  Sin esos frenos serían cientos de consultas a YouTube Music con solo abrir la pestaña. Van en `datos/artistas`, no en la caché, y el nombre debe ser idéntico al de YouTube Music: mejor un ícono que la foto de otro. Sin foto se revisa otra vez a los 30 días.
+- **Playlists**: la carátula propia va en `datos/playlists/<id>-<fecha>.jpg`; el nombre cambia con cada una porque la interfaz guardaría la vieja. Sin propia se usa la de alguna canción.
+- **Pestaña Carpetas** (`lib/carpetas.js`): el árbol sale de las rutas de `b.canciones`, sin tocar el disco.
 - **Resumen** (`lib/resumen.js`, `Resumen.svelte`): el último día del mes, trimestre o año avisa una vez por periodo (`misiccord_resumen_visto`); lo más grande gana (31 de diciembre = año).
 - **Reproducir estando en un jam pregunta primero** (mandarla al jam o salir/cerrar el jam y escucharla aquí): todo pasa por `reproducir()`,
   y `jam.svelte.js` registra la pregunta con `preguntarAlReproducirEnJam` (el reproductor no importa al jam: el jam ya importa al reproductor).

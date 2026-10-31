@@ -10,6 +10,7 @@ import hashlib
 import json
 import os
 import re
+import sqlite3
 import threading
 import time
 import traceback
@@ -521,10 +522,44 @@ def biblioteca_(d: dict) -> dict:
         "canciones": [_local(c) | {"veces": veces.get(str(c.ruta), 0)} for c in db.canciones(d.get("q", ""), carpeta)],
         "generos": [{"nombre": n, "canciones": k, "portada": p} for n, k, p in db.generos(carpeta)],
         "albumes": [_album_local(a) for a in db.albumes(carpeta)],
-        "artistas": [{"nombre": n, "canciones": k} for n, k in db.artistas(carpeta)],
-        "playlists": [{"id": i, "nombre": n, "canciones": k} for i, n, k in db.playlists()],
+        "artistas": [{"nombre": a["nombre"], "canciones": a["canciones"], "portada": a["portada"], "foto": a["foto"],
+                      "revisada": bool(a["revisada"]) and (bool(a["foto"]) or time.time() - a["revisada"] < _FOTO_DIAS * 86400)}
+                     for a in db.artistas(carpeta)],
+        "playlists": [dict(p) for p in db.playlists()],
+        "categorias": db.categorias_albumes(),
         "me_gusta": len(db.lista_me_gusta()),
     }
+
+
+_FOTO_DIAS = 30  # un artista sin foto se vuelve a buscar después de esto
+
+
+def artista_foto(d: dict) -> dict:
+    """Busca la foto de un artista en YouTube Music. La interfaz las pide de una en una y solo de los que se ven
+    (lib/fotosArtistas.svelte.js). Va en los datos y no en la caché: Android puede borrar la caché cuando quiera."""
+    import requests
+    nombre, db = d["nombre"], _db()
+    ya = db.foto_artista(nombre)
+    if ya and (ya["foto"] or time.time() - ya["revisada"] < _FOTO_DIAS * 86400):
+        return {"foto": ya["foto"]}
+    objetivo = biblioteca.normalizar(nombre)
+    igual = next((a for a in explorar.buscar_artistas(nombre, 5) if biblioteca.normalizar(a["nombre"]) == objetivo), None)
+    foto = None
+    if igual and igual["miniatura"]:
+        r = requests.get(igual["miniatura"], timeout=20)
+        if r.ok:
+            destino = plataforma.carpeta_datos() / "artistas" / (hashlib.md5(nombre.lower().encode()).hexdigest() + ".jpg")
+            destino.parent.mkdir(parents=True, exist_ok=True)
+            destino.write_bytes(r.content)
+            foto = str(destino)
+    db.poner_foto_artista(nombre, foto)
+    return {"foto": foto}
+
+
+def album_categorias(d: dict) -> dict:
+    """Corrige a mano en qué categorías sale un álbum (Jazz, Videojuegos…). No toca las etiquetas de los archivos."""
+    _db().poner_categorias_album(d["album"], d.get("grupo", ""), d.get("categorias"))
+    return {}
 
 
 def carpetas_biblioteca(d: dict) -> dict:
@@ -795,7 +830,8 @@ def album_local(d: dict) -> dict:
     canciones = _db().canciones_de_album(a)
     # La biblioteca agrupa por artista principal: "Varios artistas" o una colaboración no existen como artista
     nombres = [biblioteca.artista_principal(c.artista) for c in canciones]
-    return {"canciones": [_local(c) for c in canciones], "artista_principal": max(nombres, key=nombres.count, default="")}
+    return {"canciones": [_local(c) for c in canciones], "artista_principal": max(nombres, key=nombres.count, default=""),
+            "categorias": _db().categorias_albumes().get(f"{d['nombre']}|{d.get('grupo', '')}")}
 
 
 def artista_local(d: dict) -> dict:
@@ -819,6 +855,36 @@ def playlist(d: dict) -> dict:
     return {"canciones": [_local(c) for c in _db().canciones_de_playlist(int(d["id"]))]}
 
 
+def renombrar_playlist(d: dict) -> dict:
+    try:
+        _db().renombrar_playlist(int(d["id"]), d["nombre"])
+    except sqlite3.IntegrityError as e:
+        raise RuntimeError(_t("Ya existe una playlist con ese nombre")) from e
+    return {}
+
+
+def portada_playlist(d: dict) -> dict:
+    """Pone o, sin `imagen`, quita la carátula de una playlist. Cada vez con otro nombre: la interfaz no se queda con la vieja."""
+    import base64
+    pid = int(d["id"])
+    carpeta = plataforma.carpeta_datos() / "playlists"
+    for vieja in carpeta.glob(f"{pid}-*.jpg"):
+        vieja.unlink(missing_ok=True)
+    if not d.get("imagen"):
+        _db().poner_portada_playlist(pid, None)
+        return {"portada": None}
+    destino = carpeta / f"{pid}-{int(time.time())}.jpg"
+    carpeta.mkdir(parents=True, exist_ok=True)
+    destino.write_bytes(base64.b64decode(d["imagen"].split(",", 1)[-1]))
+    _db().poner_portada_playlist(pid, str(destino))
+    return {"portada": str(destino)}
+
+
+def ordenar_playlist(d: dict) -> dict:
+    _db().ordenar_playlist(int(d["id"]), [int(i) for i in d["db_ids"]])
+    return {}
+
+
 def crear_playlist(d: dict) -> dict:
     pid = _db().crear_playlist(d["nombre"])
     if d.get("db_ids"):
@@ -836,6 +902,7 @@ def quitar_de_playlist(d: dict) -> dict:
 
 
 def borrar_playlist(d: dict) -> dict:
+    portada_playlist({"id": d["id"]})
     _db().borrar_playlist(int(d["id"]))
     return {}
 
@@ -1285,7 +1352,8 @@ FUNCIONES = {
     "info_cancion": info_cancion, "guardar_etiquetas": guardar_etiquetas,
     "metadata_opciones": metadata_opciones, "metadata_aplicar": metadata_aplicar,
     "album_opciones": album_opciones, "album_detalle": album_detalle, "album_guardar": album_guardar, "cambiar_portada": cambiar_portada,
-    "album_faltantes": album_faltantes,
+    "album_faltantes": album_faltantes, "album_categorias": album_categorias, "artista_foto": artista_foto,
+    "renombrar_playlist": renombrar_playlist, "portada_playlist": portada_playlist, "ordenar_playlist": ordenar_playlist,
     "reproduccion": reproduccion, "estadisticas": estadisticas, "previa": previa, "precargar": precargar, "letra": letra,
     "letra_traduccion": letra_traduccion,
     "descargar": descargar, "descargas": descargas_, "cancelar_descarga": cancelar_descarga,

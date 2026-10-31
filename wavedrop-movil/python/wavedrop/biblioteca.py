@@ -3,6 +3,7 @@
 Se guarda en %LOCALAPPDATA%\\WaveDrop\\biblioteca.db. Las canciones se leen de las carpetas que
 elijas (más la de descargas) y se agrupan por las etiquetas de cada archivo.
 """
+import json
 import os
 import re
 import sqlite3
@@ -29,7 +30,11 @@ CREATE TABLE IF NOT EXISTS canciones (
 CREATE INDEX IF NOT EXISTS idx_clave ON canciones(clave);
 CREATE INDEX IF NOT EXISTS idx_album ON canciones(album, artista_album);
 CREATE TABLE IF NOT EXISTS carpetas (ruta TEXT PRIMARY KEY);
-CREATE TABLE IF NOT EXISTS playlists (id INTEGER PRIMARY KEY, nombre TEXT UNIQUE NOT NULL, creada REAL);
+CREATE TABLE IF NOT EXISTS playlists (id INTEGER PRIMARY KEY, nombre TEXT UNIQUE NOT NULL, creada REAL, portada TEXT);
+-- Foto de cada artista, de YouTube Music. foto NULL con `revisada` = se buscó y no hay: no volver a preguntar en un rato
+CREATE TABLE IF NOT EXISTS fotos_artistas (nombre TEXT PRIMARY KEY COLLATE NOCASE, foto TEXT, revisada REAL);
+-- Categorías de un álbum corregidas a mano (lista en JSON). Sin fila, las deduce la interfaz (lib/categorias.js)
+CREATE TABLE IF NOT EXISTS categorias_albumes (album TEXT, grupo TEXT, categorias TEXT, PRIMARY KEY (album, grupo));
 CREATE TABLE IF NOT EXISTS eventos (
     id INTEGER PRIMARY KEY,
     tipo TEXT NOT NULL,  -- "reproduccion" o "descarga"
@@ -189,6 +194,9 @@ class Biblioteca:
         if "duracion" not in de_eventos:  # para las estadísticas: minutos escuchados y portada de las vistas previas
             self.con.execute("ALTER TABLE eventos ADD COLUMN duracion REAL")
             self.con.execute("ALTER TABLE eventos ADD COLUMN portada TEXT")
+            self.con.commit()
+        if "portada" not in {r[1] for r in self.con.execute("PRAGMA table_info(playlists)")}:
+            self.con.execute("ALTER TABLE playlists ADD COLUMN portada TEXT")
             self.con.commit()
         self.candado = threading.RLock()
 
@@ -381,11 +389,32 @@ class Biblioteca:
             """SELECT * FROM canciones WHERE album = ? COLLATE NOCASE AND COALESCE(artista_album, '') = ? COLLATE NOCASE
                ORDER BY pista, titulo COLLATE NOCASE""", (album.nombre, album.grupo))]
 
-    def artistas(self, carpeta: str = "") -> list[tuple[str, int]]:
+    def artistas(self, carpeta: str = "") -> list[sqlite3.Row]:
+        """Cada artista con una portada suya (de sobra para listarlo sin internet) y su foto si ya se buscó."""
         donde, params = self._en_carpeta(carpeta)
-        return [(r["a"], r["n"]) for r in self._q(
-            f"""SELECT artista_ppal AS a, COUNT(*) AS n FROM canciones WHERE artista_ppal != '' AND {donde}
-               GROUP BY artista_ppal COLLATE NOCASE ORDER BY artista_ppal COLLATE NOCASE""", params)]
+        return self._q(
+            f"""SELECT artista_ppal AS nombre, COUNT(*) AS canciones, MIN(NULLIF(portada, '')) AS portada, f.foto, f.revisada
+                FROM canciones LEFT JOIN fotos_artistas f ON f.nombre = artista_ppal
+                WHERE artista_ppal != '' AND {donde}
+                GROUP BY artista_ppal COLLATE NOCASE ORDER BY artista_ppal COLLATE NOCASE""", params)
+
+    def foto_artista(self, nombre: str) -> sqlite3.Row | None:
+        filas = self._q("SELECT foto, revisada FROM fotos_artistas WHERE nombre = ?", (nombre,))
+        return filas[0] if filas else None
+
+    def poner_foto_artista(self, nombre: str, foto: str | None):
+        self._w("INSERT OR REPLACE INTO fotos_artistas(nombre, foto, revisada) VALUES (?, ?, ?)", (nombre, foto, time.time()))
+
+    def categorias_albumes(self) -> dict[str, list[str]]:
+        return {f"{r['album']}|{r['grupo']}": json.loads(r["categorias"]) for r in self._q("SELECT * FROM categorias_albumes")}
+
+    def poner_categorias_album(self, album: str, grupo: str, categorias: list[str] | None):
+        """None = volver a las que se deducen solas."""
+        if categorias is None:
+            self._w("DELETE FROM categorias_albumes WHERE album = ? AND grupo = ?", (album, grupo))
+        else:
+            self._w("INSERT OR REPLACE INTO categorias_albumes(album, grupo, categorias) VALUES (?, ?, ?)",
+                    (album, grupo, json.dumps(categorias)))
 
     def generos(self, carpeta: str = "") -> list[tuple[str, int, str | None]]:
         """(género, canciones, una portada). "Music" lo pone YouTube a todo: no cuenta."""
@@ -596,11 +625,23 @@ class Biblioteca:
 
     # --- Playlists ---
 
-    def playlists(self) -> list[tuple[int, str, int]]:
-        return [(r["id"], r["nombre"], r["n"]) for r in self._q(
-            """SELECT p.id, p.nombre, COUNT(pc.cancion_id) AS n FROM playlists p
-               LEFT JOIN playlist_canciones pc ON pc.playlist_id = p.id
-               GROUP BY p.id ORDER BY p.nombre COLLATE NOCASE""")]
+    def playlists(self) -> list[sqlite3.Row]:
+        """Con la carátula que le pusiste o, si no, la de alguna de sus canciones."""
+        return self._q(
+            """SELECT p.id, p.nombre, COUNT(pc.cancion_id) AS canciones, COALESCE(p.portada, MIN(NULLIF(c.portada, ''))) AS portada,
+                      p.portada AS propia
+               FROM playlists p LEFT JOIN playlist_canciones pc ON pc.playlist_id = p.id
+               LEFT JOIN canciones c ON c.id = pc.cancion_id
+               GROUP BY p.id ORDER BY p.nombre COLLATE NOCASE""")
+
+    def poner_portada_playlist(self, pid: int, ruta: str | None):
+        self._w("UPDATE playlists SET portada = ? WHERE id = ?", (ruta, pid))
+
+    def ordenar_playlist(self, pid: int, ids: list[int]):
+        with self.candado:
+            self.con.executemany("UPDATE playlist_canciones SET posicion = ? WHERE playlist_id = ? AND cancion_id = ?",
+                                 [(i, pid, cid) for i, cid in enumerate(ids, 1)])
+            self.con.commit()
 
     def crear_playlist(self, nombre: str) -> int:
         return self._w("INSERT INTO playlists(nombre, creada) VALUES (?, ?)", (nombre.strip(), time.time()))

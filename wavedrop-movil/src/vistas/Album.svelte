@@ -2,10 +2,11 @@
   import { onMount } from "svelte";
   import { fade } from "svelte/transition";
   import { py, src } from "../lib/api.js";
-  import { abrir, atras, aviso, descargar, descargarLink, ui } from "../lib/estado.svelte.js";
+  import { abrir, atras, aviso, descargar, descargarLink, mostrarHoja, ui } from "../lib/estado.svelte.js";
   import { reproducir, reproducirAleatorio } from "../lib/reproductor.svelte.js";
   import { pedirEliminar } from "../lib/eliminar.js";
   import { canciones, t } from "../lib/idioma.svelte.js";
+  import { CATEGORIAS, categoriasDe } from "../lib/categorias.js";
   import EditarAlbum from "../componentes/EditarAlbum.svelte";
   import FilaCancion from "../componentes/FilaCancion.svelte";
   import Icono from "../componentes/Icono.svelte";
@@ -35,7 +36,8 @@
         const r = await py("album_local", { nombre: e.local.nombre, artista: e.local.artista, grupo: e.local.grupo });
         if (yo !== pedidoCarga) return; // ya se pidió otro (p. ej. se le cambió el nombre al álbum)
         e.datos = { titulo: e.local.nombre, artista: e.local.artista, anio: e.local.anio, tipo: "Álbum",
-                    portada: e.local.portada, canciones: r.canciones, local: true, artista_principal: r.artista_principal };
+                    portada: e.local.portada, canciones: r.canciones, local: true, artista_principal: r.artista_principal,
+                    categorias: r.categorias };
         revisarFaltantes();
       } else if (e.playlist) {
         e.datos = (await py("playlist_yt", { id: e.playlist })).album;
@@ -105,6 +107,26 @@
     cargar();
   }
 
+  /** Corregir en qué filtros de Biblioteca sale este álbum: solo se guarda en la app, las etiquetas no se tocan. */
+  function elegirCategorias() {
+    const actuales = new Set(a.categorias ?? a.canciones.flatMap((c) => [...categoriasDe(c)]));
+    const guardar = async (lista) => {
+      await py("album_categorias", { album: e.local.nombre, grupo: e.local.grupo, categorias: lista });
+      ui.version++;
+    };
+    const cambiar = (id) => {
+      actuales.has(id) ? actuales.delete(id) : actuales.add(id);
+      guardar([...actuales]);
+    };
+    mostrarHoja({
+      titulo: t("Categorías de este álbum"), subtitulo: t("Dónde sale en los filtros de tu biblioteca"),
+      opciones: [
+        ...CATEGORIAS.map(([id, nombre]) => ({ texto: t(nombre), icono: actuales.has(id) ? "check" : "agregar", accion: () => cambiar(id) })),
+        ...(a.categorias ? [{ texto: t("Dejar que se deduzcan solas"), icono: "actualizar", accion: () => guardar(null) }] : []),
+      ],
+    });
+  }
+
   function descargarTodo() {
     if (a.lista) descargarLink(a.lista).catch(() => descargar(faltan, a.titulo));
     else descargar(faltan, a.titulo);
@@ -171,6 +193,7 @@
             <button class="pildora oscura chica" onclick={() => descargar(completo.faltantes, a.titulo)}><Icono nombre="descargas" tam={18} /> {t("Descargar todas")}</button>
           {/if}
           <button class="pildora oscura chica" onclick={() => (editando = { enLinea: true })}><Icono nombre="etiqueta" tam={18} /> {t("Guardar datos en tus archivos")}</button>
+          <button class="pildora oscura chica" onclick={elegirCategorias}><Icono nombre="ordenar" tam={18} /> {t("Categorías")}</button>
         </div>
       {/if}
       {#each completo?.faltantes ?? [] as c, i (c.id)}
