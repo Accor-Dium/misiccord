@@ -1,4 +1,5 @@
 <script>
+  import { onMount } from "svelte";
   import { fade, scale } from "svelte/transition";
   import { py } from "../lib/api.js";
   import { aBody } from "../lib/aBody.js";
@@ -12,7 +13,7 @@
   // Editar un álbum completo, como en Groove: a mano o con "Actualizar en línea" (MusicBrainz). Al elegir una edición cada
   // canción se empareja con su pista; las que no coinciden del todo se resuelven una por una: otra pista, dejar tu nombre
   // o no incluirla (y entonces se sigue buscando a qué álbum pertenece).
-  let { album, alCerrar, alGuardar } = $props();
+  let { album, enLinea = false, alCerrar, alGuardar } = $props(); // enLinea: abrir ya buscando en línea
 
   let nombre = $state(album.titulo);
   let artista = $state(album.artista);
@@ -44,6 +45,7 @@
       opciones = [];
     }
   }
+  onMount(() => { if (enLinea) buscar(); });
 
   function ponerPista(f, j, estado) {
     const p = online.pistas[j];
@@ -58,7 +60,7 @@
   async function elegir(o) {
     cargandoPistas = true;
     try {
-      const r = await py("album_detalle", { mbid: o.mbid_album, canciones: filas.map((f) => ({ titulo: f.c.titulo, duracion: f.c.duracion })) });
+      const r = await py("album_detalle", { mbid: o.mbid_album, yt: o.yt, canciones: filas.map((f) => ({ titulo: f.c.titulo, duracion: f.c.duracion })) });
       online = r.detalle;
       nombre = online.album;
       artista = online.artista_album || artista;
@@ -132,7 +134,7 @@
         },
       }));
       const portada = imagenNueva ? { imagen: imagenNueva }
-        : online && usarPortada ? { mbid_album: online.mbid_album, mbid_grupo: online.mbid_grupo } : {};
+        : online && usarPortada ? { mbid_album: online.mbid_album, mbid_grupo: online.mbid_grupo, portada_url: online.portada_url } : {};
       const r = await py("album_guardar", { canciones, ...portada });
       r.canciones.forEach(actualizarCancion);
       if (r.fallidas.length) aviso(t("No se pudieron guardar {n}: {error}", { n: r.fallidas.length, error: r.fallidas[0].error }), "error");
@@ -166,10 +168,10 @@
         <p class="tenue">{t("Buscando en MusicBrainz…")}</p>
         {#each Array(4) as _}<div class="cargando-bloque" style="height:66px;margin:8px 0"></div>{/each}
       {:else if !opciones.length}
-        <p class="tenue">{error || t("MusicBrainz no encontró este álbum. Prueba con otro nombre.")}</p>
+        <p class="tenue">{error || t("No encontré este álbum en MusicBrainz ni en YouTube Music. Prueba con otro nombre.")}</p>
       {:else}
-        <p class="tenue">{t("Elige tu edición: cambian las pistas entre una y otra.")}</p>
-        {#each opciones as o (o.mbid_album)}
+        <p class="tenue">{opciones[0].yt ? t("MusicBrainz no lo tiene; esto es lo que encontré en YouTube Music.") : t("Elige tu edición: cambian las pistas entre una y otra.")}</p>
+        {#each opciones as o (o.mbid_album || o.yt)}
           <button class="opcion" disabled={cargandoPistas} onclick={() => elegir(o)}>
             <Portada url={o.miniatura} tam="56px" radio="6px" icono="disco" />
             <span class="textos">

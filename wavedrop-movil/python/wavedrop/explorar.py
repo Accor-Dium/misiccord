@@ -203,16 +203,29 @@ def album(browse_id: str) -> dict:
     }
 
 
+def _discografia(a: dict) -> list[dict]:
+    """get_artist solo trae los primeros 10 álbumes: sin los demás, "tienes 3 de 10" sería mentira."""
+    bloque = a.get("albums") or {}
+    if bloque.get("browseId") and bloque.get("params"):
+        try:
+            return _yt().get_artist_albums(bloque["browseId"], bloque["params"])
+        except Exception as e:  # ytmusicapi lee la página de YouTube: si cambió, al menos quedan los primeros
+            print(f"[explorar] discografía: {e}")
+    return bloque.get("results") or []
+
+
 def artista(browse_id: str) -> dict:
     """Página de un artista: foto grande, descripción, canciones populares, álbumes y parecidos."""
     a = _yt().get_artist(browse_id)
     def lista(clave):
         return (a.get(clave) or {}).get("results") or []
-    albumes = [ResultadoAlbum(browse_id=x["browseId"], titulo=x.get("title", ""), artista=a.get("name", ""),
-                              anio=str(x.get("year") or ""), tipo=x.get("type") or "Álbum",
-                              miniatura=_miniatura(x.get("thumbnails")))
-               for x in lista("albums") + lista("singles") if x.get("browseId")]
+    def resultado(x, tipo):
+        return ResultadoAlbum(browse_id=x["browseId"], titulo=x.get("title", ""), artista=a.get("name", ""),
+                              anio=str(x.get("year") or ""), tipo=x.get("type") or tipo, miniatura=_miniatura(x.get("thumbnails")))
+    discos = [resultado(x, "Álbum") for x in _discografia(a) if x.get("browseId")]
+    albumes = discos + [resultado(x, "Sencillo") for x in lista("singles") if x.get("browseId")]
     return {
+        "discos": len(discos), # los primeros de `albumes`: la discografía sin los sencillos
         "browse_id": browse_id, "nombre": a.get("name", ""), "descripcion": a.get("description") or "",
         "portada": _miniatura(a.get("thumbnails"), 900), "oyentes": a.get("monthlyListeners") or "",
         "canciones": [c for c in (_cancion(s) for s in lista("songs")) if c],

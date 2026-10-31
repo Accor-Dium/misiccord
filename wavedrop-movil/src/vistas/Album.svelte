@@ -6,7 +6,6 @@
   import { reproducir, reproducirAleatorio } from "../lib/reproductor.svelte.js";
   import { pedirEliminar } from "../lib/eliminar.js";
   import { canciones, t } from "../lib/idioma.svelte.js";
-  import { normalizar } from "../lib/ordenar.js";
   import EditarAlbum from "../componentes/EditarAlbum.svelte";
   import FilaCancion from "../componentes/FilaCancion.svelte";
   import Icono from "../componentes/Icono.svelte";
@@ -17,9 +16,12 @@
   let { e } = $props();
   const a = $derived(e.datos);
   const alArtista = $derived(a?.artista_id ? { id: a.artista_id, nombre: a.artista } : a?.artista_principal ? { nombre: a.artista_principal } : null);
-  let completo = $state(e.completo ?? null); // lo que te falta del álbum, según YouTube Music
-  let editando = $state(false);
+  let completo = $state(e.completo ?? null); // lo que te falta del álbum, según YouTube Music: { encontrado, total, faltantes, id }
+  let revision = $state(e.completo ? "lista" : ""); // "" | "buscando" | "lista" | "error"
+  let editando = $state(false); // false, o { enLinea } si se abrió para guardar los datos del álbum
   let pedidoCarga = 0;
+  let pedidoRevision = 0;
+  const tienes = $derived(completo?.encontrado ? completo.total - completo.faltantes.length : 0);
 
   async function cargar() {
     const yo = ++pedidoCarga;
@@ -34,7 +36,7 @@
         if (yo !== pedidoCarga) return; // ya se pidió otro (p. ej. se le cambió el nombre al álbum)
         e.datos = { titulo: e.local.nombre, artista: e.local.artista, anio: e.local.anio, tipo: "Álbum",
                     portada: e.local.portada, canciones: r.canciones, local: true, artista_principal: r.artista_principal };
-        buscarFaltantes();
+        revisarFaltantes();
       } else if (e.playlist) {
         e.datos = (await py("playlist_yt", { id: e.playlist })).album;
       } else {
@@ -50,18 +52,28 @@
       aviso(e.playlist ? t("No se pudo abrir la playlist") : t("No se pudo abrir el álbum"), "error");
     }
   }
-  onMount(() => { if (!e.datos) cargar(); });
+  onMount(() => {
+    if (!e.datos) cargar();
+    else if (e.local) revisarFaltantes(); // regresas a él: lo que descargaste mientras tanto ya no falta
+  });
 
-  /** En segundo plano y en silencio: sin internet simplemente no aparece nada. */
-  async function buscarFaltantes() {
-    if (completo) return;
+  /** Python guarda lo de YouTube Music: esto casi siempre es inmediato. Con `forzar` (Actualizar) lo vuelve a pedir. */
+  async function revisarFaltantes(forzar = false) {
+    const yo = ++pedidoRevision;
+    if (forzar || !completo) revision = "buscando";
+    let reloj;
     try {
-      const { albumes } = await py("buscar", { q: `${e.local.nombre} ${e.local.artista}`, tipo: "albumes" });
-      const igual = albumes?.find((x) => normalizar(x.titulo) === normalizar(e.local.nombre));
-      if (!igual) return;
-      const { album } = await py("album", { browse_id: igual.browse_id });
-      completo = e.completo = { faltantes: album.canciones.filter((c) => !c.ruta), id: igual.browse_id };
-    } catch {}
+      // Sin esto una red que no responde se veía como un álbum al que no le falta nada, cargando para siempre
+      const limite = new Promise((_, no) => (reloj = setTimeout(no, 30000)));
+      const r = await Promise.race([py("album_faltantes", { nombre: e.local.nombre, artista: e.local.artista, grupo: e.local.grupo, forzar }), limite]);
+      if (yo !== pedidoRevision) return;
+      completo = e.completo = r;
+      revision = "lista";
+    } catch {
+      if (yo === pedidoRevision) revision = "error";
+    } finally {
+      clearTimeout(reloj);
+    }
   }
 
   let version = ui.version;
@@ -112,6 +124,12 @@
         <p class="artista">{a.artista}</p>
       {/if}
       <p class="meta">{[a.tipo === "Álbum" || a.tipo === "Playlist" ? t(a.tipo) : a.tipo, a.anio, canciones(a.canciones.length), duracion ? `${duracion} min` : ""].filter(Boolean).join(" · ")}</p>
+      {#if a.local && completo?.encontrado}
+        <div class="avance" title={t("{n} de {total} canciones", { n: tienes, total: completo.total })}>
+          <span class="barra"><i style:width="{(tienes / (completo.total || 1)) * 100}%"></i></span>
+          <small>{t("{n} de {total} canciones", { n: tienes, total: completo.total })}</small>
+        </div>
+      {/if}
     </div>
     <div class="acciones">
       <button class="pildora clara" onclick={() => reproducir(a.canciones, 0, a.titulo)}><Icono nombre="play" relleno tam={20} /> {t("Reproducir")}</button>
@@ -120,7 +138,7 @@
         <button class="redondo relleno" onclick={descargarTodo} aria-label={e.playlist ? t("Descargar playlist") : t("Descargar álbum")}><Icono nombre="descargas" tam={22} /></button>
       {/if}
       {#if a.local && a.canciones.length}
-        <button class="redondo relleno" onclick={() => (editando = true)} aria-label={t("Editar información")} title={t("Editar información")}><Icono nombre="lapiz" tam={21} /></button>
+        <button class="redondo relleno" onclick={() => (editando = { enLinea: false })} aria-label={t("Editar información")} title={t("Editar información")}><Icono nombre="lapiz" tam={21} /></button>
         <button class="redondo relleno borrar" onclick={eliminarAlbum} aria-label={t("Eliminar álbum")} title={t("Eliminar álbum")}><Icono nombre="basura" tam={22} /></button>
       {/if}
     </div>
@@ -129,12 +147,33 @@
         <FilaCancion cancion={c} numero={c.pista || i + 1} sinPortada alTocar={() => reproducir(a.canciones, i, a.titulo)} />
       {/each}
     </div>
-    {#if a.local && completo?.faltantes.length}
-      <div class="titulo-seccion">
-        <span>{t("Te faltan de este álbum")}</span>
-        <button onclick={() => descargar(completo.faltantes, a.titulo)}><small>{t("Descargar todas")}</small></button>
+    {#if a.local}
+      <div class="titulo-seccion revision">
+        <span>
+          {#if revision === "buscando"}{t("Revisando qué te falta…")}
+          {:else if revision === "error"}{t("No pude revisar este álbum")}
+          {:else if !completo?.encontrado}{t("No encontré este álbum en YouTube Music")}
+          {:else if completo.faltantes.length}{t("Te faltan de este álbum")}
+          {:else}{t("Tienes el álbum completo")}{/if}
+        </span>
+        {#if revision === "buscando"}
+          <span class="girando" aria-hidden="true"></span>
+        {:else}
+          <button onclick={() => revisarFaltantes(true)}><small>{revision === "lista" ? t("Actualizar") : t("Reintentar")}</small></button>
+        {/if}
       </div>
-      {#each completo.faltantes as c, i (c.id)}
+      {#if revision === "buscando" && !completo}
+        {#each Array(2) as _}<div class="cargando-bloque" style="height:56px;margin:10px 0"></div>{/each}
+      {/if}
+      {#if revision !== "buscando" && a.canciones.length}
+        <div class="botones-revision">
+          {#if completo?.faltantes?.length}
+            <button class="pildora oscura chica" onclick={() => descargar(completo.faltantes, a.titulo)}><Icono nombre="descargas" tam={18} /> {t("Descargar todas")}</button>
+          {/if}
+          <button class="pildora oscura chica" onclick={() => (editando = { enLinea: true })}><Icono nombre="etiqueta" tam={18} /> {t("Guardar datos en tus archivos")}</button>
+        </div>
+      {/if}
+      {#each completo?.faltantes ?? [] as c, i (c.id)}
         <FilaCancion cancion={c} sinPortada alTocar={() => reproducir(completo.faltantes, i, a.titulo)} />
       {/each}
     {/if}
@@ -144,7 +183,7 @@
 </div>
 
 {#if editando}
-  <EditarAlbum album={a} alCerrar={() => (editando = false)} alGuardar={alGuardarAlbum} />
+  <EditarAlbum album={a} enLinea={editando.enLinea} alCerrar={() => (editando = false)} alGuardar={alGuardarAlbum} />
 {/if}
 
 <style>
@@ -160,6 +199,14 @@
   h1 { margin: 0; font-size: 26px; font-weight: 800; letter-spacing: -0.4px; }
   .artista { display: block; margin: 8px auto 0; font-size: 17px; font-weight: 600; color: var(--cian); }
   .meta { margin: 6px 0 0; color: var(--tenue); font-size: 14px; }
+  .avance { display: flex; align-items: center; justify-content: center; gap: 10px; margin-top: 10px; color: var(--tenue); }
+  .barra { width: 90px; height: 4px; border-radius: 2px; overflow: hidden; background: rgba(255, 255, 255, 0.15); }
+  .barra i { display: block; height: 100%; border-radius: 2px; background: var(--cian); }
+  .revision { align-items: center; }
+  .girando { width: 18px; height: 18px; border-radius: 50%; border: 2.5px solid var(--borde-fuerte); border-top-color: var(--cian); animation: giro 0.8s linear infinite; flex-shrink: 0; }
+  @keyframes giro { to { transform: rotate(360deg); } }
+  .botones-revision { display: flex; flex-wrap: wrap; gap: 8px; margin: 2px 0 8px; }
+  .chica { height: 38px; padding: 0 16px; font-size: 14px; }
   .acciones { display: flex; gap: 10px; justify-content: center; align-items: center; margin: 20px 0 14px; }
   .acciones .pildora { flex: 1; max-width: 170px; }
   .borrar { color: var(--rojo); }

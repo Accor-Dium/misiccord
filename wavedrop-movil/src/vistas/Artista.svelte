@@ -42,7 +42,7 @@
         id = r.artistas?.[0]?.browse_id;
         if (!id) throw new Error("sin artista");
       }
-      e.datos = (await py("artista", { browse_id: id })).artista;
+      e.datos = (await py("artista", { browse_id: id, nombre: e.nombre })).artista;
     } catch (err) {
       // Sin internet no es un error si tienes canciones suyas: lo tuyo ya está en pantalla
       sinConexion = true;
@@ -108,10 +108,13 @@
       {/if}
 
       {#if a.albumes.length}
-        <div class="titulo-seccion">{t("Álbumes y sencillos")}</div>
+        <div class="titulo-seccion">
+          {t("Álbumes y sencillos")}
+          {#if tuyas.length && a.avance?.total}<small>{t("Tienes {n} de {total} álbumes", { n: a.avance.tienes, total: a.avance.total })}</small>{/if}
+        </div>
         <div class="carrusel">
           {#each a.albumes as al}
-            <Tarjeta portada={al.miniatura} titulo={al.titulo} subtitulo={[al.tipo, al.anio].filter(Boolean).join(" · ")}
+            <Tarjeta portada={al.miniatura} titulo={al.titulo} subtitulo={al.tuyo ? t("En tu biblioteca") : [al.tipo, al.anio].filter(Boolean).join(" · ")}
               alTocar={() => abrir("album", { id: al.browse_id })} />
           {/each}
         </div>

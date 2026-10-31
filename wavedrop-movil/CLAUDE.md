@@ -233,6 +233,11 @@ Todo el trabajo real vive en Python: python/wavedrop/  (el mismo código en las 
 - **La cola es el orden real** (`rep.cola`): con aleatorio se baraja de verdad (`mezclar`) y `original` guarda el orden para regresar a él. Nunca elijas la siguiente al azar
   al momento: "A continuación" (`Cola.svelte`) debe decir lo que va a sonar. La que suena va hasta arriba; lo anterior se ve con "Ver las anteriores".
 - **Álbum y artista: primero lo local** (`artista_local`, `album_local_buscar`): sale al instante y funciona sin internet; lo de YouTube Music se agrega después y sus errores no se muestran si ya hay algo tuyo.
+- **Qué le falta a un álbum (`api.album_faltantes`)**: lo de YouTube Music se guarda 7 días en la caché (`albumes/`), qué tienes se calcula siempre y el botón Actualizar manda `forzar`. La interfaz corta a los 30 s: una red que no responde se veía como un álbum completo.
+  `_album_igual` exige el mismo artista ("Greatest Hits" tiene cientos) y compara también sin edición (`biblioteca.nombre_album`: "Deluxe", "Remastered", solo al final para no tocar "1989"). Dentro de tu álbum basta el título: la pista puede decir "Queen, David Bowie" y tu archivo "Queen".
+- **En el artista, "Tienes 3 de 15"** cuenta discos, sin sencillos. `explorar._discografia` pide la lista completa porque `get_artist` solo trae los primeros 10.
+- **Fuentes de datos**: MusicBrainz primero; si no tiene el álbum, YouTube Music (`album_opciones` con `yt`), que no trae género ni disco y da la carátula por `portada_url`.
+  **No uses iTunes Search API**: Apple solo permite su carátula y vistas previas para promover su tienda, junto a su insignia, y sus términos no cubren apps independientes. **Tampoco Deezer** (uso privado y familiar) ni **Discogs** (pide token, y uno dentro del APK se puede sacar).
 - **Ecualizador en el reproductor** (`Ecualizador.svelte`): 3, 5, 10, 15 o 31 bandas; cuántas hay lo dice el largo de `eq_bandas` (`convertirBandas` interpola al cambiar). Mono es `channelCount = 1` en el primer nodo.
   Mono y los visualizadores (`Visualizador.svelte`, `analizadorDeAudio`) también arman el grafo de Web Audio.
 - **Completar datos** (`CompletarDatos.svelte`, `musicbrainz.opciones`): una opción por grupo de MusicBrainz, primero su edición más antigua (si no, Thriller salía de 2022). Respeta el límite de 1 consulta por segundo de `_get`.

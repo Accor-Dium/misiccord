@@ -94,6 +94,17 @@ def normalizar(texto: str) -> str:
     return re.sub(r"\s+", " ", texto).strip()
 
 
+_EDICION = re.compile(r"(\s+(\d{4}|\d+(st|nd|rd|th)))?(\s+(super\s+)?(deluxe|expanded|remaster(ed)?|anniversary|special|"
+                      r"bonus tracks?|collector s))+(\s+\d{4})?(\s+(edition|version))?$")
+
+
+def nombre_album(nombre: str) -> str:
+    """El nombre sin edición: "Abbey Road Remastered" y "Rumours - Deluxe Edition" son Abbey Road y Rumours.
+    Solo se quita al final y detrás de otra palabra: "1989" y un disco llamado "Deluxe" se quedan como están."""
+    limpio = normalizar(nombre)
+    return _EDICION.sub("", limpio).strip() or limpio
+
+
 def artista_principal(artista: str) -> str:
     return re.split(r",|&| x | y | and |;|/", artista or "", maxsplit=1)[0].strip()
 
