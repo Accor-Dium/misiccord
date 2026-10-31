@@ -6,7 +6,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { emitTo, listen } from "@tauri-apps/api/event";
 import { src } from "./api.js";
 import { t } from "./idioma.svelte.js";
-import { alternar, anterior, rep, siguiente } from "./reproductor.svelte.js";
+import { alternar, alternarSilencio, anterior, ponerVolumen, rep, siguiente } from "./reproductor.svelte.js";
 
 const esEscritorio = !/Android/i.test(navigator.userAgent);
 let iniciado = false;
@@ -16,7 +16,7 @@ function estado() {
   const c = rep.actual;
   return {
     hay: !!c, titulo: c?.titulo ?? "", artista: c?.artista ?? "", portada: c?.portada ? src(c.portada) : null,
-    sonando: rep.sonando, pos: rep.pos, dur: rep.dur || c?.duracion || 0,
+    sonando: rep.sonando, pos: rep.pos, dur: rep.dur || c?.duracion || 0, volumen: rep.volumen, silencio: rep.silencio,
   };
 }
 
@@ -26,6 +26,8 @@ function obedecer({ payload }) {
   if (payload.accion === "alternar") alternar();
   else if (payload.accion === "siguiente") siguiente();
   else if (payload.accion === "anterior") anterior();
+  else if (payload.accion === "volumen") ponerVolumen(payload.valor);
+  else if (payload.accion === "silencio") alternarSilencio();
   mandarBurbuja(); // "listo": la burbuja acaba de abrirse y no sabe qué suena
 }
 
@@ -47,6 +49,8 @@ function iniciar() {
       rep.actual;
       rep.sonando;
       rep.dur;
+      rep.volumen;
+      rep.silencio;
       mandarBurbuja();
     });
   });

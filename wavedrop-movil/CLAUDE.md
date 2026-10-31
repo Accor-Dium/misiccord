@@ -44,7 +44,7 @@ Resumen para que no tengas que leer todo el código. Actualiza esta sección cua
 - **Videos musicales** (apagado por defecto, en Ajustes): ver el clip en el reproductor (sigue al audio, sin sonido propio) y descargarlo junto a la canción.
 - **Biblioteca por carpetas**: agregar o quitar carpetas de música y filtrar canciones, álbumes y artistas por carpeta.
 - **Escritorio**: burbuja flotante al minimizar (opcional, Ajustes → Ventana): círculo con la portada y el avance, siempre encima; al pasar el mouse
-  se abre con la canción y los controles, se arrastra a donde quieras y un clic regresa a la app. En Windows la vista previa del ícono de la barra
+  se abre con la canción, los controles y el volumen (bocina: pasar el mouse muestra la barra, un clic silencia), se arrastra a donde quieras y un clic regresa a la app. En Windows la vista previa del ícono de la barra
   de tareas trae anterior / reproducir-pausar / siguiente y el título de la ventana dice qué suena.
 - **Actualizaciones automáticas** desde GitHub Releases (Windows instala solo; Android baja el APK y abre el instalador).
 
@@ -286,7 +286,7 @@ Todo el trabajo real vive en Python: python/wavedrop/  (el mismo código en las 
   si `reanudada`. Si la Activity "mudada" se cierra sin música, se mata el proceso (Tauri no sabría que se cerró).
 - **Burbuja flotante (escritorio)**: es otra ventana de Tauri (`burbuja`, la misma página con `?burbuja`) que solo existe con el ajuste prendido y que
   Rust muestra/esconde al minimizar o regresar a la principal (`burbuja::evento`, con `Resized` y `Focused`). No reproduce: la principal le manda
-  `burbuja-estado` y ella manda `burbuja-control` (`lib/escritorio.svelte.js`). Para que abrir sea inmediato y suave, la ventana crece de un jalón con
+  `burbuja-estado` y ella manda `burbuja-control` (`lib/escritorio.svelte.js`). Por eso no puede usar `Volumen.svelte` (sería otro `rep`, sin música): tiene su propia barra. Para que abrir sea inmediato y suave, la ventana crece de un jalón con
   `SetWindowPos` (moverla y cambiar el tamaño en dos pasos hace brincar el círculo) y la píldora se estira con CSS; al cerrar, primero la píldora y luego
   la ventana. Antes de cerrarse pregunta a Rust si el cursor sigue encima (`dentro`): WebView2 manda `mouseleave` falsos. Al esconderse se cierra en
   círculo (`burbuja-oculta`): abierta, su parte transparente taparía clics. Su posición vive en `localStorage` (`misiccord_burbuja_posicion`) y no se

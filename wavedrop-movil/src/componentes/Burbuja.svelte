@@ -4,6 +4,7 @@
   import { invoke } from "@tauri-apps/api/core";
   import { currentMonitor, getCurrentWindow } from "@tauri-apps/api/window";
   import { t } from "../lib/idioma.svelte.js";
+  import { VOLUMEN_MAX } from "../lib/reproductor.svelte.js";
   import Icono from "./Icono.svelte";
 
   // La burbuja flotante del escritorio: es su propia ventana (ver `burbuja` en src-tauri/src/lib.rs).
@@ -13,13 +14,14 @@
   // Para que abrir se sienta inmediato y suave, la ventana crece de golpe (lo de más es transparente) y la píldora se
   // estira con una transición de CSS; al cerrar es al revés: primero se encoge la píldora y luego la ventana.
   const TAM = 64;
-  const ANCHO = 336;
+  const ANCHO = 372;
   const ANIMACION = 220; // ms, igual que la transición del CSS
   const CLAVE = "misiccord_burbuja_posicion"; // dónde la dejaste (en px lógicos, el círculo cerrado)
 
   const ventana = getCurrentWindow();
-  let estado = $state({ hay: false, titulo: "", artista: "", portada: null, sonando: false, pos: 0, dur: 0 });
+  let estado = $state({ hay: false, titulo: "", artista: "", portada: null, sonando: false, pos: 0, dur: 0, volumen: 1, silencio: false });
   let abierta = $state(false);
+  let verVolumen = $state(false); // la barra de volumen está en lugar del título
   let haciaIzquierda = $state(false); // crece hacia la izquierda si a la derecha no cabe
   let grande = false; // la ventana ya tiene el tamaño de la píldora
   let origen = { x: 0, y: 0 }; // posición del círculo cerrado
@@ -27,13 +29,46 @@
   let moviendo = false; // los cambios de tamaño propios también disparan onMoved
   let colocada = false; // al crearse, Windows avisa que se movió a donde nació: eso no es una posición tuya
   let espera;
+  let esperaVolumen;
+  let ajustando = null; // estás moviendo el volumen
 
   const avance = $derived(estado.dur ? Math.min(1, estado.pos / estado.dur) : 0);
+  const volumen = $derived(estado.silencio ? 0 : estado.volumen);
   const R = 30; // radio del anillo de avance
   const vuelta = 2 * Math.PI * R;
 
-  function mandar(accion) {
-    emitTo("main", "burbuja-control", { accion }).catch(() => {});
+  function mandar(accion, valor) {
+    emitTo("main", "burbuja-control", { accion, valor }).catch(() => {});
+  }
+
+  // Mientras lo mueves, aquí manda la burbuja: lo que regresa de la principal va atrasado y haría brincar la barra.
+  // Al terminar se pide una vez lo real (la principal pudo pegarlo en 100 %).
+  function ajustar(v) {
+    v = Math.max(0, Math.min(VOLUMEN_MAX, v));
+    estado.volumen = v;
+    estado.silencio = false;
+    mandar("volumen", v);
+    clearTimeout(ajustando);
+    ajustando = setTimeout(() => {
+      ajustando = null;
+      mandar("listo");
+    }, 400);
+  }
+
+  // Igual que en el reproductor: la rueda sube y baja 5 %
+  const rueda = (e) => ajustar(estado.volumen + (e.deltaY < 0 ? 0.05 : -0.05));
+
+  function mostrarVolumen() {
+    clearTimeout(esperaVolumen);
+    verVolumen = true;
+  }
+  // Con un respiro, para poder ir de la bocina a la barra
+  function soltarVolumen() {
+    clearTimeout(esperaVolumen);
+    esperaVolumen = setTimeout(() => {
+      if (ajustando) soltarVolumen();
+      else verVolumen = false;
+    }, 300);
   }
 
   async function leerMonitor() {
@@ -65,7 +100,7 @@
   async function cerrar() {
     // Solo si de verdad saliste: WebView2 a veces avisa "salió" con el cursor encima (al darle el primer clic, por ejemplo)
     // Si sigue encima se vuelve a revisar: al salir después ya no llegaría otro aviso
-    if (await invoke("burbuja", { accion: "dentro" }).catch(() => false)) {
+    if (ajustando || await invoke("burbuja", { accion: "dentro" }).catch(() => false)) {
       clearTimeout(espera);
       espera = setTimeout(cerrar, 500);
       return;
@@ -92,7 +127,7 @@
   // Arrastrar desde la portada o el fondo mueve la ventana; un clic sin moverse abre la app
   let inicio = null;
   function bajar(e) {
-    if (e.button !== 0 || e.target.closest("button")) return;
+    if (e.button !== 0 || e.target.closest("button, input")) return;
     inicio = { x: e.screenX, y: e.screenY };
   }
   function mover(e) {
@@ -134,11 +169,14 @@
       clearTimeout(movida);
       movida = setTimeout(guardarPosicion, 300);
     });
-    const quitar = listen("burbuja-estado", ({ payload }) => (estado = payload));
+    const quitar = listen("burbuja-estado", ({ payload }) => {
+      estado = ajustando ? { ...payload, volumen: estado.volumen, silencio: estado.silencio } : payload;
+    });
     // Al esconderse (volviste a la app) se cierra en círculo de una vez
     listen("burbuja-oculta", () => {
       clearTimeout(espera);
       abierta = false;
+      verVolumen = false;
       if (grande) {
         grande = false;
         marco(origen.x, TAM);
@@ -166,16 +204,38 @@
       <span class="pausada" class:visible={estado.hay && !estado.sonando && !abierta}><Icono nombre="pausa" relleno tam={18} /></span>
     </div>
     <div class="resto" aria-hidden={!abierta}>
-      <div class="textos">
-        {#if estado.hay}
-          <b class="cortar">{estado.titulo}</b>
-          <small class="cortar">{estado.artista}</small>
-        {:else}
-          <b class="cortar">Misiccord</b>
-          <small class="cortar">{t("No hay nada sonando")}</small>
-        {/if}
+      <div class="medio" class:con-volumen={verVolumen}>
+        <div class="textos">
+          {#if estado.hay}
+            <b class="cortar">{estado.titulo}</b>
+            <small class="cortar">{estado.artista}</small>
+          {:else}
+            <b class="cortar">Misiccord</b>
+            <small class="cortar">{t("No hay nada sonando")}</small>
+          {/if}
+        </div>
+        <!-- svelte-ignore a11y_no_static_element_interactions -->
+        <div class="ajuste" onmouseenter={mostrarVolumen} onmouseleave={soltarVolumen} onwheel={rueda}>
+          <div class="barra">
+            <input
+              type="range" min="0" max={VOLUMEN_MAX} step="0.01" value={volumen} aria-label={t("Volumen")}
+              aria-valuetext="{Math.round(volumen * 100)}%"
+              style:--avance="{(volumen / VOLUMEN_MAX) * 100}%"
+              class:refuerzo={volumen > 1}
+              oninput={(e) => ajustar(+e.target.value)}
+            />
+            <span class="marca" aria-hidden="true"></span>
+          </div>
+          <span class="pct" class:alto={volumen > 1}>{Math.round(volumen * 100)}%</span>
+        </div>
       </div>
       <div class="controles">
+        <button
+          onclick={() => mandar("silencio")} onmouseenter={mostrarVolumen} onmouseleave={soltarVolumen} onwheel={rueda}
+          aria-label={estado.silencio ? t("Quitar silencio") : t("Silenciar")}
+        >
+          <Icono nombre={volumen === 0 ? "silencio" : "volumen"} tam={18} />
+        </button>
         <button onclick={() => mandar("anterior")} disabled={!estado.hay} aria-label={t("Anterior")}><Icono nombre="anterior" relleno tam={18} /></button>
         <button class="play" onclick={() => mandar("alternar")} disabled={!estado.hay} aria-label={estado.sonando ? t("Pausar") : t("Reproducir")}>
           <Icono nombre={estado.sonando ? "pausa" : "play"} relleno tam={20} />
@@ -200,7 +260,7 @@
   }
   /* Hacia la izquierda: pegada a la derecha de la ventana, con el círculo a la derecha */
   .izquierda .burbuja { left: auto; right: 0; flex-direction: row-reverse; }
-  .burbuja.abierta { width: 336px; }
+  .burbuja.abierta { width: 372px; }
   .portada { position: relative; width: 62px; height: 62px; flex-shrink: 0; border-radius: 50%; cursor: pointer; }
   .portada img, .logo { position: absolute; inset: 5px; width: 52px; height: 52px; border-radius: 50%; object-fit: cover; }
   .logo { display: grid; place-items: center; background: linear-gradient(135deg, #22d3ee, #7c3aed); }
@@ -215,14 +275,37 @@
   .pausada.visible { opacity: 1; }
   /* Lo de la píldora siempre está (con su ancho fijo) y solo se desvanece: así no se reacomoda mientras crece */
   .resto {
-    flex: 0 0 auto; width: 262px; display: flex; align-items: center; gap: 4px; padding: 0 8px 0 10px; box-sizing: border-box;
+    flex: 0 0 auto; width: 298px; display: flex; align-items: center; gap: 4px; padding: 0 8px 0 10px; box-sizing: border-box;
     opacity: 0; transition: opacity 120ms;
   }
   .izquierda .resto { padding: 0 6px 0 12px; }
   .abierta .resto { opacity: 1; transition: opacity 180ms 60ms; }
-  .textos { flex: 1; min-width: 0; display: flex; flex-direction: column; line-height: 1.25; }
+  /* El título y la barra de volumen ocupan el mismo lugar: se cambia uno por otro sin que se mueva lo demás */
+  .medio { flex: 1; min-width: 0; display: grid; align-items: center; }
+  .medio > * { grid-area: 1 / 1; min-width: 0; transition: opacity 120ms, visibility 120ms; }
+  .textos { display: flex; flex-direction: column; line-height: 1.25; }
   .textos b { font-size: 13.5px; }
   .textos small { font-size: 12px; color: rgba(255, 255, 255, 0.6); }
+  .ajuste { display: flex; align-items: center; gap: 6px; opacity: 0; visibility: hidden; }
+  .con-volumen .textos { opacity: 0; }
+  .con-volumen .ajuste { opacity: 1; visibility: visible; }
+  .barra { flex: 1; min-width: 0; position: relative; display: flex; }
+  /* Como en Volumen.svelte: el input encima de la marca de 100 % y lo de arriba de ahí en ámbar */
+  .barra input { position: relative; z-index: 1; flex: 1; width: 100%; height: 24px; -webkit-appearance: none; appearance: none; background: transparent; margin: 0; cursor: pointer; }
+  .barra input::-webkit-slider-runnable-track {
+    height: 4px; border-radius: 2px;
+    background: linear-gradient(to right, #22d3ee var(--avance), rgba(255, 255, 255, 0.2) var(--avance));
+  }
+  .barra input.refuerzo::-webkit-slider-runnable-track {
+    background: linear-gradient(to right, #22d3ee 50%, #fbbf24 50%, #fbbf24 var(--avance), rgba(255, 255, 255, 0.2) var(--avance));
+  }
+  .barra input::-webkit-slider-thumb { -webkit-appearance: none; width: 12px; height: 12px; border-radius: 50%; background: #fff; margin-top: -4px; }
+  .marca {
+    position: absolute; left: 50%; top: 50%; width: 2px; height: 8px; margin: -4px 0 0 -1px; border-radius: 1px;
+    background: #fff; opacity: 0.45; pointer-events: none;
+  }
+  .pct { flex-shrink: 0; width: 34px; text-align: right; font-size: 12px; font-variant-numeric: tabular-nums; color: rgba(255, 255, 255, 0.75); }
+  .pct.alto { color: #fbbf24; }
   .controles { display: flex; align-items: center; gap: 1px; flex-shrink: 0; }
   .controles button {
     width: 32px; height: 32px; border-radius: 50%; display: grid; place-items: center; color: #fff; cursor: pointer;
