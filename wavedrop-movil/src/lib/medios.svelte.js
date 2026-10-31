@@ -36,6 +36,7 @@ function ahora() {
 
 let ultimoEnviado = "";
 function enviar() {
+  if (!rep.sesionLista) return; // al arrancar "no hay canción" borraría la que el widget recuerda
   const e = ahora();
   // La posición no cuenta para decidir si cambió: el sistema la calcula solo mientras suena
   const clave = JSON.stringify({ ...e, posicion: Math.round(e.posicion / 10) });
@@ -83,6 +84,12 @@ function accion(nombre, posicion) {
 }
 
 alEvento("medios", (d) => accion(d.accion, d.posicion));
+
+/** Arranque: si la app se abrió con el Play del widget, sigue sonando lo que quedó (ReanudarWidget.kt). */
+export function revisarWidget() {
+  if (esAndroid) invoke("sesion", { datos: { accion: "widget" } }).then((s) => s.play && accion("play")).catch(() => {});
+}
+
 if (web) {
   for (const [evento, nombre] of [["play", "play"], ["pause", "pausa"], ["nexttrack", "siguiente"], ["previoustrack", "anterior"]]) {
     try { web.setActionHandler(evento, () => accion(nombre)); } catch {}
@@ -93,7 +100,7 @@ if (web) {
 $effect.root(() => {
   $effect(() => {
     // Lo que importa: canción, play/pausa, duración, saltos y el estado del jam (la posición se lee sin seguirla)
-    rep.actual; rep.sonando; rep.cargando; rep.dur; rep.salto;
+    rep.actual; rep.sonando; rep.cargando; rep.dur; rep.salto; rep.sesionLista;
     jam.sala?.version; jam.sala?.indice; jam.sala?.sonando;
     untrack(enviar);
   });

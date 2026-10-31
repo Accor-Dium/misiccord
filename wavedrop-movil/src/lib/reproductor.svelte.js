@@ -55,6 +55,7 @@ export const rep = $state({
   eq: { activo: false, bandas: [0, 0, 0, 0, 0], mono: false }, // ecualizador (se carga de los ajustes)
   videoEstado: "", // "" | "cargando" | "listo" | "error"
   salto: 0, // sube cada vez que se adelanta o regresa (para avisar al reloj y a la notificación)
+  sesionLista: false, // ya se restauró lo que sonaba: antes de esto "no hay canción" no significa nada
 });
 
 const audios = [new Audio(), new Audio()];
@@ -62,6 +63,8 @@ let actual = 0;
 let fundido = null; // { intervalo }
 let avanceProgramado = false;
 let contada = false;
+let retomar = null; // segundo en el que sigue la canción restaurada, hasta que le den play
+let saltos = 0; // cuántas canciones que ya no se pueden oír se brincan al retomar
 
 const el = () => audios[actual];
 
@@ -79,7 +82,8 @@ audios.forEach((a, i) => {
     if (i === actual && !avanceProgramado) siguienteAutomatico();
   });
   a.addEventListener("play", () => { if (i === actual) { rep.sonando = true; sincronizarVideo(a); } });
-  a.addEventListener("pause", () => { if (i === actual) { rep.sonando = false; sincronizarVideo(a); } });
+  a.addEventListener("playing", () => { if (i === actual) saltos = 0; });
+  a.addEventListener("pause", () => { if (i === actual) { rep.sonando = false; sincronizarVideo(a); guardarPosicion(); } });
   a.addEventListener("seeked", () => { if (i === actual) { rep.salto++; sincronizarVideo(a); } });
   a.addEventListener("error", () => {
     if (i !== actual || !a.src) return;
@@ -97,10 +101,12 @@ audios.forEach((a, i) => {
           a.currentTime = donde;
           a.play().catch(() => {});
         })
-        .catch(() => aviso(t("No se pudo reproducir esta canción"), "error"))
+        .catch(() => saltarAlFallar() || aviso(t("No se pudo reproducir esta canción"), "error"))
         .finally(() => (rep.cargando = false));
       return;
     }
+    if (saltarAlFallar()) return;
+    rep.sonando = false; // el evento "play" llegó antes del error y nadie más lo regresa
     aviso(t("No se pudo reproducir esta canción"), "error");
   });
 });
@@ -341,14 +347,14 @@ function cancelarFundido() {
 }
 
 /** Cambia al audio nuevo; si el viejo está sonando, los cruza durante `segundos`. */
-function cruzarA(url, segundos) {
+function cruzarA(url, segundos, desde = 0) {
   cancelarFundido();
   const viejo = el();
   const nuevo = audios[1 - actual];
   nuevo.src = url;
-  nuevo.currentTime = 0;
+  nuevo.currentTime = desde;
   actual = 1 - actual;
-  rep.pos = 0;
+  rep.pos = desde;
   rep.dur = 0;
   if (viejo.paused || segundos <= 0) {
     viejo.pause();
@@ -377,20 +383,21 @@ function cruzarA(url, segundos) {
   };
 }
 
-async function cargar(i, manual) {
+async function cargar(i, manual, desde = 0) {
   if (i < 0 || i >= rep.cola.length) return;
   const c = rep.cola[i];
+  retomar = null;
   rep.indice = i;
   rep.actual = c;
   rep.cargando = true;
   avanceProgramado = false;
-  contada = false;
+  contada = desde >= 30; // retomada ya pasados los 30 s: ya se contó cuando sonaba
   let fuente;
   try {
     fuente = await fuenteDe(c);
   } catch (e) {
     rep.cargando = false;
-    aviso(t("No se pudo cargar “{titulo}”", { titulo: c.titulo }), "error");
+    if (rep.indice === i) saltarAlFallar() || aviso(t("No se pudo cargar “{titulo}”", { titulo: c.titulo }), "error");
     return;
   }
   if (rep.indice !== i) return; // mientras cargaba se eligió otra
@@ -398,9 +405,18 @@ async function cargar(i, manual) {
   // El navegador deja arrancar Web Audio solo después de que tocas algo: aquí ya hubo un toque
   if (eq?.ctx.state === "suspended") eq.ctx.resume().catch(() => {});
   // Fundido completo cuando termina sola; uno cortito si la cambias tú
-  cruzarA(fuente, manual ? Math.min(0.6, rep.fundido) : rep.fundido);
+  cruzarA(fuente, manual ? Math.min(0.6, rep.fundido) : rep.fundido, desde);
   prepararVideo(c);
   precargarSiguiente();
+}
+
+/** La canción que se quería retomar ya no se puede oír (se borró el archivo, no hay internet): sigue la que venga. */
+function saltarAlFallar() {
+  const j = indiceSiguiente();
+  if (saltos <= 0 || j < 0) return false;
+  saltos--;
+  cargar(j, true);
+  return true;
 }
 
 // La cola siempre es el orden real en que van a sonar: con aleatorio se baraja de verdad (así "A continuación" dice
@@ -523,6 +539,7 @@ export function agregarACola(c, aContinuacion = false) {
 export function moverEnCola(de, a) {
   rep.cola.splice(a, 0, rep.cola.splice(de, 1)[0]);
   precargarSiguiente();
+  guardarColaPronto(); // no cambia ni el largo ni el índice: el $effect de la sesión no lo nota
 }
 
 /** Quitar una canción de la cola (no la que suena). */
@@ -543,7 +560,10 @@ export function reproducirAleatorio(lista, origen = "") {
 
 export function alternar() {
   if (!rep.actual) return;
-  if (el().paused) el().play().catch(() => {});
+  if (retomar !== null) {
+    saltos = rep.cola.length;
+    cargar(rep.indice, true, retomar);
+  } else if (el().paused) el().play().catch(() => {});
   else el().pause();
 }
 
@@ -553,11 +573,15 @@ export function siguiente() {
 }
 
 export function anterior() {
-  if (rep.pos > 3 || rep.indice <= 0) el().currentTime = 0;
+  if (rep.pos > 3 || rep.indice <= 0) irA(0);
   else cargar(rep.indice - 1, true);
 }
 
 export function irA(segundos) {
+  if (retomar !== null) {
+    rep.pos = retomar = Math.max(0, Math.min(segundos, rep.dur || segundos)); // todavía no hay audio: al darle play sigue aquí
+    return;
+  }
   el().currentTime = Math.max(0, Math.min(segundos, rep.dur || segundos));
   // Al instante: si se espera al siguiente timeupdate la barra regresa un momento a donde iba y "parpadea"
   rep.pos = el().currentTime;
@@ -641,6 +665,60 @@ export function olvidarRutas(rutas) {
     prepararVideo(null);
   }
 }
+
+// ---------- Sesión ----------
+// Lo que sonaba sobrevive a cerrar la app (`guardar_sesion` en api.py). Al abrir queda en pausa y en su lugar, sin cargar el
+// audio hasta que le den play: una canción en línea pediría internet con solo abrir la app.
+
+const lugarEnLaSesion = () => ({ indice: rep.indice, posicion: retomar ?? rep.pos, duracion: rep.dur || rep.actual?.duracion || 0 });
+
+function guardarPosicion() {
+  if (rep.sesionLista && rep.actual) py("guardar_sesion", lugarEnLaSesion()).catch(() => {});
+}
+
+function guardarCola() {
+  const lugares = new Map(rep.cola.map((c, i) => [c, i]));
+  py("guardar_sesion", {
+    ...lugarEnLaSesion(),
+    sesion: {
+      // fuente_previa es una dirección del flujo local: al reabrir ya no sirve
+      cola: $state.snapshot(rep.cola).map(({ fuente_previa, respaldo, ...c }) => c),
+      origen: rep.origen, aleatorio: rep.aleatorio, repetir: rep.repetir,
+      orden: original?.map((c) => lugares.get(c)).filter((i) => i != null) ?? null, // el orden de antes de barajar
+    },
+  }).catch(() => {});
+}
+
+let esperaCola;
+function guardarColaPronto() {
+  clearTimeout(esperaCola);
+  esperaCola = setTimeout(guardarCola, 1000); // varios cambios seguidos (fundido, arrastrar) cuentan como uno
+}
+
+export function restaurarSesion(s) {
+  if (s?.cola?.length) {
+    rep.cola = s.cola;
+    rep.indice = Math.max(0, Math.min(s.indice ?? 0, s.cola.length - 1));
+    rep.actual = rep.cola[rep.indice];
+    rep.origen = s.origen ?? "";
+    rep.aleatorio = !!s.aleatorio;
+    rep.repetir = s.repetir ?? 0;
+    original = s.orden?.map((i) => rep.cola[i]).filter(Boolean) ?? null;
+    rep.dur = s.duracion ?? 0;
+    rep.pos = retomar = s.posicion < rep.dur - 3 ? s.posicion : 0; // si ya iba terminando, desde el principio
+  }
+  rep.sesionLista = true;
+}
+
+$effect.root(() => {
+  $effect(() => {
+    // Leer toda la cola aquí sería seguir miles de canciones: moverEnCola, lo único que este $effect no nota, avisa solo
+    rep.cola.length; rep.indice; rep.origen; rep.aleatorio; rep.repetir;
+    if (rep.sesionLista) guardarColaPronto();
+  });
+});
+setInterval(() => rep.sonando && guardarPosicion(), 10000);
+document.addEventListener("visibilitychange", () => document.hidden && guardarPosicion());
 
 /** Se editaron las etiquetas o la carátula de una canción: lo que está en la cola se ve con los datos nuevos. */
 export function actualizarCancion(nueva) {

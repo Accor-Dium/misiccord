@@ -201,7 +201,8 @@ class PythonPlugin(private val activity: Activity) : Plugin(activity) {
      */
     /**
      * Sesión conservada (ver MainActivity): { reanudada } dice si la app volvió a una WebView que siguió sonando tras
-     * quitarla de recientes; accion "reiniciar" la arranca de cero (lo que pide la Activity original, como la cámara).
+     * quitarla de recientes; accion "reiniciar" la arranca de cero (lo que pide la Activity original, como la cámara);
+     * accion "widget" responde { play } si la app se abrió con el Play del widget (ReanudarWidget), una sola vez.
      */
     @Command
     fun sesion(invoke: Invoke) {
@@ -209,6 +210,11 @@ class PythonPlugin(private val activity: Activity) : Plugin(activity) {
         if (args.accion == "reiniciar") {
             invoke.resolve(JSObject())
             Handler(Looper.getMainLooper()).postDelayed({ MainActivity.reiniciar(pantalla) }, 150)
+            return
+        }
+        if (args.accion == "widget") {
+            invoke.resolve(JSObject().put("play", Medios.playAlAbrir))
+            Medios.playAlAbrir = false
             return
         }
         invoke.resolve(JSObject().put("reanudada", MainActivity.reanudada))

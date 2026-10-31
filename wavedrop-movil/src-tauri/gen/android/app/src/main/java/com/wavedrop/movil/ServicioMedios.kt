@@ -41,6 +41,7 @@ data class EstadoMedios(
 /** Une el servicio con la interfaz: los botones (notificación, reloj, audífonos) llegan como evento "medios". */
 object Medios {
     var eventos: LinkedBlockingQueue<String>? = null
+    var playAlAbrir = false // el Play del widget abrió la app: la interfaz lo pregunta al arrancar
 
     fun avisar(accion: String, posicion: Long? = null) {
         val evento = JSONObject().put("tipo", "medios").put("accion", accion)
@@ -85,7 +86,8 @@ class ServicioMedios : Service() {
             val intento = Intent(contexto, ServicioMedios::class.java)
             if (estado == null) {
                 contexto.stopService(intento)
-                avisarWidget(contexto, null)
+                claveWidget = null
+                WidgetMisiccord.olvidar(contexto)
                 return
             }
             // Si ya corre se actualiza directo: Android 12+ no deja ARRANCAR un servicio así desde segundo plano
@@ -138,8 +140,8 @@ class ServicioMedios : Service() {
         }
         val estado = ultimo
         if (estado == null) {
-            // Un botón del widget después de que Android cerró la app: se regresa a "Toca para abrir"
-            avisarWidget(this, null)
+            // Un botón del widget después de que Android cerró la app: se dibuja como app cerrada
+            WidgetMisiccord.actualizar(this, null, null)
             stopSelf()
             return START_NOT_STICKY
         }

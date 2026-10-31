@@ -8,9 +8,9 @@
   import { aplicarAjustesLetra, aplicarCaratulas, nav } from "./lib/estado.svelte.js";
   import { idioma, t } from "./lib/idioma.svelte.js";
   import { jam } from "./lib/jam.svelte.js";
-  import "./lib/medios.svelte.js"; // notificación, pantalla bloqueada, relojes y teclas multimedia
+  import { revisarWidget } from "./lib/medios.svelte.js"; // notificación, pantalla bloqueada, relojes y teclas multimedia
   import "./lib/carrusel.js"; // carruseles con mouse: arrastrar y flechas
-  import { aplicarAjustesVideo, aplicarEcualizador, rep } from "./lib/reproductor.svelte.js";
+  import { aplicarAjustesVideo, aplicarEcualizador, rep, restaurarSesion } from "./lib/reproductor.svelte.js";
   import { aplicarAjusteBurbuja } from "./lib/escritorio.svelte.js";
   import Avisos from "./componentes/Avisos.svelte";
   import Hoja from "./componentes/Hoja.svelte";
@@ -53,6 +53,8 @@
       aplicarCaratulas(r.ajustes.caratulas);
       aplicarEcualizador(r.ajustes.eq_activo, r.ajustes.eq_bandas, r.ajustes.eq_mono);
       aplicarAjusteBurbuja(r.ajustes.burbuja);
+      restaurarSesion(await py("sesion_guardada").catch(() => null));
+      revisarWidget();
       listo = true;
       revisarAlIniciar();
       revisarResumen();

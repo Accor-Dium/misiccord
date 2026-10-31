@@ -21,7 +21,7 @@ Resumen para que no tengas que leer todo el código. Actualiza esta sección cua
   historial de reproducción, vista de lista o cuadrícula (cada pestaña recuerda la suya), índice A–Z con burbuja de la letra. Eliminar canciones: una, varias (modo selección en Biblioteca), un álbum o un artista completo.
 - **Cel en horizontal**: pestañas en un riel a la izquierda, reproductor grande en dos columnas (carátula, letra, cola o ecualizador a la izquierda y controles a la derecha), marcación rápida 6×2 y cuadrículas más anchas.
 - **Reproductor**: fundido entre canciones (0–12 s, en Ajustes), aleatorio/repetir, volumen de 0 a 200 % con curva perceptual, reproductor grande con letra sincronizada (LRCLIB)
-  y cola, mini reproductor. En el cel: notificación de música, **widget de la pantalla de inicio** (abre la app; con música, canción y controles), pantalla bloqueada, relojes (Wear OS/Galaxy Watch) y audífonos Bluetooth.
+  y cola, mini reproductor. **Al abrir la app sigue lo que sonaba**: cola, canción y posición, en pausa. En el cel: notificación de música, **widget de la pantalla de inicio** (canción y controles; con la app cerrada recuerda la última y su Play abre la app y sigue sonando), pantalla bloqueada, relojes (Wear OS/Galaxy Watch) y audífonos Bluetooth.
 - **En línea (YouTube Music)**: buscador en vivo en **Inicio** (resultados mientras escribes), álbumes y artistas, recomendaciones "Para ti"
   (radio a partir de lo que más escuchas/descargas, caché de 6 h). Lo que no tienes suena **al instante por streaming progresivo** y se guarda en caché si se escucha completo.
 - **Inicio estilo YouTube Music** (sin cuenta): chips de estados de ánimo (sus playlists), "marcación rápida" 3×3 con tus recomendaciones,
@@ -77,13 +77,13 @@ medianos, el **menor**; detalles pequeños, el **parche**. Hasta 1.0.10 todo sub
 - **En dispositivos reales** (lo probó quien administra el proyecto): app de Windows, Android en varios teléfonos (Samsung S25 Ultra, Pixel 7 Pro…),
   jams en red local, escáner QR, jam por internet abierto desde el cel.
 - **Solo en el emulador o con scripts**: controles de reloj (con `cmd media_session dispatch`), links en Android, eliminar canciones,
-  tiempos de streaming, streaming progresivo (en Chromium con la red frenada).
+  tiempos de streaming, streaming progresivo (en Chromium con la red frenada), retomar la sesión y el Play del widget con la app cerrada.
 - **Sin probar todavía**: links y "una sola ventana" en Windows, panel de medios de Windows, un reloj real, un jam con YouTube Music entre teléfonos reales, videos musicales y carpetas de la biblioteca en el cel, lo de 1.0.8 (segundo plano, ecualizador, editar etiquetas) en teléfonos reales, y de 1.0.9: exportar a una USB real y todo en la app de Windows (se probó en navegador con el núcleo de Python y en el emulador: menú, compartir de Android, jalar para actualizar, idioma); de 1.0.10, el volumen arriba de 100 % con música real; de 2.0.1, el widget y quitar de recientes en teléfonos reales (en el emulador sí: sigue sonando, controles, reabrir, atrás, reiniciar para el QR) (la curva y el limitador se midieron en Chromium con señales de prueba); de 3.1.0, la burbuja con dos monitores o con escalado distinto de 100 % (se probó en un monitor de 3440×1440); de 3.2.0, el horizontal en teléfonos reales con muesca o bordes curvos (se probó en el navegador y en el emulador); de 3.3.0, la carátula de vinilo y CD en el cel y el volumen de la burbuja con música real (se vio en el navegador).
 
 ### Dónde guarda las cosas
 | | Windows | Android |
 |---|---|---|
-| Datos (`biblioteca.db`, `ajustes.json`, `recomendaciones.json`) | `%LOCALAPPDATA%\WaveDrop` | `files/wavedrop` de la app |
+| Datos (`biblioteca.db`, `ajustes.json`, `recomendaciones.json`, `sesion.json`, `sesion_posicion.json`) | `%LOCALAPPDATA%\WaveDrop` | `files/wavedrop` de la app |
 | Música descargada (por defecto) | `~/Music/Misiccord` | `Android/data/com.wavedrop.movil/files/Music` (o `Music/Misiccord` si se elige) |
 | Caché (previas, portadas, yt-dlp, APK de actualización) | `%LOCALAPPDATA%\WaveDrop\cache` | caché de la app |
 | `cloudflared` | se baja a `%LOCALAPPDATA%\WaveDrop\bin` la primera vez | dentro del APK (`libcloudflared.so`) |
@@ -177,8 +177,8 @@ Todo el trabajo real vive en Python: python/wavedrop/  (el mismo código en las 
 - `gen/android/` **está editado a mano y versionado** (no es desechable):
   - `app/src/main/java/com/wavedrop/movil/PythonPlugin.kt` (llamar Python, eventos, permisos, instalar APK, medios) y `ServicioMedios.kt` (servicio en primer plano + MediaSession).
   - `WidgetMisiccord.kt` + `res/layout/widget_misiccord.xml` + `res/xml/widget_misiccord.xml`: widget 4×1. `ServicioMedios` lo actualiza solo cuando cambia algo que se ve
-    (no con cada avance); sus botones van al servicio igual que los de la notificación. Sin música, todo el widget solo abre la app (Python vive dentro de ella).
-    Textos en `res/values/strings.xml` y `res/values-en/`.
+    (no con cada avance); sus botones van al servicio igual que los de la notificación, menos Play, que va a `ReanudarWidget.kt` (Activity invisible). Recuerda la última canción (preferencias `widget` y `widget_portada.jpg`);
+    con la app cerrada anterior y siguiente solo la abren (Python vive dentro de ella). Textos en `res/values/strings.xml` y `res/values-en/`.
   - `app/src/main/AndroidManifest.xml` (permisos de archivos, cámara, servicio de medios, FileProvider, intent-filter `misiccord`).
   - `app/build.gradle.kts` (Chaquopy, Python 3.14, paquetes pip, ABIs, firma, `androidx.media`).
   - `app/misiccord.pro` (reglas R8: **sin ellas el lector QR truena**, ver abajo).
@@ -211,7 +211,7 @@ Todo el trabajo real vive en Python: python/wavedrop/  (el mismo código en las 
 - **Reglas R8 de `misiccord.pro`** (ML Kit, CameraX, Firebase components): sin ellas, en release el escáner QR cierra la app con el primer cuadro.
 - **`use:aBody`** en ventanas/barras flotantes: `<main>` tiene `view-transition-name` (crea su propia capa) y nada adentro puede quedar encima de la barra.
 - **Plugins con `#[cfg(desktop)]` / `#[cfg(mobile)]`** en `lib.rs` (updater y single-instance solo escritorio; barcode solo móvil) y permisos en la capability de su plataforma.
-- **Borrar = de todos lados** (`api.eliminar_canciones`): archivo, biblioteca, playlists, historial, cola, jam, MediaStore y carpetas vacías. Si agregas otro lugar donde
+- **Borrar = de todos lados** (`api.eliminar_canciones`): archivo, biblioteca, playlists, historial, cola (y su `sesion.json`, por `olvidarRutas`), jam, MediaStore y carpetas vacías. Si agregas otro lugar donde
   viva una canción, agrégalo ahí también.
 - **Video (ajustes `video_ver` y `video_descargar`, ambos apagados por defecto)**: el `<video>` va mudo y sigue al `<audio>` (`reproductor.svelte.js`). El clip se busca con
   `explorar.buscar_video` porque el id de la canción en YT Music suele ser audio con la portada. El video descargado es `<canción>.mp4` junto al audio
@@ -242,6 +242,12 @@ Todo el trabajo real vive en Python: python/wavedrop/  (el mismo código en las 
 - **Carátulas como objeto** (ajuste `caratulas`, `ui.caratulas`, `Portada.svelte`): estuche de CD o vinilo solo con CSS, en lo grande (`objeto`: `Tarjeta`, álbum, reproductor, jam); en listas se quedan normales porque a 46 px es ruido.
   El cuadro sigue siendo cuadrado aunque el estuche no lo sea: las rejillas cuentan con eso. Con `giro` (true/false) el vinilo es el disco entero y la carátula su etiqueta; el brillo no gira.
   En la lista de álbumes de Biblioteca cada fila es el lomo (`Costilla.svelte`): el color es una franja de la carátula. Cada estilo mide distinto, por eso su `tipo` de `ListaVirtual` también.
+- **Sesión de reproducción** (`guardar_sesion`, `restaurarSesion`): en archivos de Python y no en `localStorage`, que tarda segundos en llegar al disco y pausar y cerrar de inmediato la perdería.
+  La cola se escribe al cambiar y la posición aparte (al pausar, cada 10 s y al salir de la app). No guardes `fuente_previa`: es una dirección del flujo local que ya no sirve al reabrir.
+  Al abrir no se carga el audio hasta darle play (`retomar`): una canción en línea pediría internet con solo abrir la app. Si la canción ya no se puede oír se brinca a la siguiente, con tope de una vuelta a la cola (`saltos`).
+  `medios.svelte.js` no manda nada antes de `rep.sesionLista`: el "no hay canción" del arranque borraría la que recuerda el widget. La canción restaurada ya tiene notificación en pausa, por eso los audífonos también la retoman.
+- **Play del widget (`ReanudarWidget.kt`)**: es una Activity y no el servicio porque un servicio no puede abrir la app desde segundo plano, y el widget no se entera de que la app se cerró (su botón sigue igual).
+  Si `Medios.eventos` existe la app está viva y es un Play normal; si no, abre la app con `Medios.playAlAbrir` y la interfaz lo pregunta al arrancar (`revisarWidget`).
 - **Resumen** (`lib/resumen.js`, `Resumen.svelte`): el último día del mes, trimestre o año avisa una vez por periodo (`misiccord_resumen_visto`); lo más grande gana (31 de diciembre = año).
 - **Reproducir estando en un jam pregunta primero** (mandarla al jam o salir/cerrar el jam y escucharla aquí): todo pasa por `reproducir()`,
   y `jam.svelte.js` registra la pregunta con `preguntarAlReproducirEnJam` (el reproductor no importa al jam: el jam ya importa al reproductor).

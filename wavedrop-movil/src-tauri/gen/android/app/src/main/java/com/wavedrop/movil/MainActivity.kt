@@ -79,6 +79,7 @@ class MainActivity : TauriActivity() {
       (webView?.parent as? ViewGroup)?.removeView(webView)
     }
     if (actual === this) actual = null
+    if (isFinishing && !conservar) WidgetMisiccord.actualizar(this, null, null) // la app se va: el widget queda como app cerrada
     super.onDestroy()
     // Una Activity a la que se mudó la WebView no es la que Tauri conoce: si se cierra sin conservar, Tauri no se
     // entera y el proceso quedaría vivo sin pantalla. Se cierra como se cerraría la app normal.

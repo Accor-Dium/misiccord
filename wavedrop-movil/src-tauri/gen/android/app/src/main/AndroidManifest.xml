@@ -69,7 +69,14 @@
             android:name=".ServicioMedios"
             android:exported="false"
             android:foregroundServiceType="mediaPlayback" />
-        <!-- Widget de la pantalla de inicio (WidgetMisiccord.kt) -->
+        <!-- Widget de la pantalla de inicio (WidgetMisiccord.kt y su Play, ReanudarWidget.kt) -->
+        <activity
+            android:name=".ReanudarWidget"
+            android:exported="false"
+            android:excludeFromRecents="true"
+            android:noHistory="true"
+            android:taskAffinity=""
+            android:theme="@android:style/Theme.NoDisplay" />
         <receiver
             android:name=".WidgetMisiccord"
             android:label="@string/app_name"

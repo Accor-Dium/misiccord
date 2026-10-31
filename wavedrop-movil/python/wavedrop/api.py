@@ -1154,10 +1154,47 @@ def actualizacion_descargar(d: dict) -> dict:
     return {"ruta": str(destino), "mb": round(destino.stat().st_size / 1e6, 1)}
 
 
+# ---------- Sesión de reproducción ----------
+
+_sesion_candado = threading.Lock()
+
+
+def _escribir_sesion(nombre: str, datos: dict) -> None:
+    # Se escribe aparte y se cambia de un jalón: cerrar la app a media escritura no debe dejar un archivo roto
+    destino = plataforma.carpeta_datos() / nombre
+    temporal = destino.with_suffix(".tmp")
+    with _sesion_candado:
+        temporal.write_text(json.dumps(datos, ensure_ascii=False), encoding="utf-8")
+        temporal.replace(destino)
+
+
+def guardar_sesion(d: dict) -> dict:
+    """Lo que sonaba, para retomarlo al abrir la app. La cola va en su propio archivo porque la posición se guarda muy
+    seguido y reescribir miles de canciones cada vez sería un desperdicio. Va en archivos y no en localStorage: este
+    tarda segundos en llegar al disco y pausar y cerrar la app de inmediato perdería la posición."""
+    if "sesion" in d:
+        _escribir_sesion("sesion.json", d["sesion"])
+    _escribir_sesion("sesion_posicion.json", {k: d.get(k, 0) for k in ("indice", "posicion", "duracion")})
+    return {}
+
+
+def sesion_guardada(d: dict) -> dict:
+    carpeta = plataforma.carpeta_datos()
+    try:
+        sesion = json.loads((carpeta / "sesion.json").read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {}
+    try:
+        return sesion | json.loads((carpeta / "sesion_posicion.json").read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return sesion
+
+
 # ---------- Entrada ----------
 
 FUNCIONES = {
     "iniciar": iniciar, "ajustes": ajustes, "guardar_ajustes": guardar_ajustes,
+    "guardar_sesion": guardar_sesion, "sesion_guardada": sesion_guardada,
     "inicio": inicio, "recomendaciones": recomendaciones,
     "buscar": buscar, "album": album, "artista": artista,
     "biblioteca": biblioteca_, "album_local": album_local, "artista_local": artista_local, "album_local_buscar": album_local_buscar,
