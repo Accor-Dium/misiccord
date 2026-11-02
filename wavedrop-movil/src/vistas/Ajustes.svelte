@@ -7,6 +7,7 @@
   import { aplicarAjustesVideo, rep } from "../lib/reproductor.svelte.js";
   import { aplicarAjusteBurbuja } from "../lib/escritorio.svelte.js";
   import Icono from "../componentes/Icono.svelte";
+  import MisDispositivos from "../componentes/MisDispositivos.svelte";
   import Portada from "../componentes/Portada.svelte";
   import { idioma, idiomaElegido, IDIOMAS as IDIOMAS_APP, ponerIdioma, t } from "../lib/idioma.svelte.js";
 
@@ -234,6 +235,8 @@
         </div>
       </div>
     </section>
+
+    <MisDispositivos android={info.android} />
 
     {#if info.android}
       <section>

@@ -13,6 +13,7 @@
   import { alEvento } from "../lib/api.js";
   import { aBody } from "../lib/aBody.js";
   import { copiar, leerInvitacion } from "../lib/enlaces.svelte.js";
+  import { leerQR } from "../lib/qr.js";
   import Icono from "../componentes/Icono.svelte";
   import Portada from "../componentes/Portada.svelte";
   import Volumen from "../componentes/Volumen.svelte";
@@ -35,39 +36,8 @@
 
   async function escanear() {
     if (!nombre.trim()) return aviso(t("Escribe tu nombre primero"));
-    // Si la app volvió a una sesión que siguió sonando sin ella, la cámara ya no tiene su pantalla: hay que reiniciar
-    const { invoke } = await import("@tauri-apps/api/core");
-    const sesion = await invoke("sesion", { datos: {} }).catch(() => ({}));
-    if (sesion.reanudada) {
-      return mostrarHoja({
-        titulo: t("Hay que reiniciar Misiccord"),
-        subtitulo: t("Para usar la cámara (la música se detiene)"),
-        opciones: [{ texto: t("Reiniciar ahora"), icono: "actualizar", accion: () => invoke("sesion", { datos: { accion: "reiniciar" } }) }],
-      });
-    }
-    try {
-      // Cámara a pantalla completa con el escáner nativo (solo en el cel)
-      const { scan, cancel, checkPermissions, requestPermissions, Format } = await import("@tauri-apps/plugin-barcode-scanner");
-      let permiso = await checkPermissions();
-      if (permiso !== "granted") permiso = await requestPermissions();
-      if (permiso !== "granted") return aviso(t("Sin permiso de cámara no puedo leer el QR"), "error");
-      // "Atrás" de Android mientras la cámara está abierta: cancelar el escaneo en vez de salir de la app
-      ui.alAtras = () => cancel().catch(() => {});
-      history.pushState({ wavedrop: "camara" }, "");
-      let r;
-      try {
-        r = await scan({ windowed: false, formats: [Format.QRCode] });
-      } finally {
-        if (ui.alAtras) {
-          ui.alAtras = () => {}; // quitar la entrada del historial sin navegar
-          history.back();
-        }
-      }
-      unirseConLink(r?.content ?? "");
-    } catch (err) {
-      const texto = err?.message || String(err);
-      if (!/cancel/i.test(texto)) aviso(texto, "error");
-    }
+    const texto = await leerQR();
+    if (texto !== null) unirseConLink(texto);
   }
 
   function unirseConLink(texto) {

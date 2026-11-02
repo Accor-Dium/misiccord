@@ -230,6 +230,9 @@ def iniciar(d: dict) -> dict:
         if _estado["db"] is None:
             _estado["db"] = biblioteca.Biblioteca()
         _db().agregar_carpeta(plataforma.carpeta_musica())
+    from . import sincronizar
+    import sys
+    sincronizar.iniciar(sys.modules[__name__])
     threading.Thread(target=_escanear, daemon=True).start()
     return {"ajustes": _ajustes(), "android": plataforma.es_android(), "ffmpeg": plataforma.hay_ffmpeg(),
             "js": list(plataforma.js_runtimes().keys()), "total": _db().total()}
@@ -1298,6 +1301,72 @@ def jam_buscar(d: dict) -> dict:
     return {"jams": jam.buscar(float(d.get("segundos", 3)))}
 
 
+# ---------- Mis dispositivos (sincronizar, sincronizar.py) ----------
+
+def sinc_estado(d: dict) -> dict:
+    from . import sincronizar
+    return sincronizar.resumen()
+
+
+def sinc_vincular(d: dict) -> dict:
+    """Este dispositivo espera a que otro se vincule: código de 6 números y QR (lo escanea la app del otro o la cámara)."""
+    import urllib.parse
+    import qrcode
+    import qrcode.image.svg
+    from . import sincronizar
+    v = sincronizar.abrir_vinculacion()
+    texto = "misiccord://vincular?" + urllib.parse.urlencode({"ip": v["ips"][0], "puerto": v["puerto"], "codigo": v["codigo"],
+                                                              "h": v["huella"], "nombre": v["nombre"]})
+    imagen = qrcode.make(texto, image_factory=qrcode.image.svg.SvgPathImage, box_size=10, border=2)
+    return {**sincronizar.resumen(), "qr": imagen.to_string(encoding="unicode"), "texto": texto}
+
+
+def sinc_vincular_cerrar(d: dict) -> dict:
+    from . import sincronizar
+    sincronizar.cerrar_vinculacion()
+    return sincronizar.resumen()
+
+
+def sinc_buscar(d: dict) -> dict:
+    """Empieza a escuchar a los dispositivos cercanos que están esperando vincularse (llegan por el evento "sincronizacion")."""
+    from . import sincronizar
+    sincronizar.buscar_cercanos()
+    return sincronizar.resumen()
+
+
+def sinc_vincular_con(d: dict) -> dict:
+    from . import sincronizar
+    hecho = sincronizar.vincular_con(d["ip"], int(d["puerto"]), d["codigo"], d.get("h", ""))
+    return {**sincronizar.resumen(), "vinculado": hecho}
+
+
+def sinc_ahora(d: dict) -> dict:
+    """Sincronizar ya con uno (o con los que estén en línea)."""
+    from . import sincronizar
+    r = sincronizar.resumen()
+    ids = [d["id"]] if d.get("id") else [x["id"] for x in r["dispositivos"] if x["en_linea"]]
+    if not ids:
+        raise RuntimeError(_t("No veo ninguno de tus dispositivos en esta red"))
+    for i in ids:
+        sincronizar.sincronizar_con(i)
+    return sincronizar.resumen()
+
+
+def sinc_ajustar(d: dict) -> dict:
+    from . import sincronizar
+    if d.get("id"):
+        sincronizar.ajustar(d["id"], d)
+    if d.get("nombre_este"):
+        sincronizar.renombrar_este(d["nombre_este"])
+    return sincronizar.resumen()
+
+
+def sinc_desvincular(d: dict) -> dict:
+    from . import sincronizar
+    sincronizar.desvincular(d["id"])
+    return sincronizar.resumen()
+
+
 # ---------- Actualizaciones (Android) ----------
 
 def actualizacion_descargar(d: dict) -> dict:
@@ -1369,6 +1438,9 @@ def sesion_guardada(d: dict) -> dict:
 FUNCIONES = {
     "iniciar": iniciar, "ajustes": ajustes, "guardar_ajustes": guardar_ajustes,
     "guardar_sesion": guardar_sesion, "sesion_guardada": sesion_guardada,
+    "sinc_estado": sinc_estado, "sinc_vincular": sinc_vincular, "sinc_vincular_cerrar": sinc_vincular_cerrar,
+    "sinc_buscar": sinc_buscar, "sinc_vincular_con": sinc_vincular_con, "sinc_ahora": sinc_ahora,
+    "sinc_ajustar": sinc_ajustar, "sinc_desvincular": sinc_desvincular,
     "inicio": inicio, "recomendaciones": recomendaciones,
     "buscar": buscar, "album": album, "artista": artista,
     "biblioteca": biblioteca_, "album_local": album_local, "artista_local": artista_local, "album_local_buscar": album_local_buscar,

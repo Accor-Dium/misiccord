@@ -12,7 +12,7 @@ documentada abajo; si algo no está documentado, pregunta antes de "arreglarlo".
 
 ---
 
-## Estado del proyecto (al 30 de octubre de 2026 · versión publicada: **3.4.0**)
+## Estado del proyecto (al 30 de octubre de 2026 · versión publicada: **4.0.0**)
 
 Resumen para que no tengas que leer todo el código. Actualiza esta sección cuando publiques una versión.
 
@@ -41,6 +41,8 @@ Resumen para que no tengas que leer todo el código. Actualiza esta sección cua
     invitados mandan canciones de su teléfono o de YouTube Music (suenan al momento, sin esperar descarga), agregar desde cualquier lista.
   - Unirse: QR (escáner de la app o cámara normal), **link** que abre la app y entra solo, jams cercanos (UDP en la red) o IP + código.
   - **Por internet**: el anfitrión (PC o cel) toca "Abrir" en Invitar; túnel de Cloudflare, sin cuenta ni configurar el módem.
+- **Mis dispositivos** (Ajustes, sin cuentas): se vincula el cel con la PC una vez (código de 6 números o QR) y cada vez que están en la misma red Wi-Fi
+  se sincronizan solos: Me gusta, playlists, categorías, historial y las canciones que le falten a cada uno. Borrar una canción en uno no la borra en el otro. Por internet todavía no (fase 2).
 - **Videos musicales** (apagado por defecto, en Ajustes): ver el clip en el reproductor (sigue al audio, sin sonido propio) y descargarlo junto a la canción.
 - **Biblioteca por carpetas**: agregar o quitar carpetas de música y navegarlas en la pestaña Carpetas.
 - **Categorías de Biblioteca** (pestaña propia y filtros): décadas y categorías (Jazz, Pop, Rock, Soundtrack, Videojuegos, Anime) más las que crees. Se renombran, se les suman géneros y se les mueven canciones o álbumes. Fotos de artistas y playlists con nombre, carátula y orden editables.
@@ -74,13 +76,15 @@ medianos, el **menor**; detalles pequeños, el **parche**. Hasta 1.0.10 todo sub
 | 3.2.0 | Cel en horizontal: riel de pestañas a la izquierda, reproductor en dos columnas, marcación rápida 6×2, cuadrículas más anchas (con sus propias columnas). |
 | 3.3.0 | (Omar) Carátulas como estuche de CD o vinilo (Ajustes → Apariencia), con el disco girando en el reproductor y lomos en la lista de álbumes; volumen en la burbuja flotante. |
 | 3.4.0 | (Omar) Retomar lo que sonaba al abrir la app y desde el Play del widget; regresar a donde estabas; álbumes: qué te falta (con caché de 7 días) y avance de la discografía; Biblioteca con fotos de artistas, filtros por categoría, pestaña Carpetas y playlists editables (nombre, carátula, orden). |
+| 3.5.0 | (Omar) Categorías editables (crear, renombrar, ocultar, mover canciones), todas las canciones de un artista, Ver todos en el artista, bandas del ecualizador en una línea y tocar otra vez la pestaña regresa al principio. |
+| 4.0.0 | **Mis dispositivos**: vincular el cel con la PC sin cuentas (código o QR) y sincronizarse solos en la misma red Wi-Fi: Me gusta, playlists, categorías, historial y copiar las canciones que le falten a cada uno. |
 
 ### Qué está probado y dónde
 - **En dispositivos reales** (lo probó quien administra el proyecto): app de Windows, Android en varios teléfonos (Samsung S25 Ultra, Pixel 7 Pro…),
   jams en red local, escáner QR, jam por internet abierto desde el cel.
-- **Solo en el emulador o con scripts**: controles de reloj (con `cmd media_session dispatch`), links en Android, eliminar canciones,
+- **Solo en el emulador o con scripts**: Mis dispositivos (dos procesos en la misma PC y la interfaz en el navegador: vincular, código equivocado, playlists, Me gusta, categorías, historial, copiar canciones en los dos sentidos, borrar), controles de reloj (con `cmd media_session dispatch`), links en Android, eliminar canciones,
   tiempos de streaming, streaming progresivo (en Chromium con la red frenada), retomar la sesión y el Play del widget con la app cerrada.
-- **Sin probar todavía**: links y "una sola ventana" en Windows, panel de medios de Windows, un reloj real, un jam con YouTube Music entre teléfonos reales, videos musicales y carpetas de la biblioteca en el cel, lo de 1.0.8 (segundo plano, ecualizador, editar etiquetas) en teléfonos reales, y de 1.0.9: exportar a una USB real y todo en la app de Windows (se probó en navegador con el núcleo de Python y en el emulador: menú, compartir de Android, jalar para actualizar, idioma); de 1.0.10, el volumen arriba de 100 % con música real; de 2.0.1, el widget y quitar de recientes en teléfonos reales (en el emulador sí: sigue sonando, controles, reabrir, atrás, reiniciar para el QR) (la curva y el limitador se midieron en Chromium con señales de prueba); de 3.1.0, la burbuja con dos monitores o con escalado distinto de 100 % (se probó en un monitor de 3440×1440); de 3.2.0, el horizontal en teléfonos reales con muesca o bordes curvos (se probó en el navegador y en el emulador); de 3.3.0, la carátula de vinilo y CD en el cel y el volumen de la burbuja con música real (se vio en el navegador); de 3.4.0, retomar la sesión y el Play del widget con la app cerrada en teléfonos reales (se revisó el núcleo y la biblioteca en el navegador).
+- **Sin probar todavía**: links y "una sola ventana" en Windows, panel de medios de Windows, un reloj real, un jam con YouTube Music entre teléfonos reales, videos musicales y carpetas de la biblioteca en el cel, lo de 1.0.8 (segundo plano, ecualizador, editar etiquetas) en teléfonos reales, y de 1.0.9: exportar a una USB real y todo en la app de Windows (se probó en navegador con el núcleo de Python y en el emulador: menú, compartir de Android, jalar para actualizar, idioma); de 1.0.10, el volumen arriba de 100 % con música real; de 2.0.1, el widget y quitar de recientes en teléfonos reales (en el emulador sí: sigue sonando, controles, reabrir, atrás, reiniciar para el QR) (la curva y el limitador se midieron en Chromium con señales de prueba); de 3.1.0, la burbuja con dos monitores o con escalado distinto de 100 % (se probó en un monitor de 3440×1440); de 3.2.0, el horizontal en teléfonos reales con muesca o bordes curvos (se probó en el navegador y en el emulador); de 3.3.0, la carátula de vinilo y CD en el cel y el volumen de la burbuja con música real (se vio en el navegador); de 3.4.0, retomar la sesión y el Play del widget con la app cerrada en teléfonos reales (se revisó el núcleo y la biblioteca en el navegador); Mis dispositivos entre un cel real y la PC (que Android reciba el anuncio UDP con la pantalla encendida, el aviso del firewall de Windows, copiar muchas canciones y quedarse sin espacio).
 
 ### Dónde guarda las cosas
 | | Windows | Android |
@@ -143,6 +147,7 @@ Todo el trabajo real vive en Python: python/wavedrop/  (el mismo código en las 
 | `flujo.py` | **Streaming progresivo** de canciones que no tienes: servidor local `127.0.0.1:<puerto>/flujo/<id>?t=<token>` que pasa el audio de YouTube por pedazos (soporta Range) y lo guarda en caché si se escucha completo. Camino rápido con cliente `android_music` sin JS; precarga en segundo plano. `servir()` lo reutiliza el jam. |
 | `biblioteca.py` | SQLite: canciones, carpetas, playlists, historial (`eventos`). Álbumes por álbum+artista del álbum. `buscar_existente()` para no descargar dos veces. |
 | `jam.py` | Servidor HTTP del jam (solo librería estándar): sala, cola, votos, reacciones, sincronía por reloj, SSE `/eventos` (red local) y sondeo largo `/esperar` (internet), subir canciones de invitados, descubrimiento UDP. |
+| `sincronizar.py` | **Mis dispositivos**: vincular (Diffie-Hellman con el código), anunciarse/escuchar por UDP 47475, servidor HTTP 47500–47509 con peticiones y respuestas firmadas (HMAC), qué cambió (`refrescar`), fusionar (gana lo más reciente) y copiar canciones. |
 | `tunel.py` | Jam por internet: túnel rápido de Cloudflare (`cloudflared`). Windows lo baja la primera vez; Android lo trae en el APK. Job Object en Windows para que muera con el servicio. |
 | `letras.py` | LRCLIB (letra sincronizada) con `.lrc` junto al archivo. **Nunca** imprimas ni registres letras en logs/salidas. |
 | `musicbrainz.py` | Completa álbum/año/pista/portada al descargar. |
@@ -164,7 +169,8 @@ Todo el trabajo real vive en Python: python/wavedrop/  (el mismo código en las 
   `lib/eliminar.js` (borrar canciones con confirmación) · `lib/actualizaciones.svelte.js` · `lib/aBody.js` ·
   `lib/idioma.svelte.js` (`t()`, idioma del dispositivo o el elegido) + `lib/textos/en.js` (traducción al inglés) ·
   `lib/menuCancion.js` (el menú de una canción) · `lib/compartir.js` (compartir/exportar) · `lib/jalar.js` (jalar para actualizar) ·
-  `lib/escritorio.svelte.js` (lo que suena para la burbuja y la barra de tareas, y sus órdenes).
+  `lib/escritorio.svelte.js` (lo que suena para la burbuja y la barra de tareas, y sus órdenes) ·
+  `lib/sincronizacion.svelte.js` (estado de Mis dispositivos y el link `misiccord://vincular`) · `lib/qr.js` (leer un QR con la cámara: Jams y Mis dispositivos).
 - `vistas/`: `Inicio` (con el buscador en vivo `componentes/Buscador.svelte`), `Explorar`, `Biblioteca` (selección para compartir o borrar), `Album`
   (también playlists de YouTube Music), `Artista`, `Playlist`, `MeGusta`, `Estadisticas`, `Jams`, `Descargas`, `Ajustes`.
 - `componentes/`: `FilaCancion` (menú ⋯, agregar al jam, eliminar), `Hoja` (menú inferior / ventana en escritorio), `MiniReproductor` (también muestra el jam),
@@ -299,6 +305,18 @@ Todo el trabajo real vive en Python: python/wavedrop/  (el mismo código en las 
   `refuerzo` del grafo de Web Audio (el mismo del ecualizador, que se arma al subir de 100 %), seguido de un limitador (−1.5 dB) y un recorte suave tanh,
   sin sobremuestreo (con "2x"/"4x" el filtro rebota y pasa de 0 dB); los dos solo actúan con refuerzo. `wavedrop_volumen` antes guardaba la amplitud:
   `misiccord_volumen_escala = "2"` marca que ya se convirtió. El audio de los jams usa la misma curva, pero sin refuerzo (tope 100 %).
+- **Mis dispositivos (`sincronizar.py`, `componentes/MisDispositivos.svelte`)**:
+  - **Sin nada vinculado no escucha nada en la red**: el servidor y el anuncio UDP solo arrancan al vincular (o al abrir Vincular). En Windows ahí sale el aviso del firewall, igual que con el jam.
+  - Vincular: los dos tocan Vincular; uno elige al otro en "Cerca de ti" y escribe su código (o lo escanea: el QR es `misiccord://vincular?…` con la huella de su llave). Diffie-Hellman del grupo 14 de RFC 3526 con firmas hechas con el código; el secreto sale de ahí y **nunca viaja**. Vive en `datos/sincronizacion.json` (id, nombre y cada vinculado con su secreto): no lo registres ni lo imprimas.
+  - Cada petición va firmada (`X-Sinc-Id/Hora/Firma`, HMAC del método, la ruta, la hora y el hash del cuerpo) y cada respuesta JSON también: si no, cualquiera en la red podría hacerse pasar por el otro. Las canciones van sin hash del cuerpo (son grandes).
+  - **Qué cambió no se anota en cada lugar que edita**: `refrescar()` compara cómo está todo (`_proyeccion`) con la huella de `sinc_registros`; lo distinto es un cambio de aquí (`mod` = ahora) y lo que desapareció queda `borrado`. Si agregas algo sincronizable, súmalo a `_proyeccion` y a `_APLICAR`.
+    `mod` decide quién gana; `cambio` (hora local) decide qué falta mandarle a cada dispositivo (`enviado_hasta`/`recibido_hasta`): con tres dispositivos, lo que llegó de uno también debe pasar al tercero.
+  - Lo que depende de una canción que todavía no llega (su lugar en una playlist, su categoría) se guarda completo y se vuelve a aplicar al llegar (`_reaplicar_pendientes`); por eso una categoría sin su canción no cuenta como borrada.
+  - Las canciones no pasan por "gana lo más reciente": cada quien ve la lista del otro y manda lo que le falta, menos lo que el otro borró (`tumbas`). Las playlists se identifican por `playlists.uid` (columna agregada por `sincronizar`); dos con el mismo nombre de antes de vincular se vuelven una.
+    `sinc_recibidas` guarda con qué clave llegó cada una: si sus etiquetas dan otra, no se vuelve a pedir. Se deja de recibir con menos de 500 MB libres.
+  - Solo inicia uno (I) y el otro responde: basta con que uno alcance al otro. Si los dos empiezan a la vez, uno contesta "ocupado" (409) y lo intenta luego; una sesión sin peticiones por 2 min se da por abandonada (`/sinc/soltar` la suelta de inmediato).
+  - El historial solo crece (`evento_ultimo` marca hasta dónde se revisó). Lo de una canción que llegó antes que ella va con ruta `sinc:<clave>` y se corrige al llegar.
+  - Para probar sin dos equipos: dos procesos de Python con carpetas distintas en la misma PC (cada uno toma otro puerto) y `vincular_con("127.0.0.1", puerto, código)`.
 - **Tocar otra vez la pestaña en la que estás** (`irPestana`, `ui.reinicio`): regresa a la raíz, arriba y sin búsqueda; venir de otra pestaña conserva tu lugar.
 - **Regresar a donde estabas**: cada entrada de la pila guarda lo suyo (`scroll`, y `pestana`, `filtro` y `q` en Biblioteca) y `irPestana` conserva la raíz de cada pestaña (`raices`).
   El scroll se guarda **antes** de cambiar de vista (`recordarScroll`): en un `$effect` el contenido ya es otro y el navegador lo recortó, y por eso siempre regresaba arriba. Al volver se insiste hasta 2 s (`App.svelte`) porque lo que llega de Python tarda; tocar la pantalla lo cancela.

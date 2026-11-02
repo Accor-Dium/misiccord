@@ -9,6 +9,13 @@ IDIOMAS = ("es", "en")
 _actual = "es"
 
 _EN = {
+    "Sincronizando con {nombre}": "Syncing with {nombre}",
+    "Copiando canciones a {nombre}": "Copying songs to {nombre}",
+    "Copiando canciones de {nombre}": "Copying songs from {nombre}",
+    "Sin espacio en este dispositivo": "No space left on this device",
+    "{nombre} se quedó sin espacio": "{nombre} ran out of space",
+    "No se pudo conectar": "Couldn't connect",
+    "No veo ninguno de tus dispositivos en esta red": "None of your devices are on this network",
     "Para ti": "For you",
     "Porque {motivo} {titulo} · {artista}": "Because you {motivo} {titulo} · {artista}",
     "escuchas": "listen to",

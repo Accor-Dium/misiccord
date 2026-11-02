@@ -5,8 +5,9 @@
 //   https://accor-dium.github.io/misiccord/jam/#ip=…&puerto=…&codigo=…&nombre=…[&url=https://…]   (el que se comparte)
 //   misiccord://jam?ip=…&puerto=…&codigo=…                                                         (el que abre la app)
 // Los datos van después de "#": el navegador no se los manda a GitHub, se quedan en el teléfono.
-import { irPestana } from "./estado.svelte.js";
+import { abrir, irPestana, nav } from "./estado.svelte.js";
 import { jam } from "./jam.svelte.js";
+import { leerVinculo, sinc } from "./sincronizacion.svelte.js";
 
 export const PAGINA_JAM = "https://accor-dium.github.io/misiccord/jam/";
 
@@ -36,6 +37,13 @@ export function linkParaCompartir({ ip, puerto, codigo, nombre, url }) {
 
 function recibir(urls) {
   for (const u of urls || []) {
+    // El QR de Mis dispositivos escaneado con la cámara normal: se termina de vincular en Ajustes
+    const vinculo = leerVinculo(u);
+    if (vinculo) {
+      sinc.vinculo = vinculo;
+      if (nav.pila.at(-1).vista !== "ajustes") abrir("ajustes");
+      return;
+    }
     const datos = leerInvitacion(u);
     if (!datos) continue;
     if (jam.sala) return; // ya estás en un jam: no se cambia solo
