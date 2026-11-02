@@ -23,7 +23,9 @@
   import Album from "./vistas/Album.svelte";
   import Ajustes from "./vistas/Ajustes.svelte";
   import Artista from "./vistas/Artista.svelte";
+  import ArtistaCanciones from "./vistas/ArtistaCanciones.svelte";
   import Biblioteca from "./vistas/Biblioteca.svelte";
+  import Categoria from "./vistas/Categoria.svelte";
   import Descargas from "./vistas/Descargas.svelte";
   import Estadisticas from "./vistas/Estadisticas.svelte";
   import Genero from "./vistas/Genero.svelte";
@@ -35,7 +37,7 @@
 
   const vistas = {
     inicio: Inicio, biblioteca: Biblioteca, descargas: Descargas, jams: Jams,
-    album: Album, artista: Artista, buscar_artista: Artista, playlist: Playlist, ajustes: Ajustes,
+    album: Album, artista: Artista, buscar_artista: Artista, playlist: Playlist, ajustes: Ajustes, categoria: Categoria, artista_canciones: ArtistaCanciones,
     biblioteca_albumes: Biblioteca, estadisticas: Estadisticas, me_gusta: MeGusta, genero: Genero, explorar: Explorar,
   };
 

@@ -24,6 +24,7 @@ export const ui = $state({
   resumen: null, // presentación del resumen abierta: { tipo, dias, nombre } (Resumen.svelte)
   letra: { traducirA: "", romanizar: true }, // ajustes de las letras (se cargan al iniciar y desde Ajustes)
   caratulas: "normal", // cómo se dibujan las carátulas grandes: "normal", "cd" o "vinilo"
+  reinicio: 0, // sube al tocar otra vez la pestaña en la que estás: la vista limpia su búsqueda
 });
 
 export function aplicarAjustesLetra(aj) {
@@ -68,7 +69,12 @@ function recordarScroll() {
 }
 
 export function irPestana(pestana) {
-  if (nav.pestana === pestana && nav.pila.length === 1) {
+  if (nav.pestana === pestana) {
+    // Otra vez la misma pestaña: de vuelta al principio, sin búsqueda. Inicio y Biblioteca la guardan en su entrada
+    const raiz = nav.pila[0];
+    Object.assign(raiz, { scroll: 0, q: "", busqueda: null, locales: [], carpeta: "" });
+    if (nav.pila.length > 1) transicion(() => (nav.pila = [raiz]), "lado");
+    ui.reinicio++;
     document.querySelector("main")?.scrollTo({ top: 0, behavior: "smooth" });
     return;
   }

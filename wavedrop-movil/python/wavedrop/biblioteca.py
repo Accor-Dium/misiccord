@@ -35,6 +35,12 @@ CREATE TABLE IF NOT EXISTS playlists (id INTEGER PRIMARY KEY, nombre TEXT UNIQUE
 CREATE TABLE IF NOT EXISTS fotos_artistas (nombre TEXT PRIMARY KEY COLLATE NOCASE, foto TEXT, revisada REAL);
 -- Categorías de un álbum corregidas a mano (lista en JSON). Sin fila, las deduce la interfaz (lib/categorias.js)
 CREATE TABLE IF NOT EXISTS categorias_albumes (album TEXT, grupo TEXT, categorias TEXT, PRIMARY KEY (album, grupo));
+-- Lo mismo por canción, y gana sobre el álbum: "todas las de Dragon Ball a Anime"
+CREATE TABLE IF NOT EXISTS categorias_canciones (
+    cancion_id INTEGER PRIMARY KEY REFERENCES canciones(id) ON DELETE CASCADE, categorias TEXT
+);
+-- Las que creas y lo que cambies de las que trae la app (lib/categorias.js): generos (JSON) son los que le sumas
+CREATE TABLE IF NOT EXISTS categorias (id TEXT PRIMARY KEY, nombre TEXT, generos TEXT, oculta INTEGER DEFAULT 0);
 CREATE TABLE IF NOT EXISTS eventos (
     id INTEGER PRIMARY KEY,
     tipo TEXT NOT NULL,  -- "reproduccion" o "descarga"
@@ -408,10 +414,34 @@ class Biblioteca:
     def categorias_albumes(self) -> dict[str, list[str]]:
         return {f"{r['album']}|{r['grupo']}": json.loads(r["categorias"]) for r in self._q("SELECT * FROM categorias_albumes")}
 
+    def categorias_propias(self) -> list[dict]:
+        return [{"id": r["id"], "nombre": r["nombre"], "generos": json.loads(r["generos"] or "[]"), "oculta": bool(r["oculta"])}
+                for r in self._q("SELECT * FROM categorias")]
+
+    def categorias_config(self) -> dict:
+        """Todo lo que la interfaz necesita para saber en qué categorías va cada canción."""
+        return {"propias": self.categorias_propias(), "albumes": self.categorias_albumes(),
+                "canciones": {str(r["cancion_id"]): json.loads(r["categorias"]) for r in self._q("SELECT * FROM categorias_canciones")}}
+
+    def guardar_categoria(self, cid: str, nombre: str, generos: list[str], oculta: bool):
+        self._w("INSERT OR REPLACE INTO categorias(id, nombre, generos, oculta) VALUES (?, ?, ?, ?)",
+                (cid, nombre, json.dumps(generos), int(oculta)))
+
+    def borrar_categoria(self, cid: str):
+        self._w("DELETE FROM categorias WHERE id = ?", (cid,))
+
+    def mover_a_categorias(self, cambios: list[dict]):
+        with self.candado:
+            self.con.executemany("INSERT OR REPLACE INTO categorias_canciones(cancion_id, categorias) VALUES (?, ?)",
+                                 [(int(c["id"]), json.dumps(c["categorias"])) for c in cambios])
+            self.con.commit()
+
     def poner_categorias_album(self, album: str, grupo: str, categorias: list[str] | None):
-        """None = volver a las que se deducen solas."""
+        """None = volver a las que se deducen solas, también en las canciones de ese álbum."""
         if categorias is None:
             self._w("DELETE FROM categorias_albumes WHERE album = ? AND grupo = ?", (album, grupo))
+            self._w("""DELETE FROM categorias_canciones WHERE cancion_id IN (SELECT id FROM canciones WHERE album = ? COLLATE NOCASE
+                       AND COALESCE(artista_album, '') = ? COLLATE NOCASE)""", (album, grupo))
         else:
             self._w("INSERT OR REPLACE INTO categorias_albumes(album, grupo, categorias) VALUES (?, ?, ?)",
                     (album, grupo, json.dumps(categorias)))

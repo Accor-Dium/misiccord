@@ -18,10 +18,16 @@
 <div class="fila" class:sonando role="button" tabindex="0" onclick={alTocar} onkeydown={(e) => e.key === "Enter" && alTocar?.()}
   use:mantener={opciones}>
   {#if numero !== null}
-    <span class="numero">{#if sonando}<span class="barras"><i></i><i></i><i></i></span>{:else}{numero}{/if}</span>
+    <span class="numero">
+      {#if sonando}<span class="barras"><i></i><i></i><i></i></span>
+      {:else}<span class="cifra">{numero}</span><span class="play"><Icono nombre="play" relleno tam={18} /></span>{/if}
+    </span>
   {/if}
   {#if !sinPortada}
-    <Portada url={cancion.portada} tam="50px" radio="8px" />
+    <span class="caja-portada">
+      <Portada url={cancion.portada} tam="50px" radio="8px" />
+      {#if !sonando}<span class="play"><Icono nombre="play" relleno tam={22} /></span>{/if}
+    </span>
   {/if}
   <div class="textos">
     <b class="cortar">{cancion.titulo}</b>
@@ -49,7 +55,16 @@
   .textos b { font-weight: 600; font-size: 15.5px; }
   .textos small { color: var(--tenue); font-size: 13.5px; }
   .sonando b { color: var(--cian); }
-  .numero { width: 26px; text-align: center; color: var(--tenue); font-variant-numeric: tabular-nums; flex-shrink: 0; }
+  .numero { position: relative; width: 26px; text-align: center; color: var(--tenue); font-variant-numeric: tabular-nums; flex-shrink: 0; }
+  .caja-portada { position: relative; width: 50px; height: 50px; flex-shrink: 0; border-radius: 8px; overflow: hidden; }
+  /* Solo con mouse: en el cel un toque no pasa por encima */
+  .play { display: none; position: absolute; inset: 0; place-items: center; color: #fff; }
+  .caja-portada .play { background: rgba(0, 0, 0, 0.5); }
+  @media (hover: hover) {
+    .fila:hover { background: rgba(255, 255, 255, 0.04); }
+    .fila:hover .play { display: grid; }
+    .fila:hover .cifra { visibility: hidden; }
+  }
   .dur { color: var(--tenue); font-size: 13px; font-variant-numeric: tabular-nums; }
   .al-jam { width: 38px; height: 38px; border-radius: 50%; display: grid; place-items: center; color: var(--cian); background: rgba(34, 211, 238, 0.1); flex-shrink: 0; }
   .al-jam:active { transform: scale(0.9); }

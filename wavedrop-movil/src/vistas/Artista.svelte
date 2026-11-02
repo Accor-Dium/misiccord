@@ -22,6 +22,10 @@
   const lista = $derived(tuyas.length ? tuyas : a?.canciones ?? []);
   const portada = $derived(a?.portada ?? tuyo?.albumes?.find((x) => x.portada)?.portada ?? tuyas.find((c) => c.portada)?.portada);
 
+  function verTodasSusCanciones() {
+    abrir("artista_canciones", { lista: a.todas, nombre, tuyas, discos: a.albumes });
+  }
+
   // Las primeras canciones se dejan listas para que suenen en cuanto las toques
   $effect(() => {
     const ids = (a?.canciones ?? []).filter((c) => !c.ruta && c.id).slice(0, 5).map((c) => c.id);
@@ -109,7 +113,10 @@
       {/if}
 
       {#if a.canciones.length}
-        <div class="titulo-seccion">{t("Populares")}</div>
+        <div class="titulo-seccion">
+          {t("Populares")}
+          {#if a.todas}<button onclick={verTodasSusCanciones}><small>{t("Ver todas")}</small></button>{/if}
+        </div>
         {#each a.canciones as c, i}
           <FilaCancion cancion={c} alTocar={() => reproducir(a.canciones, i, a.nombre)} />
         {/each}

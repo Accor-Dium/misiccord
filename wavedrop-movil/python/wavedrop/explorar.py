@@ -226,6 +226,7 @@ def artista(browse_id: str) -> dict:
     albumes = discos + [resultado(x, "Sencillo") for x in lista("singles") if x.get("browseId")]
     return {
         "discos": len(discos), # los primeros de `albumes`: la discografía sin los sencillos
+        "todas": (a.get("songs") or {}).get("browseId"),  # la lista con todas sus canciones (ver canciones_artista)
         "browse_id": browse_id, "nombre": a.get("name", ""), "descripcion": a.get("description") or "",
         "portada": _miniatura(a.get("thumbnails"), 900), "oyentes": a.get("monthlyListeners") or "",
         "canciones": [c for c in (_cancion(s) for s in lista("songs")) if c],
@@ -233,6 +234,11 @@ def artista(browse_id: str) -> dict:
         "parecidos": [{"browse_id": r.get("browseId"), "nombre": r.get("title", ""),
                        "miniatura": _miniatura(r.get("thumbnails"))} for r in lista("related") if r.get("title")],
     }
+
+
+def canciones_artista(lista_id: str, limite: int = 1000) -> list[ResultadoCancion]:
+    """Todo lo de un artista en YouTube Music: get_artist solo trae 5 populares y esta lista las trae todas."""
+    return [c for c in (_cancion(t) for t in _yt().get_playlist(lista_id, limit=limite).get("tracks") or []) if c]
 
 
 def a_entrada(r: ResultadoCancion, indice: int = 1) -> nucleo.Entrada:

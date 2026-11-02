@@ -485,23 +485,35 @@ def _album_igual(nombre: str, artista: str) -> explorar.ResultadoAlbum | None:
             or next((x for x in aptos if biblioteca.nombre_album(x.titulo) == base), None))
 
 
-def album_faltantes(d: dict) -> dict:
-    """Qué le falta a un álbum tuyo. Lo que dice YouTube Music se guarda 7 días (cambia muy poco y abrir un álbum no debe
-    gastar internet cada vez); qué tienes se calcula siempre, para que lo recién descargado ya no salga. `forzar` = Actualizar."""
-    nombre, artista_ = d["nombre"], d.get("artista", "")
-    archivo = plataforma.carpeta_cache() / "albumes" / (hashlib.md5(f"{nombre}|{artista_}".encode()).hexdigest() + ".json")
-    guardado = None
-    if not d.get("forzar"):
+def _guardado_7_dias(carpeta: str, clave: str, forzar: bool, pedir) -> dict:
+    """Lo de YouTube Music cambia muy poco: abrir un álbum o un artista no debe gastar internet cada vez."""
+    archivo = plataforma.carpeta_cache() / carpeta / (hashlib.md5(clave.encode()).hexdigest() + ".json")
+    if not forzar:
         try:
             if time.time() - archivo.stat().st_mtime < 7 * 86400:
-                guardado = json.loads(archivo.read_text(encoding="utf-8"))
+                return json.loads(archivo.read_text(encoding="utf-8"))
         except (OSError, ValueError):
             pass
-    if guardado is None:
+    datos = pedir()
+    archivo.parent.mkdir(parents=True, exist_ok=True)
+    archivo.write_text(json.dumps(datos, ensure_ascii=False), encoding="utf-8")
+    return datos
+
+
+def artista_canciones(d: dict) -> dict:
+    """Todo lo de un artista en YouTube Music. Si ya la tienes, la canción trae su `ruta`, como en cualquier lista en línea."""
+    pistas = _guardado_7_dias("artistas", d["lista"], d.get("forzar"),
+                              lambda: {"pistas": [asdict(c) for c in explorar.canciones_artista(d["lista"])]})["pistas"]
+    return {"canciones": [_en_linea(explorar.ResultadoCancion(**p)) for p in pistas]}
+
+
+def album_faltantes(d: dict) -> dict:
+    """Qué le falta a un álbum tuyo. Qué tienes se calcula siempre, para que lo recién descargado ya no salga. `forzar` = Actualizar."""
+    nombre, artista_ = d["nombre"], d.get("artista", "")
+    def pedir():
         igual = _album_igual(nombre, artista_)
-        guardado = {"id": igual.browse_id, "pistas": [asdict(c) for c in explorar.album(igual.browse_id)["canciones"]]} if igual else {"id": None, "pistas": []}
-        archivo.parent.mkdir(parents=True, exist_ok=True)
-        archivo.write_text(json.dumps(guardado, ensure_ascii=False), encoding="utf-8")
+        return {"id": igual.browse_id, "pistas": [asdict(c) for c in explorar.album(igual.browse_id)["canciones"]]} if igual else {"id": None, "pistas": []}
+    guardado = _guardado_7_dias("albumes", f"{nombre}|{artista_}", d.get("forzar"), pedir)
     if not guardado["id"]:
         return {"encontrado": False}
     a = biblioteca.Album(nombre, artista_, "", 0, None, d.get("grupo", ""))
@@ -526,7 +538,7 @@ def biblioteca_(d: dict) -> dict:
                       "revisada": bool(a["revisada"]) and (bool(a["foto"]) or time.time() - a["revisada"] < _FOTO_DIAS * 86400)}
                      for a in db.artistas(carpeta)],
         "playlists": [dict(p) for p in db.playlists()],
-        "categorias": db.categorias_albumes(),
+        "categorias": db.categorias_config(),
         "me_gusta": len(db.lista_me_gusta()),
     }
 
@@ -559,6 +571,24 @@ def artista_foto(d: dict) -> dict:
 def album_categorias(d: dict) -> dict:
     """Corrige a mano en qué categorías sale un álbum (Jazz, Videojuegos…). No toca las etiquetas de los archivos."""
     _db().poner_categorias_album(d["album"], d.get("grupo", ""), d.get("categorias"))
+    return {}
+
+
+def categorias_mover(d: dict) -> dict:
+    """Mueve canciones entre categorías: recibe [{"id", "categorias"}], la lista completa de cada una."""
+    _db().mover_a_categorias(d["canciones"])
+    return {}
+
+
+def categoria_guardar(d: dict) -> dict:
+    """Crea una categoría (sin id) o cambia una: nombre, géneros que le sumas y si está oculta."""
+    cid = d.get("id") or f"c{uuid.uuid4().hex[:10]}"
+    _db().guardar_categoria(cid, d["nombre"].strip(), d.get("generos") or [], bool(d.get("oculta")))
+    return {"id": cid}
+
+
+def categoria_borrar(d: dict) -> dict:
+    _db().borrar_categoria(d["id"])
     return {}
 
 
@@ -831,7 +861,7 @@ def album_local(d: dict) -> dict:
     # La biblioteca agrupa por artista principal: "Varios artistas" o una colaboración no existen como artista
     nombres = [biblioteca.artista_principal(c.artista) for c in canciones]
     return {"canciones": [_local(c) for c in canciones], "artista_principal": max(nombres, key=nombres.count, default=""),
-            "categorias": _db().categorias_albumes().get(f"{d['nombre']}|{d.get('grupo', '')}")}
+            "categorias": _db().categorias_albumes().get(f"{d['nombre']}|{d.get('grupo', '')}"), "propias": _db().categorias_propias()}
 
 
 def artista_local(d: dict) -> dict:
@@ -1353,6 +1383,8 @@ FUNCIONES = {
     "metadata_opciones": metadata_opciones, "metadata_aplicar": metadata_aplicar,
     "album_opciones": album_opciones, "album_detalle": album_detalle, "album_guardar": album_guardar, "cambiar_portada": cambiar_portada,
     "album_faltantes": album_faltantes, "album_categorias": album_categorias, "artista_foto": artista_foto,
+    "artista_canciones": artista_canciones, "categorias_mover": categorias_mover,
+    "categoria_guardar": categoria_guardar, "categoria_borrar": categoria_borrar,
     "renombrar_playlist": renombrar_playlist, "portada_playlist": portada_playlist, "ordenar_playlist": ordenar_playlist,
     "reproduccion": reproduccion, "estadisticas": estadisticas, "previa": previa, "precargar": precargar, "letra": letra,
     "letra_traduccion": letra_traduccion,

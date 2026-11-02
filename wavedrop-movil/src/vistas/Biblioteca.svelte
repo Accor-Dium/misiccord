@@ -1,7 +1,7 @@
 <script module>
-  // Lo último que respondió Python, por carpeta: volver a la pestaña no espera nada. Va aquí y no en `e` porque
+  // Lo último que respondió Python: volver a la pestaña no espera nada. Va aquí y no en `e` porque
   // `nav` es estado profundo: miles de canciones en Proxies tardan segundos en ordenarse en el cel.
-  const memoria = new Map(); // carpeta → { datos, carpetas, version }
+  export const memoria = { datos: null, carpetas: null, version: null };
 </script>
 
 <script>
@@ -17,7 +17,7 @@
   import { canciones, t } from "../lib/idioma.svelte.js";
   import { agrupar, agruparLista, coincide, ORDENES, ORDENES_LISTA } from "../lib/ordenar.js";
   import { armarArbol, cancionesDe, migasDe } from "../lib/carpetas.js";
-  import { artistaPrincipal, CATEGORIAS, categoriasDe, claveAlbum as albumDe, decadaDe, nombreDecada } from "../lib/categorias.js";
+  import { artistaPrincipal, categoriasDe, categoriasOcultas, claveAlbum as albumDe, conteoCategorias } from "../lib/categorias.js";
   import { fotoDe } from "../lib/fotosArtistas.svelte.js";
   import FilaCancion from "../componentes/FilaCancion.svelte";
   import Icono from "../componentes/Icono.svelte";
@@ -31,9 +31,7 @@
   $effect(() => { e.pestana = pestana; });
   let creando = $state(false);
   let nombre = $state("");
-  // Filtro por carpeta de música ("" = todas); se recuerda al volver a esta vista
-  let filtro = $state(e.filtro ?? "");
-  let b = $state.raw(memoria.get(filtro)?.datos ?? null);
+  let b = $state.raw(memoria.datos);
   const idDe = (c) => c.db_id;
 
   // ---------- Buscar, ordenar y agrupar ----------
@@ -77,20 +75,30 @@
   let categoria = $state(e.categoria ?? "");
   $effect(() => { e.decada = decada; e.categoria = categoria; });
   const filtrando = $derived(decada !== null || !!categoria);
-  const conFiltro = $derived(!b ? [] : !filtrando ? b.canciones : b.canciones.filter((c) =>
-    (decada === null || decadaDe(c) === decada) && (!categoria || categoriasDe(c, b.categorias).has(categoria))));
+  const conFiltro = $derived(!b ? [] : !filtrando ? b.canciones : b.canciones.filter((c) => {
+    const suyas = categoriasDe(c, b.categorias);
+    return (decada === null || suyas.has(decada)) && (!categoria || suyas.has(categoria));
+  }));
   // Álbumes y artistas no traen género: se ven los que tengan alguna canción que pase el filtro
   const albumesConFiltro = $derived(filtrando ? new Set(conFiltro.map((c) => albumDe(c).toLowerCase())) : null);
   const artistasConFiltro = $derived(filtrando ? new Set(conFiltro.map((c) => artistaPrincipal(c.artista).toLowerCase())) : null);
-  const opcionesFiltro = $derived.by(() => {
-    const decadas = new Set(), categorias = new Set();
-    for (const c of b?.canciones ?? []) {
-      const d = decadaDe(c);
-      if (d !== null) decadas.add(d);
-      for (const x of categoriasDe(c, b.categorias)) categorias.add(x);
-    }
-    return { decadas: [...decadas].sort(), categorias: CATEGORIAS.filter(([id]) => categorias.has(id)) };
-  });
+  const opcionesFiltro = $derived(conteoCategorias(b?.canciones ?? [], b?.categorias));
+  // Pestaña Categorías: cada tarjeta lleva data-categoria para que cada una pueda tener su propio diseño en CSS
+  let creandoCategoria = $state(false);
+  let nombreCategoria = $state("");
+  const ocultas = $derived(categoriasOcultas(b?.categorias));
+  async function crearCategoria() {
+    const nombre = nombreCategoria.trim();
+    if (!nombre) return;
+    await py("categoria_guardar", { nombre });
+    nombreCategoria = "";
+    creandoCategoria = false;
+    cargar();
+  }
+  async function mostrarCategoria(c) {
+    await py("categoria_guardar", { id: c.id, nombre: c.nombre, generos: c.generos });
+    cargar();
+  }
 
   const cancionesVistas = $derived(texto ? conFiltro.filter((c) => coincide(texto, c.titulo, c.artista, c.album)) : conFiltro);
   const grupos = $derived(agrupar(cancionesVistas, orden));
@@ -101,7 +109,7 @@
     && (!artistasConFiltro || artistasConFiltro.has(a.nombre.toLowerCase()))) : [], ordenDe("artistas")));
   const gruposPlaylists = $derived(agruparLista(b ? b.playlists.filter((x) => !texto || coincide(texto, x.nombre)) : [], ordenDe("playlists")));
   const gruposGeneros = $derived(agruparLista(b ? (b.generos ?? []).filter((x) => !texto || coincide(texto, x.nombre)) : [], ordenDe("generos")));
-  const gruposVistos = $derived({ canciones: grupos, albumes: gruposAlbumes, artistas: gruposArtistas, playlists: gruposPlaylists, generos: gruposGeneros, carpetas: [] }[pestana]);
+  const gruposVistos = $derived({ canciones: grupos, albumes: gruposAlbumes, artistas: gruposArtistas, playlists: gruposPlaylists, generos: gruposGeneros, carpetas: [], categorias: [] }[pestana]);
   const cuantos = $derived(pestana === "canciones" ? plana.length : gruposVistos.reduce((n, g) => n + g.items.length, 0));
   const porLetra = $derived(pestana === "canciones" ? orden === "titulo" || orden === "artista" : ["nombre", "artista"].includes(ordenDe(pestana)));
 
@@ -171,28 +179,22 @@
   async function cargar() {
     const yo = ++pedido;
     const pedida = ui.version;
-    const [datos, c] = await Promise.all([py("biblioteca", { carpeta: filtro }), py("carpetas_biblioteca")]);
+    const [datos, c] = await Promise.all([py("biblioteca"), py("carpetas_biblioteca")]);
     if (yo !== pedido) return;
     carpetas = c;
-    if (filtro && !c.carpetas.some((x) => x.ruta === filtro)) { // la carpeta filtrada se quitó
-      filtro = "";
-      e.filtro = "";
-      return cargar();
-    }
     b = datos;
-    memoria.set(filtro, { datos, carpetas: c, version: pedida });
+    Object.assign(memoria, { datos, carpetas: c, version: pedida });
   }
-  function filtrar(ruta) {
-    if (ruta === filtro) return;
-    filtro = ruta;
-    e.filtro = ruta;
-    b = memoria.get(ruta)?.datos ?? b;
-    salirSeleccion();
-    cargar();
-  }
-  onMount(() => { if (memoria.get(filtro)?.version !== ui.version) cargar(); });
+  onMount(() => { if (memoria.version !== ui.version) cargar(); });
   let version = ui.version;
   $effect(() => { if (ui.version !== version) { version = ui.version; cargar(); } });
+  let reinicio = ui.reinicio;
+  $effect(() => {
+    if (ui.reinicio === reinicio) return;
+    reinicio = ui.reinicio;
+    consulta = "";
+    rutaAbierta = "";
+  });
 
   async function crear() {
     if (!nombre.trim()) return;
@@ -209,7 +211,7 @@
 
   // ---------- Carpetas de música que ya tienes ----------
   let panelCarpetas = $state(false);
-  let carpetas = $state(memoria.get(filtro)?.carpetas ?? null); // { carpetas: [...], android }
+  let carpetas = $state(memoria.carpetas); // { carpetas: [...], android }
   let explorando = $state(null);    // Android: { ruta, padre, carpetas } mientras eliges una carpeta
   let escaneando = $state(false);
   let revisadas = $state(0);
@@ -294,7 +296,7 @@
 
   // ---------- Lista o cuadrícula ----------
   // Cada pestaña recuerda la suya (los álbumes empiezan en cuadrícula, lo demás en lista)
-  const VISTAS_INICIALES = { canciones: "lista", albumes: "cuadricula", artistas: "lista", playlists: "lista", generos: "lista", carpetas: "lista" };
+  const VISTAS_INICIALES = { canciones: "lista", albumes: "cuadricula", artistas: "lista", playlists: "lista", generos: "lista", carpetas: "lista", categorias: "lista" };
   let vistas = $state(leerVistas());
   function leerVistas() {
     try { return { ...VISTAS_INICIALES, ...JSON.parse(localStorage.getItem("misiccord_vista_biblioteca") || "{}") }; }
@@ -323,7 +325,7 @@
     try { localStorage.setItem("misiccord_vista_biblioteca", JSON.stringify(vistas)); } catch {}
   }
 
-  const pestanas = [["canciones", t("Canciones")], ["albumes", t("Álbumes")], ["artistas", t("Artistas")], ["generos", t("Géneros")], ["playlists", t("Playlists")], ["carpetas", t("Carpetas")]];
+  const pestanas = [["canciones", t("Canciones")], ["albumes", t("Álbumes")], ["artistas", t("Artistas")], ["categorias", t("Categorías")], ["generos", t("Géneros")], ["playlists", t("Playlists")], ["carpetas", t("Carpetas")]];
 
   // ---------- El encabezado reaparece al subir ----------
   // Al bajar se esconde para dejarle lugar a la lista; con el primer gesto hacia arriba regresa, estés donde estés.
@@ -365,6 +367,7 @@
   const contador = $derived(
     pestana === "canciones" ? (texto || filtrando ? t("{n} de {total} canciones", { n: plana.length, total: b?.canciones.length ?? 0 }) : canciones(plana.length))
     : pestana === "carpetas" ? canciones(nodoAbierto?.total ?? b?.canciones.length ?? 0)
+    : pestana === "categorias" ? t("{n} categorías", { n: opcionesFiltro.decadas.length + opcionesFiltro.categorias.length })
     : pestana === "albumes" ? t("{n} álbumes", { n: cuantos })
     : pestana === "artistas" ? t("{n} artistas", { n: cuantos })
     : pestana === "generos" ? t("{n} géneros", { n: cuantos })
@@ -447,7 +450,7 @@
     <h1 class="titulo-vista">{t("Biblioteca")}</h1>
     <div class="botones">
       <button class="redondo" onclick={() => abrir("estadisticas")} aria-label={t("Tus estadísticas")} title={t("Tus estadísticas")}><Icono nombre="estadisticas" tam={24} /></button>
-      {#if pestana !== "carpetas"}
+      {#if !["carpetas", "categorias"].includes(pestana)}
         <button class="redondo" onclick={alternarVista} aria-label={enCuadricula ? t("Ver como lista") : t("Ver como cuadrícula")}
           title={enCuadricula ? t("Ver como lista") : t("Ver como cuadrícula")}><Icono nombre={enCuadricula ? "lista" : "cuadricula"} tam={22} /></button>
       {/if}
@@ -470,22 +473,12 @@
       <button class="chip" class:activo={pestana === id} onclick={() => (pestana = id)}>{texto}</button>
     {/each}
   </div>
-  {#if carpetas?.carpetas.length > 1}
-    <div class="chips carpetas" role="group" aria-label={t("Filtrar por carpeta")}>
-      <button class="chip" class:activo={!filtro} onclick={() => filtrar("")}>{t("Todas")}</button>
-      {#each carpetas.carpetas as c (c.ruta)}
-        <button class="chip" class:activo={filtro === c.ruta} onclick={() => filtrar(c.ruta)} title={c.ruta}>
-          <Icono nombre="carpeta" tam={14} /> {nombreCarpeta(c.ruta)} <small>{c.canciones}</small>
-        </button>
-      {/each}
-    </div>
-  {/if}
   {#if ["canciones", "albumes", "artistas"].includes(pestana) && (opcionesFiltro.decadas.length || opcionesFiltro.categorias.length)}
     <div class="chips filtros" role="group" aria-label={t("Filtrar por década o categoría")}>
-      {#each opcionesFiltro.decadas as d (d)}
-        <button class="chip" class:activo={decada === d} onclick={() => (decada = decada === d ? null : d)}>{nombreDecada(d)}</button>
+      {#each opcionesFiltro.decadas as { id, nombre } (id)}
+        <button class="chip" class:activo={decada === id} onclick={() => (decada = decada === id ? null : id)}>{nombre}</button>
       {/each}
-      {#each opcionesFiltro.categorias as [id, nombre] (id)}
+      {#each opcionesFiltro.categorias.filter((c) => c.n) as { id, nombre } (id)}
         <button class="chip" class:activo={categoria === id} onclick={() => (categoria = categoria === id ? "" : id)}>{t(nombre)}</button>
       {/each}
     </div>
@@ -505,7 +498,11 @@
               <button onclick={() => cambiarColumnas(1)} disabled={nColumnas >= MAX_COLUMNAS} aria-label={t("Más columnas")}>+</button>
             </div>
           {/if}
-          {#if pestana !== "carpetas"}
+          {#if pestana === "categorias"}
+            <button class="redondo" class:activo-cian={creandoCategoria} onclick={() => (creandoCategoria = !creandoCategoria)} aria-label={t("Nueva categoría")} title={t("Nueva categoría")}>
+              <Icono nombre="agregar" tam={24} />
+            </button>
+          {:else if pestana !== "carpetas"}
             <button class="redondo" onclick={opcionesOrden} aria-label={t("Ordenar y agrupar")} title={t("Ordenar y agrupar")}>
               <Icono nombre="ordenar" tam={22} />
             </button>
@@ -683,6 +680,25 @@
         <p class="vacio">{texto ? t("Ningún género con “{q}”.", { q: texto }) : t("Tus canciones todavía no traen género. Puedes completarlo desde su información.")}</p>
       {/each}
     </div>
+  {:else if pestana === "categorias"}
+    <div in:fade={{ duration: 220 }}>
+      {#if creandoCategoria}
+        <form class="nueva" onsubmit={(ev) => { ev.preventDefault(); crearCategoria(); }}>
+          <input bind:value={nombreCategoria} placeholder={t("Nombre de la categoría")} />
+          <button class="pildora cian chica">{t("Crear")}</button>
+        </form>
+      {/if}
+      <div class="categorias">
+        {#each [...opcionesFiltro.decadas, ...opcionesFiltro.categorias] as { id, nombre, n } (id)}
+          <button class="categoria" data-categoria={id} onclick={() => abrir("categoria", { id, nombre })}>
+            <b>{t(nombre)}</b><small>{canciones(n)}</small>
+          </button>
+        {/each}
+      </div>
+      {#each ocultas as c (c.id)}
+        <button class="texto-boton" onclick={() => mostrarCategoria(c)}>{t("Mostrar {nombre}", { nombre: t(c.nombre) })}</button>
+      {/each}
+    </div>
   {:else if pestana === "playlists"}
     <div in:fade={{ duration: 220 }}>
       {#if creando}
@@ -857,11 +873,10 @@
   .cabecera.oculta { transform: translateY(-100%); }
   header { display: flex; align-items: center; justify-content: space-between; }
   .chips { display: flex; gap: 8px; margin: var(--margen) calc(-1 * var(--margen)) 10px; padding: 0 var(--margen); overflow-x: auto; scrollbar-width: none; }
-  /* Segundas filas de chips (carpetas, décadas y categorías): más chicas para que se note que son filtros */
-  .chips.carpetas, .chips.filtros { margin-top: -2px; }
-  .carpetas .chip, .filtros .chip { height: 32px; padding: 0 14px; font-size: 13px; display: inline-flex; align-items: center; gap: 6px; background: transparent; border: 1px solid var(--borde-fuerte); white-space: nowrap; }
-  .carpetas .chip.activo, .filtros .chip.activo { background: var(--cian); border-color: var(--cian); color: #04121a; }
-  .carpetas .chip small { opacity: 0.65; }
+  /* Segunda fila de chips (décadas y categorías): más chicos para que se note que son filtros */
+  .chips.filtros { margin-top: -2px; }
+  .filtros .chip { height: 32px; padding: 0 14px; font-size: 13px; display: inline-flex; align-items: center; gap: 6px; background: transparent; border: 1px solid var(--borde-fuerte); white-space: nowrap; }
+  .filtros .chip.activo { background: var(--cian); border-color: var(--cian); color: #04121a; }
   .buscador {
     display: flex; align-items: center; gap: 10px; height: 44px; margin-top: 12px; padding: 0 12px; border-radius: 12px;
     background: var(--tarjeta); border: 1px solid var(--borde); color: var(--tenue);
@@ -916,6 +931,10 @@
   .tarjeta-lista b { margin-top: 6px; font-size: 13.5px; font-weight: 700; width: 100%; }
   .tarjeta-lista small { color: var(--tenue); font-size: 12.5px; }
   .cubierta { aspect-ratio: 1; border-radius: 12px; background: var(--tarjeta-2); display: grid; place-items: center; color: var(--tenue); overflow: hidden; }
+  .categorias { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 12px; margin: 6px 0 14px; }
+  .categoria { display: flex; flex-direction: column; justify-content: flex-end; gap: 2px; min-height: 96px; padding: 14px; border-radius: 14px; text-align: left; background: var(--tarjeta-2); }
+  .categoria b { font-size: 19px; font-weight: 800; }
+  .categoria small { color: var(--tenue); }
   .migas { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; margin: 2px 0 8px; font-size: 14px; color: var(--tenue); }
   .migas button { color: var(--cian); font-weight: 600; overflow-wrap: anywhere; text-align: left; }
   .migas button.actual { color: var(--texto); }

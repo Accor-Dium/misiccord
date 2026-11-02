@@ -2,7 +2,7 @@
   import { t } from "../lib/idioma.svelte.js";
   import { fade } from "svelte/transition";
   import { py } from "../lib/api.js";
-  import { abrir, aviso, descargarLink } from "../lib/estado.svelte.js";
+  import { abrir, aviso, descargarLink, ui } from "../lib/estado.svelte.js";
   import { reproducir } from "../lib/reproductor.svelte.js";
   import FilaCancion from "./FilaCancion.svelte";
   import Icono from "./Icono.svelte";
@@ -19,6 +19,13 @@
   const texto = $derived(q.trim());
   const esLink = $derived(/^https?:\/\//.test(texto));
   $effect(() => { activo = texto.length > 0; });
+  let reinicio = ui.reinicio;
+  $effect(() => {
+    if (ui.reinicio === reinicio) return;
+    reinicio = ui.reinicio;
+    q = "";
+    alEscribir();
+  });
 
   let pedido = 0; // solo vale la respuesta de lo último que escribiste
   let espera = null;

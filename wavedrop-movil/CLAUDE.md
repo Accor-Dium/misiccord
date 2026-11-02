@@ -42,8 +42,8 @@ Resumen para que no tengas que leer todo el código. Actualiza esta sección cua
   - Unirse: QR (escáner de la app o cámara normal), **link** que abre la app y entra solo, jams cercanos (UDP en la red) o IP + código.
   - **Por internet**: el anfitrión (PC o cel) toca "Abrir" en Invitar; túnel de Cloudflare, sin cuenta ni configurar el módem.
 - **Videos musicales** (apagado por defecto, en Ajustes): ver el clip en el reproductor (sigue al audio, sin sonido propio) y descargarlo junto a la canción.
-- **Biblioteca por carpetas**: agregar o quitar carpetas de música, filtrar por carpeta y navegarlas en la pestaña Carpetas.
-- **Filtros de Biblioteca**: por década y por categoría (Jazz, Pop, Rock, Soundtrack, Videojuegos, Anime), juntables y corregibles a mano por álbum. Fotos de artistas y playlists con nombre, carátula y orden editables.
+- **Biblioteca por carpetas**: agregar o quitar carpetas de música y navegarlas en la pestaña Carpetas.
+- **Categorías de Biblioteca** (pestaña propia y filtros): décadas y categorías (Jazz, Pop, Rock, Soundtrack, Videojuegos, Anime) más las que crees. Se renombran, se les suman géneros y se les mueven canciones o álbumes. Fotos de artistas y playlists con nombre, carátula y orden editables.
 - **Escritorio**: burbuja flotante al minimizar (opcional, Ajustes → Ventana): círculo con la portada y el avance, siempre encima; al pasar el mouse
   se abre con la canción, los controles y el volumen (bocina: pasar el mouse muestra la barra, un clic silencia), se arrastra a donde quieras y un clic regresa a la app. En Windows la vista previa del ícono de la barra
   de tareas trae anterior / reproducir-pausar / siguiente y el título de la ventana dice qué suena.
@@ -237,6 +237,8 @@ Todo el trabajo real vive en Python: python/wavedrop/  (el mismo código en las 
 - **Álbum y artista: primero lo local** (`artista_local`, `album_local_buscar`): sale al instante y funciona sin internet; lo de YouTube Music se agrega después y sus errores no se muestran si ya hay algo tuyo.
 - **Qué le falta a un álbum (`api.album_faltantes`)**: lo de YouTube Music se guarda 7 días en la caché (`albumes/`), qué tienes se calcula siempre y el botón Actualizar manda `forzar`. La interfaz corta a los 30 s: una red que no responde se veía como un álbum completo.
   `_album_igual` exige el mismo artista ("Greatest Hits" tiene cientos) y compara también sin edición (`biblioteca.nombre_album`: "Deluxe", "Remastered", solo al final para no tocar "1989"). Dentro de tu álbum basta el título: la pista puede decir "Queen, David Bowie" y tu archivo "Queen".
+- **Todas las canciones de un artista** (`vistas/ArtistaCanciones.svelte`, `artista_canciones`): `get_artist` solo trae 5 populares; `songs.browseId` es una lista con todas. Se guarda 7 días y el buscador y el orden (`misiccord_orden_artista`) van en la interfaz, sin volver a internet.
+  Lo tuyo que YouTube Music no tenga se suma. Esa lista no trae año: sale de la discografía por el nombre del disco, y lo que no aparezca ahí va al final.
 - **En el artista, "Tienes 3 de 15"** cuenta discos, sin sencillos. `explorar._discografia` pide la lista completa porque `get_artist` solo trae los primeros 10.
 - **Fuentes de datos**: MusicBrainz primero; si no tiene el álbum, YouTube Music (`album_opciones` con `yt`), que no trae género ni disco y da la carátula por `portada_url`.
   **No uses iTunes Search API**: Apple solo permite su carátula y vistas previas para promover su tienda, junto a su insignia, y sus términos no cubren apps independientes. **Tampoco Deezer** (uso privado y familiar) ni **Discogs** (pide token, y uno dentro del APK se puede sacar).
@@ -254,7 +256,10 @@ Todo el trabajo real vive en Python: python/wavedrop/  (el mismo código en las 
   `medios.svelte.js` no manda nada antes de `rep.sesionLista`: el "no hay canción" del arranque borraría la que recuerda el widget. La canción restaurada ya tiene notificación en pausa, por eso los audífonos también la retoman.
 - **Play del widget (`ReanudarWidget.kt`)**: es una Activity y no el servicio porque un servicio no puede abrir la app desde segundo plano, y el widget no se entera de que la app se cerró (su botón sigue igual).
   Si `Medios.eventos` existe la app está viva y es un Play normal; si no, abre la app con `Medios.playAlAbrir` y la interfaz lo pregunta al arrancar (`revisarWidget`).
-- **Filtros de Biblioteca** (`lib/categorias.js`): se deducen en la interfaz del género, el álbum y las 3 carpetas más cercanas al archivo, no de toda la ruta ("C:\Users\Anime Fan\…"). No se tocan las etiquetas: lo corregido a mano va en `categorias_albumes` y **reemplaza** a lo deducido.
+- **Categorías** (`lib/categorias.js`, `vistas/Categoria.svelte`): se deducen en la interfaz del género, el álbum y las 3 carpetas más cercanas al archivo, no de toda la ruta ("C:\Users\Anime Fan\…"). No se tocan las etiquetas.
+  Gana lo que hizo el usuario: `categorias_canciones`, luego `categorias_albumes` y al final lo deducido más los géneros sumados en la tabla `categorias`. Esa tabla guarda las creadas y los cambios a las de la app, que no se borran: se ocultan (`oculta`), porque sus reglas siguen en el código.
+  Las décadas son categorías más (id `d1980`): salen del año, pero se renombran, se llenan y se vacían igual. Lo corregido a mano sin ninguna década conserva la de su año; por eso sacar una canción de su década guarda `sin-decada`.
+  Cada tarjeta lleva `data-categoria` (`d1980`, `anime`…): ahí va el diseño propio de cada una.
   "Soundtrack" es de películas y series: lo de videojuegos o anime no sale ahí. Las reglas corren una vez por canción (`WeakMap`): filtrar 1,500 tarda ~14 ms.
 - **Fotos de artistas** (`lib/fotosArtistas.svelte.js`, `api.artista_foto`): mientras no haya, se usa una carátula suya (`artistas()` ya la trae, sin red). Solo se piden las de filas dibujadas, de una en una, y se detienen con una canción en línea sonando, en segundo plano o, en el cel, fuera de Wi-Fi (`navigator.connection.type`).
   Sin esos frenos serían cientos de consultas a YouTube Music con solo abrir la pestaña. Van en `datos/artistas`, no en la caché, y el nombre debe ser idéntico al de YouTube Music: mejor un ícono que la foto de otro. Sin foto se revisa otra vez a los 30 días.
@@ -294,6 +299,7 @@ Todo el trabajo real vive en Python: python/wavedrop/  (el mismo código en las 
   `refuerzo` del grafo de Web Audio (el mismo del ecualizador, que se arma al subir de 100 %), seguido de un limitador (−1.5 dB) y un recorte suave tanh,
   sin sobremuestreo (con "2x"/"4x" el filtro rebota y pasa de 0 dB); los dos solo actúan con refuerzo. `wavedrop_volumen` antes guardaba la amplitud:
   `misiccord_volumen_escala = "2"` marca que ya se convirtió. El audio de los jams usa la misma curva, pero sin refuerzo (tope 100 %).
+- **Tocar otra vez la pestaña en la que estás** (`irPestana`, `ui.reinicio`): regresa a la raíz, arriba y sin búsqueda; venir de otra pestaña conserva tu lugar.
 - **Regresar a donde estabas**: cada entrada de la pila guarda lo suyo (`scroll`, y `pestana`, `filtro` y `q` en Biblioteca) y `irPestana` conserva la raíz de cada pestaña (`raices`).
   El scroll se guarda **antes** de cambiar de vista (`recordarScroll`): en un `$effect` el contenido ya es otro y el navegador lo recortó, y por eso siempre regresaba arriba. Al volver se insiste hasta 2 s (`App.svelte`) porque lo que llega de Python tarda; tocar la pantalla lo cancela.
 - **Ajustes va en `Navegacion`**, no en una vista: así se ve en todas las pantallas y los tres modos. No es pestaña: se abre encima de lo que estés viendo.
