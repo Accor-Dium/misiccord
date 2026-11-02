@@ -9,6 +9,7 @@
   const frecuencias = $derived(frecuenciasEq(bandas.length));
   const presetActual = $derived(PRESETS_EQ.find(([, p]) => convertirBandas(p, bandas.length).every((v, i) => v === bandas[i]))?.[0]);
   const etiqueta = (f) => (f >= 1000 ? `${Math.round(f / 100) / 10}k` : String(Math.round(f)));
+  const densas = $derived(bandas.length > 15); // 31: no cabe un texto por banda, solo uno de cada tres y los dB que no sean 0
 
   function guardar() {
     const { activo, bandas: b, mono } = rep.eq;
@@ -55,13 +56,13 @@
         <button class:activo={presetActual === nombre} onclick={() => aplicar({ bandas: convertirBandas(curva, bandas.length) })}>{t(nombre)}</button>
       {/each}
     </div>
-    <div class="bandas" class:muchas={bandas.length > 10}>
+    <div class="bandas" class:muchas={bandas.length > 10} class:densas>
       {#each frecuencias as f, i}
         <label class="banda">
-          <span class="db">{bandas[i] > 0 ? "+" : ""}{bandas[i]}</span>
+          <span class="db">{densas && !bandas[i] ? "" : `${bandas[i] > 0 ? "+" : ""}${bandas[i]}`}</span>
           <input type="range" min="-12" max="12" step="1" value={bandas[i]} aria-label="{etiqueta(f)} Hz" disabled={!rep.eq.activo}
             oninput={(e) => moverBanda(i, +e.target.value)} onchange={guardar} />
-          <small>{etiqueta(f)}</small>
+          <small>{!densas || i % 3 === 0 ? etiqueta(f) : ""}</small>
         </label>
       {/each}
     </div>
@@ -69,7 +70,7 @@
 </div>
 
 <style>
-  .eq { height: 100%; overflow-y: auto; scrollbar-width: none; display: flex; flex-direction: column; gap: 12px; touch-action: pan-y; }
+  .eq { height: 100%; overflow: hidden auto; scrollbar-width: none; display: flex; flex-direction: column; gap: 12px; touch-action: pan-y; }
   .eq::-webkit-scrollbar { display: none; }
   .fila { display: flex; align-items: center; justify-content: space-between; gap: 12px; font-size: 15px; }
   .fila span { color: rgba(255, 255, 255, 0.7); }
@@ -86,13 +87,13 @@
   .presets::-webkit-scrollbar { display: none; }
   .presets button { height: 32px; padding: 0 13px; border-radius: 999px; font-size: 13px; font-weight: 600; background: rgba(255, 255, 255, 0.1); color: rgba(255, 255, 255, 0.78); flex-shrink: 0; }
   .presets .activo { background: var(--cian); color: #04121a; }
-  /* Con 15 o 31 bandas no caben: se recorren de lado */
-  .bandas { display: flex; justify-content: space-between; gap: 4px; padding-top: 10px; overflow-x: auto; scrollbar-width: none; touch-action: pan-x; }
-  .bandas::-webkit-scrollbar { display: none; }
-  .banda { display: flex; flex-direction: column; align-items: center; gap: 6px; flex: 1 0 34px; min-width: 34px; }
-  .muchas .banda { flex: 0 0 38px; }
-  .db { font-size: 11.5px; font-weight: 700; font-variant-numeric: tabular-nums; color: var(--cian); min-height: 1em; }
-  .banda small { color: rgba(255, 255, 255, 0.6); font-size: 11px; white-space: nowrap; }
+  /* Todas en una sola línea, como un ecualizador gráfico: se angostan con el panel en vez de recorrerse de lado */
+  .bandas { display: flex; padding-top: 10px; }
+  .banda { display: flex; flex-direction: column; align-items: center; gap: 6px; flex: 1 1 0; min-width: 0; }
+  .db { height: 14px; line-height: 14px; font-size: 11.5px; font-weight: 700; font-variant-numeric: tabular-nums; color: var(--cian); white-space: nowrap; }
+  .banda small { height: 14px; line-height: 14px; color: rgba(255, 255, 255, 0.6); font-size: 11px; white-space: nowrap; }
+  .muchas .db, .muchas small { font-size: 9.5px; }
+  .densas .db, .densas small { font-size: 8.5px; }
   /* Deslizadores verticales (Chromium 124+, como WebView2 y el WebView de Android actuales) */
-  .banda input { writing-mode: vertical-lr; direction: rtl; height: 150px; width: 28px; accent-color: var(--cian); touch-action: none; }
+  .banda input { writing-mode: vertical-lr; direction: rtl; height: 150px; width: 100%; max-width: 28px; min-width: 0; margin: 0; accent-color: var(--cian); touch-action: none; }
 </style>

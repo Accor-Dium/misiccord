@@ -132,10 +132,6 @@
   .entero .disco { inset: 0; width: 100%; height: 100%; }
   .entero .surcos { animation: girar 7s linear infinite paused; }
   .entero .surcos.gira { animation-play-state: running; }
-  .entero .surcos::after {
-    content: ""; position: absolute; left: 50%; top: 50%; z-index: 2; width: 3.4cqw; height: 3.4cqw; margin: -1.7cqw;
-    border-radius: 50%; background: #0b0b0d; box-shadow: 0 0 0 0.4cqw rgba(255, 255, 255, 0.28);
-  }
   .entero .arte { inset: 21%; width: auto; height: auto; border-radius: 50%; box-shadow: 0 0 0 0.5cqw #0b0b0d; }
   .entero .arte::after { content: none; }
   @keyframes girar { to { transform: rotate(360deg); } }

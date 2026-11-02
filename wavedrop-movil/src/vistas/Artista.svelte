@@ -75,13 +75,21 @@
         <button class="ver" onclick={() => (verTodas = !verTodas)}>{verTodas ? t("Ver menos") : t("Ver todas ({n})", { n: tuyas.length })}</button>
       {/if}
       {#if tuyo.albumes.length}
-        <div class="titulo-seccion">{t("Tus álbumes")}</div>
-        <div class="carrusel">
+        <div class="titulo-seccion">
+          {t("Tus álbumes")}
+          {#if tuyo.albumes.length > 3}<button onclick={() => (e.verTuyos = !e.verTuyos)}><small>{e.verTuyos ? t("Ver menos") : t("Ver todos")}</small></button>{/if}
+        </div>
+        {#snippet tuyos(ancho)}
           {#each tuyo.albumes as al}
-            <Tarjeta portada={al.portada} titulo={al.nombre} subtitulo={[al.anio, canciones(al.canciones)].filter(Boolean).join(" · ")}
+            <Tarjeta portada={al.portada} titulo={al.nombre} subtitulo={[al.anio, canciones(al.canciones)].filter(Boolean).join(" · ")} {ancho}
               alTocar={() => abrir("album", { local: al })} />
           {/each}
-        </div>
+        {/snippet}
+        {#if e.verTuyos}
+          <div class="rejilla">{@render tuyos("100%")}</div>
+        {:else}
+          <div class="carrusel">{@render tuyos()}</div>
+        {/if}
       {/if}
       {#if sinConexion}<p class="tenue sin-red">{t("Sin conexión: esto es lo que tienes guardado.")}</p>{/if}
     </div>
@@ -110,14 +118,20 @@
       {#if a.albumes.length}
         <div class="titulo-seccion">
           {t("Álbumes y sencillos")}
-          {#if tuyas.length && a.avance?.total}<small>{t("Tienes {n} de {total} álbumes", { n: a.avance.tienes, total: a.avance.total })}</small>{/if}
+          {#if a.albumes.length > 3}<button onclick={() => (e.verDiscos = !e.verDiscos)}><small>{e.verDiscos ? t("Ver menos") : t("Ver todos")}</small></button>{/if}
         </div>
-        <div class="carrusel">
+        {#if tuyas.length && a.avance?.total}<p class="tenue avance">{t("Tienes {n} de {total} álbumes", { n: a.avance.tienes, total: a.avance.total })}</p>{/if}
+        {#snippet discos(ancho)}
           {#each a.albumes as al}
-            <Tarjeta portada={al.miniatura} titulo={al.titulo} subtitulo={al.tuyo ? t("En tu biblioteca") : [al.tipo, al.anio].filter(Boolean).join(" · ")}
+            <Tarjeta portada={al.miniatura} titulo={al.titulo} subtitulo={al.tuyo ? t("En tu biblioteca") : [al.tipo, al.anio].filter(Boolean).join(" · ")} {ancho}
               alTocar={() => abrir("album", { id: al.browse_id })} />
           {/each}
-        </div>
+        {/snippet}
+        {#if e.verDiscos}
+          <div class="rejilla">{@render discos("100%")}</div>
+        {:else}
+          <div class="carrusel">{@render discos()}</div>
+        {/if}
       {/if}
 
       {#if a.parecidos.length}
@@ -147,6 +161,8 @@
   h1 { margin: 0; font-size: 44px; font-weight: 900; letter-spacing: -1px; line-height: 1; }
   .nombre p { margin: 10px 0 0; font-weight: 600; color: rgba(255, 255, 255, 0.8); }
   .cuerpo { padding: 0 var(--margen); }
+  .rejilla { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 18px 14px; }
+  .avance { margin: -6px 0 10px; font-size: 14px; }
   .desc {
     margin: 14px 0 0; font-weight: 500; line-height: 1.45; color: rgba(255, 255, 255, 0.88);
     display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
