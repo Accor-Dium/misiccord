@@ -16,8 +16,11 @@ import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import androidx.core.content.FileProvider
 import java.io.File
+import app.tauri.PermissionState
 import app.tauri.annotation.Command
 import app.tauri.annotation.InvokeArg
+import app.tauri.annotation.Permission
+import app.tauri.annotation.PermissionCallback
 import app.tauri.annotation.TauriPlugin
 import app.tauri.plugin.Invoke
 import app.tauri.plugin.JSObject
@@ -39,6 +42,11 @@ class Llamada {
 @InvokeArg
 class Pedido {
     var pedir: Boolean = false
+}
+
+@InvokeArg
+class ArgsRed {
+    var pedir: String = "" // "permiso" (diálogo del sistema) | "ajustes" (si ya lo negó) | "" (solo consultar)
 }
 
 @InvokeArg
@@ -98,7 +106,7 @@ class Emisor(private val cola: LinkedBlockingQueue<String>, private val contexto
  * - llamar: ejecuta wavedrop.api.despachar(funcion, datos, contexto, emisor) en un hilo aparte.
  * - esperarEvento: Rust lo llama en bucle para recoger los avisos de Python y mandarlos a la interfaz.
  */
-@TauriPlugin
+@TauriPlugin(permissions = [Permission(strings = ["android.permission.ACCESS_LOCAL_NETWORK"], alias = "redLocal")])
 class PythonPlugin(private val activity: Activity) : Plugin(activity) {
     private val eventos = LinkedBlockingQueue<String>().also { Medios.eventos = it }
     private val emisor = Emisor(eventos, activity.applicationContext)
@@ -317,6 +325,38 @@ class PythonPlugin(private val activity: Activity) : Plugin(activity) {
         ServicioMedios.actualizar(activity.applicationContext, if (!a.hay) null else EstadoMedios(
             a.titulo, a.artista, a.album, a.portada, a.duracion, a.posicion, a.sonando, a.enJam))
         invoke.resolve()
+    }
+
+    /**
+     * Android 17+: sin "Dispositivos cercanos" (ACCESS_LOCAL_NETWORK) no se llega a nada de la Wi-Fi (la PC vinculada,
+     * un jam): las conexiones fallan como si el otro no existiera. Responde { concedido, negado }; con pedir="permiso"
+     * espera la respuesta del diálogo.
+     */
+    @Command
+    fun redLocal(invoke: Invoke) {
+        val a = invoke.parseArgs(ArgsRed::class.java)
+        if (Build.VERSION.SDK_INT < 37 || getPermissionState("redLocal") == PermissionState.GRANTED) {
+            invoke.resolve(JSObject().put("concedido", true))
+            return
+        }
+        when (a.pedir) {
+            "permiso" -> requestPermissionForAlias("redLocal", invoke, "alPermisoRed")
+            "ajustes" -> {
+                pantalla.startActivity(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
+                                              Uri.parse("package:${activity.packageName}")))
+                invoke.resolve(JSObject().put("concedido", false))
+            }
+            else -> respuestaRed(invoke)
+        }
+    }
+
+    @PermissionCallback
+    private fun alPermisoRed(invoke: Invoke) = respuestaRed(invoke)
+
+    private fun respuestaRed(invoke: Invoke) {
+        val estado = getPermissionState("redLocal")
+        // DENIED = ya lo negó y Android no vuelve a mostrar el diálogo: solo queda Ajustes
+        invoke.resolve(JSObject().put("concedido", estado == PermissionState.GRANTED).put("negado", estado == PermissionState.DENIED))
     }
 
     @Command

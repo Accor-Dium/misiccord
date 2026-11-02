@@ -319,6 +319,25 @@ async fn compartir(app: tauri::AppHandle, datos: serde_json::Value) -> Result<se
     }
 }
 
+/// Android 17+: permiso para hablar con la Wi-Fi local ({ pedir: "" | "permiso" | "ajustes" } → { concedido, negado }).
+/// En escritorio no hace falta.
+#[tauri::command]
+async fn red_local(app: tauri::AppHandle, datos: serde_json::Value) -> Result<serde_json::Value, String> {
+    #[cfg(target_os = "android")]
+    {
+        return app
+            .state::<Python<tauri::Wry>>()
+            .0
+            .run_mobile_plugin::<serde_json::Value>("redLocal", datos)
+            .map_err(|e| e.to_string());
+    }
+    #[cfg(not(target_os = "android"))]
+    {
+        let _ = (app, datos);
+        Ok(serde_json::json!({ "concedido": true }))
+    }
+}
+
 /// Android: sesión conservada al quitar la app de recientes con música ({ accion: "" | "reiniciar" }).
 #[tauri::command]
 async fn sesion(app: tauri::AppHandle, datos: serde_json::Value) -> Result<serde_json::Value, String> {
@@ -514,7 +533,7 @@ pub fn run() {
             }
             Ok(())
         })
-        .invoke_handler(tauri::generate_handler![py, permiso_archivos, instalar_apk, medios, segundo_plano, compartir, sesion, burbuja, barra_tareas])
+        .invoke_handler(tauri::generate_handler![py, permiso_archivos, instalar_apk, medios, segundo_plano, compartir, sesion, red_local, burbuja, barra_tareas])
         .build(tauri::generate_context!())
         .expect("error while running tauri application");
 

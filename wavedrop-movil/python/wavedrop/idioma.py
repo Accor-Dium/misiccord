@@ -16,6 +16,11 @@ _EN = {
     "{nombre} se quedó sin espacio": "{nombre} ran out of space",
     "No se pudo conectar": "Couldn't connect",
     "No veo ninguno de tus dispositivos en esta red": "None of your devices are on this network",
+    "No encontré ese dispositivo en tu red. Revisa que los dos estén conectados a la misma Wi-Fi y que el otro siga en Vincular.":
+        "Couldn't find that device on your network. Check that both are on the same Wi-Fi and the other one is still on Link.",
+    "Misiccord no tiene permiso para buscar dispositivos en tu red. Actívalo en Ajustes del sistema → Apps → Misiccord → Permisos → Dispositivos cercanos.":
+        "Misiccord isn't allowed to look for devices on your network. Turn it on in system Settings → Apps → Misiccord → Permissions → Nearby devices.",
+    "Se perdió la conexión con ese dispositivo. Inténtalo otra vez.": "Lost the connection to that device. Try again.",
     "Para ti": "For you",
     "Porque {motivo} {titulo} · {artista}": "Because you {motivo} {titulo} · {artista}",
     "escuchas": "listen to",

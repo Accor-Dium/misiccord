@@ -1315,8 +1315,9 @@ def sinc_vincular(d: dict) -> dict:
     import qrcode.image.svg
     from . import sincronizar
     v = sincronizar.abrir_vinculacion()
-    texto = "misiccord://vincular?" + urllib.parse.urlencode({"ip": v["ips"][0], "puerto": v["puerto"], "codigo": v["codigo"],
-                                                              "h": v["huella"], "nombre": v["nombre"]})
+    # Todas las IPs (Wi-Fi, VPN…): el otro se queda con la que le conteste
+    texto = "misiccord://vincular?" + urllib.parse.urlencode({"ip": v["ips"][0], "ips": ",".join(v["ips"][1:5]), "puerto": v["puerto"],
+                                                              "codigo": v["codigo"], "h": v["huella"], "nombre": v["nombre"]})
     imagen = qrcode.make(texto, image_factory=qrcode.image.svg.SvgPathImage, box_size=10, border=2)
     return {**sincronizar.resumen(), "qr": imagen.to_string(encoding="unicode"), "texto": texto}
 
@@ -1336,7 +1337,8 @@ def sinc_buscar(d: dict) -> dict:
 
 def sinc_vincular_con(d: dict) -> dict:
     from . import sincronizar
-    hecho = sincronizar.vincular_con(d["ip"], int(d["puerto"]), d["codigo"], d.get("h", ""))
+    otras = [x for x in str(d.get("ips") or "").split(",") if x]
+    hecho = sincronizar.vincular_con(d["ip"], int(d["puerto"]), d["codigo"], d.get("h", ""), otras)
     return {**sincronizar.resumen(), "vinculado": hecho}
 
 

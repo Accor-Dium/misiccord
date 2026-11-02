@@ -12,7 +12,7 @@ documentada abajo; si algo no está documentado, pregunta antes de "arreglarlo".
 
 ---
 
-## Estado del proyecto (al 30 de octubre de 2026 · versión publicada: **4.0.0**)
+## Estado del proyecto (al 2 de noviembre de 2026 · versión publicada: **4.0.1**)
 
 Resumen para que no tengas que leer todo el código. Actualiza esta sección cuando publiques una versión.
 
@@ -78,6 +78,7 @@ medianos, el **menor**; detalles pequeños, el **parche**. Hasta 1.0.10 todo sub
 | 3.4.0 | (Omar) Retomar lo que sonaba al abrir la app y desde el Play del widget; regresar a donde estabas; álbumes: qué te falta (con caché de 7 días) y avance de la discografía; Biblioteca con fotos de artistas, filtros por categoría, pestaña Carpetas y playlists editables (nombre, carátula, orden). |
 | 3.5.0 | (Omar) Categorías editables (crear, renombrar, ocultar, mover canciones), todas las canciones de un artista, Ver todos en el artista, bandas del ecualizador en una línea y tocar otra vez la pestaña regresa al principio. |
 | 4.0.0 | **Mis dispositivos**: vincular el cel con la PC sin cuentas (código o QR) y sincronizarse solos en la misma red Wi-Fi: Me gusta, playlists, categorías, historial y copiar las canciones que le falten a cada uno. |
+| 4.0.1 | Mis dispositivos en Android 17: pide el permiso Dispositivos cercanos (sin él no se veía la PC), el QR trae todas las IPs, tarjeta "Vinculando…", lector de QR con cuadro y Cancelar, y el servidor (sincronizar y jam) ya no tarda ~12 s en arrancar en PCs con VPN. |
 
 ### Qué está probado y dónde
 - **En dispositivos reales** (lo probó quien administra el proyecto): app de Windows, Android en varios teléfonos (Samsung S25 Ultra, Pixel 7 Pro…),
@@ -170,7 +171,7 @@ Todo el trabajo real vive en Python: python/wavedrop/  (el mismo código en las 
   `lib/idioma.svelte.js` (`t()`, idioma del dispositivo o el elegido) + `lib/textos/en.js` (traducción al inglés) ·
   `lib/menuCancion.js` (el menú de una canción) · `lib/compartir.js` (compartir/exportar) · `lib/jalar.js` (jalar para actualizar) ·
   `lib/escritorio.svelte.js` (lo que suena para la burbuja y la barra de tareas, y sus órdenes) ·
-  `lib/sincronizacion.svelte.js` (estado de Mis dispositivos y el link `misiccord://vincular`) · `lib/qr.js` (leer un QR con la cámara: Jams y Mis dispositivos).
+  `lib/sincronizacion.svelte.js` (estado de Mis dispositivos y el link `misiccord://vincular`) · `lib/qr.js` (leer un QR con la cámara: Jams y Mis dispositivos; lo que se ve lo dibuja `componentes/Escaner.svelte`).
 - `vistas/`: `Inicio` (con el buscador en vivo `componentes/Buscador.svelte`), `Explorar`, `Biblioteca` (selección para compartir o borrar), `Album`
   (también playlists de YouTube Music), `Artista`, `Playlist`, `MeGusta`, `Estadisticas`, `Jams`, `Descargas`, `Ajustes`.
 - `componentes/`: `FilaCancion` (menú ⋯, agregar al jam, eliminar), `Hoja` (menú inferior / ventana en escritorio), `MiniReproductor` (también muestra el jam),
@@ -317,6 +318,16 @@ Todo el trabajo real vive en Python: python/wavedrop/  (el mismo código en las 
   - Solo inicia uno (I) y el otro responde: basta con que uno alcance al otro. Si los dos empiezan a la vez, uno contesta "ocupado" (409) y lo intenta luego; una sesión sin peticiones por 2 min se da por abandonada (`/sinc/soltar` la suelta de inmediato).
   - El historial solo crece (`evento_ultimo` marca hasta dónde se revisó). Lo de una canción que llegó antes que ella va con ruta `sinc:<clave>` y se corrige al llegar.
   - Para probar sin dos equipos: dos procesos de Python con carpetas distintas en la misma PC (cada uno toma otro puerto) y `vincular_con("127.0.0.1", puerto, código)`.
+  - **Android 17+ (targetSdk 37) bloquea la red local** sin `ACCESS_LOCAL_NETWORK` ("Dispositivos cercanos"): las conexiones a la Wi-Fi fallan como si el otro
+    no existiera. `PythonPlugin.redLocal` / comando `red_local` lo pide; `permisoRed()` (sincronizacion.svelte.js) lo llama antes de abrir Vincular o vincularse
+    y, si ya se negó, ofrece abrir los ajustes de la app. En Python un `PermissionError` al conectar es justo eso.
+  - El QR lleva **todas** las IPs de quien lo muestra (`ip` + `ips`): una PC con VPN o Tailscale tiene varias y la primera puede no ser la de la Wi-Fi.
+    `_alcanzable` prueba `/sinc/hola` en todas a la vez y se queda con la que conteste (o da un error claro en ~4 s).
+  - `HTTPServer.server_bind` llama `getfqdn()`, que en una PC con VPNs tarda ~12 s: `_Servidor` (aquí y en `jam.py`) lo salta. No lo quites.
+  - Mientras se vincula sale una tarjeta "Vinculando con…" encima de todo (tras leer el QR la cámara se cierra sin más y parecía que no pasaba nada).
+- **Lector de QR (`lib/qr.js` + `componentes/Escaner.svelte`)**: el escáner nativo va en modo `windowed` (la cámara detrás de la WebView transparente).
+  `ui.escaner` muestra Escaner.svelte y pone `html.escaneando`, que vuelve transparentes `html`/`body` y oculta el resto de la app; la sombra del cuadro
+  tapa todo menos él. "Cancelar" y "atrás" llaman `cancel()` del plugin.
 - **Tocar otra vez la pestaña en la que estás** (`irPestana`, `ui.reinicio`): regresa a la raíz, arriba y sin búsqueda; venir de otra pestaña conserva tu lugar.
 - **Regresar a donde estabas**: cada entrada de la pila guarda lo suyo (`scroll`, y `pestana`, `filtro` y `q` en Biblioteca) y `irPestana` conserva la raíz de cada pestaña (`raices`).
   El scroll se guarda **antes** de cambiar de vista (`recordarScroll`): en un `$effect` el contenido ya es otro y el navegador lo recortó, y por eso siempre regresaba arriba. Al volver se insiste hasta 2 s (`App.svelte`) porque lo que llega de Python tarda; tocar la pantalla lo cancela.

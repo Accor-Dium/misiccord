@@ -9,6 +9,8 @@
     <!-- Instalar las actualizaciones de Misiccord que se bajan desde la app -->
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
     <uses-permission android:name="android.permission.CAMERA" />
+    <!-- Android 17+: hablar con otros dispositivos de la Wi-Fi (Mis dispositivos y jams). Grupo "Dispositivos cercanos" -->
+    <uses-permission android:name="android.permission.ACCESS_LOCAL_NETWORK" />
     <!-- Música en segundo plano con controles en notificación, pantalla bloqueada y relojes -->
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK" />

@@ -24,6 +24,7 @@ import json
 import mimetypes
 import secrets
 import socket
+import socketserver
 import sys
 import threading
 import time
@@ -591,6 +592,11 @@ class _Servidor(ThreadingHTTPServer):
     daemon_threads = True
     # En Windows SO_REUSEADDR deja que dos servidores compartan el puerto (y se roben las conexiones)
     allow_reuse_address = sys.platform != "win32"
+
+    def server_bind(self):
+        # Sin el getfqdn() de HTTPServer: con VPNs o Tailscale en la PC tarda ~12 s en contestar y no se usa para nada
+        socketserver.TCPServer.server_bind(self)
+        self.server_name, self.server_port = self.server_address[:2]
 
     def handle_error(self, request, client_address):
         # Celulares que se duermen y el túnel cerrando conexiones viejas: normal, no hace falta el error entero

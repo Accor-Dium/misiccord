@@ -19,6 +19,7 @@ export const ui = $state({
   avisos: [],
   version: 0, // sube cuando cambia la biblioteca, para que las vistas recarguen
   alAtras: null, // qué hacer con el próximo "atrás" (p. ej. cerrar la cámara del QR)
+  escaner: null, // lector de QR abierto (Escaner.svelte): { titulo, texto }
   info: null, // canción abierta en la ventana de información y etiquetas (InfoCancion.svelte)
   completar: null, // canciones en la ventana de completar datos (CompletarDatos.svelte)
   resumen: null, // presentación del resumen abierta: { tipo, dias, nombre } (Resumen.svelte)

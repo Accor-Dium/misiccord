@@ -32,6 +32,7 @@ import re
 import secrets
 import shutil
 import socket
+import socketserver
 import sys
 import threading
 import time
@@ -41,6 +42,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
 from . import biblioteca, plataforma
+from .idioma import t as _t
 from .jam import ips_locales
 
 PUERTO_ANUNCIO = 47475
@@ -328,6 +330,11 @@ class _Servidor(ThreadingHTTPServer):
     daemon_threads = True
     allow_reuse_address = sys.platform != "win32"  # igual que el jam: en Windows dos servidores compartirían el puerto
 
+    def server_bind(self):
+        # Sin el getfqdn() de HTTPServer: con VPNs o Tailscale en la PC tarda ~12 s en contestar y no se usa para nada
+        socketserver.TCPServer.server_bind(self)
+        self.server_name, self.server_port = self.server_address[:2]
+
     def handle_error(self, request, client_address):
         if isinstance(sys.exc_info()[1], (ConnectionError, TimeoutError)):
             return
@@ -523,17 +530,45 @@ def _aceptar_vinculo(d: dict, ip: str) -> tuple[dict, int]:
     return respuesta, 200
 
 
-def vincular_con(ip: str, puerto: int, codigo: str, huella: str = "") -> dict:
-    """Lado que escribe el código (o escanea el QR) del otro."""
+def vincular_con(ip: str, puerto: int, codigo: str, huella: str = "", otras: list[str] | None = None) -> dict:
+    """Lado que escribe el código (o escanea el QR) del otro. `otras`: más IPs del otro (el QR las trae todas)."""
     codigo = re.sub(r"\D", "", codigo or "")
     if len(codigo) != 6:
         raise RuntimeError("El código tiene 6 números")
     _levantar()  # el otro nos va a buscar en cuanto termine
     try:
-        return _vincular_con(ip, puerto, codigo, huella)
+        return _vincular_con(_alcanzable([ip, *(otras or [])], puerto), puerto, codigo, huella)
     except Exception:
         _apagar_si_sobra()
         raise
+
+
+def _alcanzable(ips: list[str], puerto: int) -> str:
+    """La primera IP del otro que contesta. La PC suele tener varias (Wi-Fi, VPN, Tailscale…) y solo una es la de tu red."""
+    ips = list(dict.fromkeys(x for x in ips if x))
+    hallada, sin_permiso = [], []
+
+    def probar(ip):
+        try:
+            with urllib.request.urlopen(f"http://{ip}:{puerto}/sinc/hola", timeout=4) as r:
+                if json.loads(r.read()).get("misiccord_sinc"):
+                    hallada.append(ip)
+        except PermissionError:
+            sin_permiso.append(ip)  # Android 17+ sin el permiso de red local (Dispositivos cercanos)
+        except (OSError, ValueError):
+            pass
+
+    hilos = [threading.Thread(target=probar, args=(ip,), daemon=True) for ip in ips[:6]]
+    for h in hilos:
+        h.start()
+    limite = time.time() + 5
+    while not hallada and any(h.is_alive() for h in hilos) and time.time() < limite:
+        time.sleep(0.05)
+    if hallada:
+        return hallada[0]
+    if sin_permiso:
+        raise RuntimeError(_t("Misiccord no tiene permiso para buscar dispositivos en tu red. Actívalo en Ajustes del sistema → Apps → Misiccord → Permisos → Dispositivos cercanos."))
+    raise RuntimeError(_t("No encontré ese dispositivo en tu red. Revisa que los dos estén conectados a la misma Wi-Fi y que el otro siga en Vincular."))
 
 
 def _vincular_con(ip: str, puerto: int, codigo: str, huella: str) -> dict:
@@ -554,7 +589,7 @@ def _vincular_con(ip: str, puerto: int, codigo: str, huella: str) -> dict:
             mensaje = None
         raise RuntimeError(mensaje or f"No se pudo vincular ({e.code})") from e
     except OSError as e:
-        raise RuntimeError("No encontré ese dispositivo en tu red") from e
+        raise RuntimeError(_t("Se perdió la conexión con ese dispositivo. Inténtalo otra vez.")) from e
     publica_a = int(d["publica"], 16)
     if not 1 < publica_a < _P - 1 or not hmac.compare_digest(d.get("mac", ""), _mac(codigo, b"a", _bytes(publica_a), _bytes(publica))):
         raise RuntimeError("La respuesta no coincide con el código: no se vinculó")

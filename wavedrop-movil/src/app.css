@@ -37,6 +37,10 @@ html, body {
 }
 
 button { font: inherit; color: inherit; background: none; border: 0; padding: 0; cursor: pointer; }
+
+/* Leyendo un QR: la cámara está detrás de la WebView; se ve solo por el cuadro de Escaner.svelte */
+html.escaneando, html.escaneando body { background: transparent !important; }
+html.escaneando #app > :not(.escaner) { visibility: hidden !important; }
 input { font: inherit; color: inherit; }
 img { display: block; }
 

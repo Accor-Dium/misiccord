@@ -36,7 +36,7 @@
 
   async function escanear() {
     if (!nombre.trim()) return aviso(t("Escribe tu nombre primero"));
-    const texto = await leerQR();
+    const texto = await leerQR({ titulo: t("Escanea el QR del jam"), texto: t("Lo tiene en su pantalla quien lo abrió") });
     if (texto !== null) unirseConLink(texto);
   }
 

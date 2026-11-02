@@ -1,11 +1,11 @@
 <script>
   import { onMount } from "svelte";
-  import { slide } from "svelte/transition";
+  import { fade, scale, slide } from "svelte/transition";
   import { py } from "../lib/api.js";
   import { aviso, mostrarHoja } from "../lib/estado.svelte.js";
   import { t } from "../lib/idioma.svelte.js";
   import { leerQR } from "../lib/qr.js";
-  import { cargarSinc, leerVinculo, sinc } from "../lib/sincronizacion.svelte.js";
+  import { cargarSinc, leerVinculo, permisoRed, sinc } from "../lib/sincronizacion.svelte.js";
   import Icono from "./Icono.svelte";
 
   // Ajustes → Mis dispositivos: vincular el cel con la PC (sin cuentas) y ver cómo van.
@@ -17,6 +17,7 @@
   let elegido = $state(null); // dispositivo cercano al que te vas a vincular
   let codigo = $state("");
   let ocupado = $state(false);
+  let conectando = $state(null); // { nombre } mientras se vincula: tarjeta encima de todo (tras el QR la cámara se cierra sin más)
   let ahora = $state(Date.now() / 1000);
   let vinculadosAlAbrir = 0;
   const est = $derived(sinc.estado);
@@ -50,6 +51,8 @@
   });
 
   async function abrirVinculacion() {
+    // Sin el permiso de red local (Android 17+) ni se anuncia ni se ve a los demás
+    if (android && !(await permisoRed())) return;
     abierto = true;
     elegido = null;
     codigo = "";
@@ -71,7 +74,9 @@
   }
 
   async function vincularCon(datos) {
+    if (android && !(await permisoRed())) return;
     ocupado = true;
+    conectando = { nombre: datos.nombre || elegido?.nombre || "" };
     try {
       const r = await py("sinc_vincular_con", datos);
       vinculadosAlAbrir = r.dispositivos.length; // este aviso ya se da aquí
@@ -82,11 +87,12 @@
       aviso(e.message, "error");
     } finally {
       ocupado = false;
+      conectando = null;
     }
   }
 
   async function escanear() {
-    const texto = await leerQR();
+    const texto = await leerQR({ titulo: t("Escanea el QR del otro dispositivo"), texto: t("Está en Ajustes → Mis dispositivos → Vincular") });
     if (texto === null) return;
     const v = leerVinculo(texto);
     if (!v) return aviso(t("Ese QR no es de Mis dispositivos de Misiccord"), "error");
@@ -96,7 +102,7 @@
   function enviarCodigo(evento) {
     evento.preventDefault();
     if (codigo.replace(/\D/g, "").length !== 6) return aviso(t("El código tiene 6 números"));
-    vincularCon({ ip: elegido.ip, puerto: elegido.puerto, codigo });
+    vincularCon({ ip: elegido.ip, puerto: elegido.puerto, codigo, nombre: elegido.nombre });
   }
 
   async function sincronizarAhora(d) {
@@ -213,6 +219,17 @@
   {/if}
 </section>
 
+{#if conectando}
+  <div class="velo" transition:fade={{ duration: 160 }} role="alertdialog" aria-live="assertive" aria-busy="true">
+    <div class="tarjeta-conectando" in:scale={{ start: 0.94, duration: 200 }}>
+      <span class="radar"><Icono nombre="dispositivos" tam={30} /></span>
+      <b>{conectando.nombre ? t("Vinculando con {nombre}…", { nombre: conectando.nombre }) : t("Vinculando…")}</b>
+      <small class="tenue">{t("Buscándolo en tu Wi-Fi. Deja abierto Vincular en el otro dispositivo.")}</small>
+      <div class="barra-indefinida"><span></span></div>
+    </div>
+  </div>
+{/if}
+
 <style>
   section { margin-top: 26px; }
   h2 { font-size: 13px; letter-spacing: 1.5px; text-transform: uppercase; color: var(--cian); margin: 0 0 8px; }
@@ -251,6 +268,21 @@
   .escribir .pildora { height: 46px; padding: 0 18px; }
   .escanear { height: 44px; display: inline-flex; align-items: center; justify-content: center; gap: 8px; }
   .restaurar { color: var(--cian); font-weight: 600; padding: 14px 0 0; }
+  .velo { position: fixed; inset: 0; z-index: 90; display: grid; place-items: center; padding: 24px; background: rgba(2, 6, 10, 0.72); backdrop-filter: blur(6px); }
+  .tarjeta-conectando {
+    width: min(340px, 100%); padding: 26px 22px 22px; border-radius: 22px; background: var(--tarjeta); border: 1px solid var(--borde);
+    display: flex; flex-direction: column; align-items: center; gap: 10px; text-align: center;
+  }
+  .tarjeta-conectando b { font-size: 17px; }
+  .tarjeta-conectando small { line-height: 1.45; font-size: 13.5px; }
+  .radar {
+    width: 64px; height: 64px; border-radius: 50%; display: grid; place-items: center; color: var(--cian); margin-bottom: 4px;
+    background: rgba(34, 211, 238, 0.12); animation: pulso 1.4s ease-out infinite;
+  }
+  @keyframes pulso { 0% { box-shadow: 0 0 0 0 rgba(34, 211, 238, 0.45); } 100% { box-shadow: 0 0 0 22px rgba(34, 211, 238, 0); } }
+  .barra-indefinida { width: 100%; height: 3px; border-radius: 2px; background: var(--borde-fuerte); overflow: hidden; margin-top: 8px; }
+  .barra-indefinida span { display: block; width: 40%; height: 100%; border-radius: 2px; background: var(--cian); animation: ir-venir 1.2s ease-in-out infinite; }
+  @keyframes ir-venir { from { transform: translateX(-100%); } to { transform: translateX(250%); } }
   @media (min-width: 900px) and (min-height: 561px) {
     .columnas { flex-direction: row; align-items: flex-start; }
     .mio { width: 220px; flex-shrink: 0; }

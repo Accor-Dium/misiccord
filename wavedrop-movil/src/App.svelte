@@ -13,6 +13,7 @@
   import { aplicarAjustesVideo, aplicarEcualizador, rep, restaurarSesion } from "./lib/reproductor.svelte.js";
   import { aplicarAjusteBurbuja } from "./lib/escritorio.svelte.js";
   import Avisos from "./componentes/Avisos.svelte";
+  import Escaner from "./componentes/Escaner.svelte";
   import Hoja from "./componentes/Hoja.svelte";
   import CompletarDatos from "./componentes/CompletarDatos.svelte";
   import Resumen from "./componentes/Resumen.svelte";
@@ -109,6 +110,7 @@
   <Resumen />
 {/if}
 <Avisos />
+<Escaner />
 
 <style>
   main {

@@ -2,8 +2,8 @@
 import { aviso, mostrarHoja, ui } from "./estado.svelte.js";
 import { t } from "./idioma.svelte.js";
 
-/** El texto del QR, o null si se canceló o falló (el error ya se avisó). */
-export async function leerQR() {
+/** El texto del QR, o null si se canceló o falló (el error ya se avisó). `vista`: { titulo, texto } del lector. */
+export async function leerQR(vista = {}) {
   const { invoke } = await import("@tauri-apps/api/core");
   // Si la app volvió a una sesión que siguió sonando sin ella, la cámara ya no tiene su pantalla: hay que reiniciar
   const sesion = await invoke("sesion", { datos: {} }).catch(() => ({}));
@@ -16,7 +16,7 @@ export async function leerQR() {
     return null;
   }
   try {
-    // Cámara a pantalla completa con el escáner nativo
+    // Escáner nativo detrás de la WebView (windowed): Escaner.svelte tapa todo menos el cuadro y pone "Cancelar"
     const { scan, cancel, checkPermissions, requestPermissions, Format } = await import("@tauri-apps/plugin-barcode-scanner");
     let permiso = await checkPermissions();
     if (permiso !== "granted") permiso = await requestPermissions();
@@ -27,9 +27,11 @@ export async function leerQR() {
     // "Atrás" de Android mientras la cámara está abierta: cancelar el escaneo en vez de salir de la app
     ui.alAtras = () => cancel().catch(() => {});
     history.pushState({ wavedrop: "camara" }, "");
+    ui.escaner = { titulo: vista.titulo || "", texto: vista.texto || "" };
     try {
-      return (await scan({ windowed: false, formats: [Format.QRCode] }))?.content ?? null;
+      return (await scan({ windowed: true, formats: [Format.QRCode] }))?.content ?? null;
     } finally {
+      ui.escaner = null;
       if (ui.alAtras) {
         ui.alAtras = () => {}; // quitar la entrada del historial sin navegar
         history.back();
