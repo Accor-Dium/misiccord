@@ -68,6 +68,39 @@
   }
 
   const c = $derived(rep.actual);
+  // Para la etiqueta del cassette: las canciones de su álbum, como las abriría "Ir al álbum".
+  // Si es tuya, las que tienes de ese álbum; si es en línea, el álbum de YouTube Music. Una vez por álbum.
+  const albumes = new Map(); // clave → { canciones, anio }
+  let delAlbum = $state(null); // { clave, canciones, anio }
+  const claveAlbum = $derived(!c?.album ? "" : c.db_id ? `l|${c.album}|${c.artista_album || c.artista}` : c.album_id ? `i|${c.album_id}` : `b|${c.album}|${c.artista}`);
+  async function pedirAlbum(x) {
+    if (x.db_id) {
+      const r = await py("album_local", { nombre: x.album, artista: x.artista_album || x.artista, grupo: x.artista_album || "" });
+      return { canciones: r.canciones, anio: x.anio };
+    }
+    let id = x.album_id;
+    if (!id) id = (await py("buscar", { q: `${x.album} ${x.artista.split(",")[0]}`, tipo: "albumes" })).albumes?.[0]?.browse_id;
+    if (!id) return null;
+    const a = (await py("album", { browse_id: id })).album;
+    return { canciones: a.canciones, anio: a.anio };
+  }
+  $effect(() => {
+    const clave = claveAlbum, x = c;
+    if (!clave || ui.caratulas !== "cassette") return; // solo el cassette las imprime: sin él no se pide nada
+    if (albumes.has(clave)) { delAlbum = { clave, ...albumes.get(clave) }; return; }
+    pedirAlbum(x).then((r) => {
+      if (!r) return;
+      albumes.set(clave, r);
+      if (clave === claveAlbum) delAlbum = { clave, ...r };
+    }).catch(() => {});
+  });
+  const etiqueta = $derived.by(() => {
+    if (!c) return null;
+    const listo = delAlbum?.clave === claveAlbum ? delAlbum : null;
+    // Mientras llega (o sin internet): solo las de ese álbum que ya vienen en la cola, nunca las que siguen de otros
+    const pistas = listo?.canciones ?? (c.album ? rep.cola.filter((x) => x.album === c.album) : [c]);
+    return { titulo: c.album || c.titulo, artista: c.artista_album || c.artista, anio: c.anio || listo?.anio, pistas };
+  });
   const avance = $derived(rep.dur ? ((buscando ?? rep.pos) / rep.dur) * 100 : 0);
 
   function tocarInicio(e) {
@@ -163,7 +196,7 @@
             {:else if !enVideo}
               {#key c.portada}
                 <div class="tapa" in:fade={{ duration: 350 }}>
-                  <Portada url={c.portada} radio="14px" sombra objeto giro={rep.sonando} />
+                  <Portada url={c.portada} radio="14px" sombra objeto giro={rep.sonando} {etiqueta} />
                 </div>
               {/key}
             {/if}

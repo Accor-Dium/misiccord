@@ -114,7 +114,7 @@
           <b><Icono nombre="disco" tam={18} /> {t("Estilo de las carátulas")}</b>
           <small>{t("En tarjetas, álbumes y el reproductor. En las listas se quedan normales")}</small>
           <div class="segmentos largos">
-            {#each [["normal", t("Normal")], ["cd", t("CD")], ["vinilo", t("Vinilo")]] as [cod, nombre]}
+            {#each [["normal", t("Normal")], ["cd", t("CD")], ["vinilo", t("Vinilo")], ["cassette", t("Cassette")]] as [cod, nombre]}
               <button class:activo={aj.caratulas === cod} onclick={() => guardar({ caratulas: cod })}>{nombre}</button>
             {/each}
           </div>

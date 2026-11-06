@@ -2,13 +2,13 @@
   import { src } from "../lib/api.js";
   import { ui } from "../lib/estado.svelte.js";
 
-  // Lomo de un álbum, como si estuvieran apilados: el del CD es de plástico y el del vinilo, de cartón y delgado.
+  // Lomo de un álbum, como si estuvieran apilados: el del CD es de plástico, el del vinilo de cartón y delgado, y el del cassette de papel dentro de su cajita.
   // El color sale de una franja de la carátula: cada álbum se distingue sin tener que calcular nada.
   let { portada, titulo, artista, alTocar } = $props();
   const imagen = $derived(src(portada));
 </script>
 
-<button class="costilla" class:vinilo={ui.caratulas === "vinilo"} onclick={alTocar}>
+<button class="costilla" class:vinilo={ui.caratulas === "vinilo"} class:cassette={ui.caratulas === "cassette"} onclick={alTocar}>
   {#if imagen}<img src={imagen} alt="" loading="lazy" />{/if}
   <b class="cortar">{titulo}</b>
   <small class="cortar">{artista}</small>
@@ -46,6 +46,16 @@
   }
   .vinilo b { font-size: 13px; }
   .vinilo small { font-size: 11.5px; }
+
+  /* Cassette: el papel de la portada por el canto de la cajita, con plástico arriba y abajo */
+  .cassette { height: 42px; padding: 0 18px; }
+  .cassette::after {
+    background:
+      linear-gradient(180deg, #24262c 0 3px, rgba(255, 255, 255, 0.3) 4px, transparent 5px, transparent calc(100% - 5px), rgba(255, 255, 255, 0.16) calc(100% - 4px), #17181d calc(100% - 3px)),
+      linear-gradient(90deg, rgba(0, 0, 0, 0.6), rgba(0, 0, 0, 0.44));
+  }
+  .cassette b { font-size: 13.5px; }
+  .cassette small { font-size: 12px; }
 
   /* Al pasar el mouse se asoma, como sacándolo de la pila */
   @media (hover: hover) { .costilla:hover { transform: translateX(8px); } }

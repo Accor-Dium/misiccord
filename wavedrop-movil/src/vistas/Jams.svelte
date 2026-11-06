@@ -384,7 +384,7 @@
           <div class="ahora-contenido">
             {#if p}
               <div class="tapa">
-                <Portada url={urlJam(p.portada)} radio="16px" sombra objeto giro={s.sonando} />
+                <Portada url={urlJam(p.portada)} radio="16px" sombra objeto giro={s.sonando} etiqueta={{ titulo: p.album || p.titulo, artista: p.artista }} />
                 {#each flotando as r (r.ms)}
                   <span class="flota" style:left="{(r.ms % 70) + 10}%">{r.emoji}</span>
                 {/each}

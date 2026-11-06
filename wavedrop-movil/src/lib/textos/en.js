@@ -338,6 +338,7 @@ export const en = {
   "Normal": "Normal",
   "CD": "CD",
   "Vinilo": "Vinyl",
+  "Cassette": "Cassette",
   "Reproducción": "Playback",
   "Fundido entre canciones": "Crossfade",
   "{s} s: la siguiente entra mientras la actual se desvanece": "{s} s: the next song comes in while the current one fades out",
