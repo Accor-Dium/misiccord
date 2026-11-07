@@ -8,7 +8,8 @@
   import Icono from "./Icono.svelte";
   import Portada from "./Portada.svelte";
 
-  // Completar los datos de una o varias canciones, como Picard: para cada una se buscan en MusicBrainz todas las ediciones
+  // Completar los datos de una o varias canciones, como Picard: para cada una se buscan los álbumes de YouTube Music en que
+  // sale (de ahí escuchas y descargas) y después todas las ediciones de MusicBrainz
   // en las que sale (Billie Jean → Thriller, Thriller 25, HIStory…) y tú eliges cuál es. Se abre con completarDatos([...]).
   const lista = $derived(ui.completar ?? []);
   let k = $state(0);
@@ -84,15 +85,15 @@
     </div>
 
     {#if opciones === null}
-      <p class="tenue centro">{t("Buscando en MusicBrainz…")}</p>
+      <p class="tenue centro">{t("Buscando en YouTube Music y MusicBrainz…")}</p>
       {#each Array(4) as _}<div class="cargando-bloque" style="height:62px;margin:8px 0"></div>{/each}
     {:else if !opciones.length}
-      <p class="tenue centro">{error || t("MusicBrainz no encontró esta canción.")}</p>
+      <p class="tenue centro">{error || t("No encontré esta canción en YouTube Music ni en MusicBrainz.")}</p>
     {:else}
       <p class="tenue centro">{t("¿De cuál edición es? Se reemplazan título, artista, álbum, año, pista y género.")}</p>
       <label class="con-portada"><input type="checkbox" bind:checked={conPortada} /> {t("Usar también su carátula")}</label>
       <div class="opciones">
-        {#each opciones as o (o.mbid_album || o.album)}
+        {#each opciones as o (o.yt || o.mbid_album || o.album)}
           <button class="opcion" disabled={aplicando} onclick={() => elegir(o)}>
             <Portada url={o.miniatura} tam="56px" radio="6px" icono="disco" />
             <span class="textos">

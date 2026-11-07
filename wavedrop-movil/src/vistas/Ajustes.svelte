@@ -211,8 +211,8 @@
       {/if}
       <label class="opcion">
         <div class="texto">
-          <b>{t("Completar datos con MusicBrainz")}</b>
-          <small>{t("Álbum, año, número de pista y portada oficiales")}</small>
+          <b>{t("Completar datos al descargar")}</b>
+          <small>{t("Álbum, año, número de pista y portada de YouTube Music; si no está ahí, de MusicBrainz")}</small>
         </div>
         <input type="checkbox" class="interruptor" checked={aj.musicbrainz} onchange={(e) => guardar({ musicbrainz: e.target.checked })} />
       </label>

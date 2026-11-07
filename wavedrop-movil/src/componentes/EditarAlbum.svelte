@@ -165,19 +165,19 @@
         <button class="pildora oscura">{t("Buscar")}</button>
       </form>
       {#if opciones === null}
-        <p class="tenue">{t("Buscando en MusicBrainz…")}</p>
+        <p class="tenue">{t("Buscando en YouTube Music y MusicBrainz…")}</p>
         {#each Array(4) as _}<div class="cargando-bloque" style="height:66px;margin:8px 0"></div>{/each}
       {:else if !opciones.length}
-        <p class="tenue">{error || t("No encontré este álbum en MusicBrainz ni en YouTube Music. Prueba con otro nombre.")}</p>
+        <p class="tenue">{error || t("No encontré este álbum en YouTube Music ni en MusicBrainz. Prueba con otro nombre.")}</p>
       {:else}
-        <p class="tenue">{opciones[0].yt ? t("MusicBrainz no lo tiene; esto es lo que encontré en YouTube Music.") : t("Elige tu edición: cambian las pistas entre una y otra.")}</p>
+        <p class="tenue">{t("Elige tu edición: primero las de YouTube Music. Cambian las pistas entre una y otra.")}</p>
         {#each opciones as o (o.mbid_album || o.yt)}
           <button class="opcion" disabled={cargandoPistas} onclick={() => elegir(o)}>
             <Portada url={o.miniatura} tam="56px" radio="6px" icono="disco" />
             <span class="textos">
               <b class="cortar">{o.album}</b>
               <small class="cortar">{o.artista_album}</small>
-              <small class="cortar">{[o.anio, TIPOS[o.tipo] ?? o.tipo, o.pais, t("{n} pistas", { n: o.pistas })].filter(Boolean).join(" · ")}</small>
+              <small class="cortar">{[o.anio, TIPOS[o.tipo] ?? o.tipo, o.pais, o.pistas ? t("{n} pistas", { n: o.pistas }) : ""].filter(Boolean).join(" · ")}</small>
             </span>
           </button>
         {/each}

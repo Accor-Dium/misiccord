@@ -116,6 +116,31 @@ def nombre_album(nombre: str) -> str:
     return _EDICION.sub("", limpio).strip() or limpio
 
 
+def palabras(nombre: str) -> set[str]:
+    """Las palabras de un nombre, también las de entre paréntesis: "Believers Never Die (Volume Two)" lleva "volume two"."""
+    return set(normalizar(re.sub(r"[()\[\]]", " ", nombre or "")).split())
+
+
+def puesto_album(nombre: str, titulo: str) -> int | None:
+    """Qué tan bien le queda a tu álbum otro nombre de álbum: 0 el mismo, 1 el mismo sin "Deluxe", "Remastered"…,
+    2 en adelante las mismas palabras en otro orden ("Greatest Hits: Believers Never Die, Volume Two" es
+    "Believers Never Die - Greatest Hits (Volume Two)"), más alto mientras más le sobren. None = es otro."""
+    if normalizar(titulo) == normalizar(nombre):
+        return 0
+    if nombre_album(titulo) == nombre_album(nombre):
+        return 1
+    mias, suyas = palabras(nombre), palabras(titulo)
+    if mias == suyas:
+        return 2
+    # Una parte del nombre basta si son 3 palabras o más; entre varios, el que menos agregue:
+    # "Believers Never Die (Volume Two)" es el volumen dos y no "Believers Never Die - The Greatest Hits"
+    if len(mias) >= 3 and mias < suyas:
+        return 2 + len(suyas - mias)
+    if len(suyas) >= 3 and suyas < mias:
+        return 2 + len(mias - suyas)
+    return None
+
+
 def artista_principal(artista: str) -> str:
     return re.split(r",|&| x | y | and |;|/", artista or "", maxsplit=1)[0].strip()
 
@@ -352,8 +377,16 @@ class Biblioteca:
     def total(self) -> int:
         return self._q("SELECT COUNT(*) AS n FROM canciones")[0]["n"]
 
-    def buscar_existente(self, artista: str, titulo: str, duracion: float | None = None) -> Cancion | None:
-        """¿Ya tienes esta canción en alguna carpeta? Compara artista+título normalizados (y duración)."""
+    def buscar_existente(self, artista: str, titulo: str, duracion: float | None = None, album: str = "") -> Cancion | None:
+        """¿Ya tienes esta canción? Compara artista+título normalizados (y duración) y, si se sabe de qué álbum es, que tu
+        copia sea de ese álbum: el título solo no distingue versiones ("Sugar" y "Sugar (Remix)", "Call Me" y
+        "Call Me (Remastered 2001)"). Si tu copia no dice de qué álbum es, cuenta. La misma grabación en otro disco
+        (Billie Jean de Thriller vista en Number Ones) no cuenta: que se duplique no importa."""
+        return next((c for c in self.existentes(artista, titulo, duracion)
+                     if not album or not c.album or puesto_album(c.album, album) is not None), None)
+
+    def existentes(self, artista: str, titulo: str, duracion: float | None = None) -> list[Cancion]:
+        """Todas tus copias de esa canción (la puedes tener en su sencillo y en un álbum)."""
         # Se prueban dos lecturas: la tal cual y "Artista - Canción" dentro del título (típico de YouTube)
         lecturas = [(artista, titulo)]
         if " - " in titulo:
@@ -370,10 +403,12 @@ class Biblioteca:
                 a2 = r["clave"].split("|", 1)[0]
                 if a2 and a2 != art and (a2 in art or art in a2):
                     candidatos.append(self._cancion(r))
+        vistas, salida = set(), []
         for c in candidatos:
-            if not duracion or not c.duracion or abs(c.duracion - duracion) <= 10:
-                return c
-        return None
+            if c.id not in vistas and (not duracion or not c.duracion or abs(c.duracion - duracion) <= 10):
+                vistas.add(c.id)
+                salida.append(c)
+        return salida
 
     # --- Álbumes y artistas ---
 

@@ -50,6 +50,7 @@ class ResultadoCancion:
     duracion: float | None = None
     miniatura: str | None = None
     anio: str = ""
+    album_id: str = ""  # el browse_id de su álbum, si se sabe (en búsquedas sí; dentro de un álbum, ya se sabe cuál)
 
 
 @dataclass
@@ -99,6 +100,7 @@ def _cancion(d: dict) -> ResultadoCancion | None:
         duracion=d.get("duration_seconds") or _segundos(d.get("duration") or d.get("length")),
         miniatura=_miniatura(d.get("thumbnails") or d.get("thumbnail")),
         anio=str(d.get("year") or ""),
+        album_id=(d.get("album") or {}).get("id") or "" if isinstance(d.get("album"), dict) else "",
     )
 
 
@@ -183,13 +185,37 @@ def buscar_artistas(consulta: str, limite: int = 10) -> list[dict]:
             for d in _yt().search(consulta, filter="artists", limit=limite) if d.get("browseId")]
 
 
+def _solo_audio(a: dict) -> list[dict]:
+    """Las pistas de un álbum, todas en su versión de canción. YouTube Music pone en algunos discos el video oficial en
+    lugar de la canción (Sugar en V de Maroon 5: el video dura 5:02 con su intro, la canción 3:56). La lista de audio
+    del disco trae las mismas pistas en el mismo orden, ya como canción: de ahí se toma el video_id de esas."""
+    pistas = a.get("tracks") or []
+    videos = [i for i, t in enumerate(pistas) if t.get("videoType") not in (None, "MUSIC_VIDEO_TYPE_ATV")]
+    if not videos or not a.get("audioPlaylistId"):
+        return pistas
+    try:
+        audio = _yt().get_playlist(a["audioPlaylistId"], limit=len(pistas) + 10).get("tracks") or []
+    except Exception as e:  # sin la lista se queda como venía: mejor el video que nada
+        print(f"[explorar] audio del álbum: {e}")
+        return pistas
+    mismo = lambda x, y: biblioteca.normalizar(x.get("title")) == biblioteca.normalizar(y.get("title"))
+    pistas = [dict(t) for t in pistas]
+    for i in videos:
+        # Por su lugar en el disco y, si la lista viene en otro orden, por su nombre
+        par = audio[i] if i < len(audio) and mismo(audio[i], pistas[i]) else next((x for x in audio if mismo(x, pistas[i])), None)
+        if par and par.get("videoId") and par.get("videoType") in (None, "MUSIC_VIDEO_TYPE_ATV"):
+            pistas[i]["videoId"] = par["videoId"]
+            pistas[i]["videoType"] = par.get("videoType")
+    return pistas
+
+
 def album(browse_id: str) -> dict:
     """Página de un álbum: portada, datos y canciones (con su video_id para descargar o escuchar)."""
     a = _yt().get_album(browse_id)
     artista, artista_id = _artistas_de(a)
     portada = _miniatura(a.get("thumbnails"), 600)
     canciones = []
-    for t in a.get("tracks") or []:
+    for t in _solo_audio(a):
         c = _cancion(t)
         if c:
             c.album = c.album or a.get("title", "")
@@ -312,7 +338,7 @@ def recomendaciones(db: biblioteca.Biblioteca, semillas: int = 3) -> list[Seccio
         nuevas = []
         for r in radio(base.video_id):
             clave = biblioteca.clave(r.artista, r.titulo)
-            if clave in vistas or db.buscar_existente(r.artista, r.titulo, r.duracion):
+            if clave in vistas or db.buscar_existente(r.artista, r.titulo, r.duracion, r.album):
                 continue  # ya la tienes o ya salió en otra sección
             vistas.add(clave)
             nuevas.append(r)

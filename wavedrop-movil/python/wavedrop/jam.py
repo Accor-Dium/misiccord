@@ -163,7 +163,7 @@ class Sala:
                  "agregada_por": self.participantes.get(quien, {}).get("nombre", "Alguien"), "estado": "lista"}
         ruta = cancion.get("ruta")
         if not ruta and cancion.get("id"):
-            existente = self.api._db().buscar_existente(pista["artista"], pista["titulo"], pista["duracion"])
+            existente = self.api._db().buscar_existente(pista["artista"], pista["titulo"], pista["duracion"], pista["album"])
             ruta = str(existente.ruta) if existente else None
         if not ruta and cancion.get("id"):
             # ¿Ya sonó completa como vista previa? Entonces está en la caché

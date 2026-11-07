@@ -153,7 +153,7 @@
 
       {#if editable}
         <button class="pildora oscura completar" onclick={() => { const x = c; cerrar(); completarDatos([x]); }}>
-          <Icono nombre="etiqueta" tam={18} /> {t("Completar con MusicBrainz")}
+          <Icono nombre="etiqueta" tam={18} /> {t("Completar datos")}
         </button>
       {/if}
       <h3>{t("Detalles")}</h3>

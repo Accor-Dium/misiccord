@@ -17,6 +17,7 @@ import traceback
 import uuid
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import asdict
+from functools import lru_cache
 from pathlib import Path
 
 from . import biblioteca, descargas, etiquetas, explorar, idioma, letras, musicbrainz, plataforma, romanizar, traduccion
@@ -200,10 +201,12 @@ def _local(c: biblioteca.Cancion) -> dict:
             "portada": c.portada or None}
 
 
-def _en_linea(r: explorar.ResultadoCancion) -> dict:
-    existente = _db().buscar_existente(r.artista, r.titulo, r.duracion)
+def _en_linea(r: explorar.ResultadoCancion, disco: str = "") -> dict:
+    """Una canción de YouTube Music, con la `ruta` de tu copia si ya la tienes: de ese mismo álbum (ver
+    buscar_existente). Si Immortals la tienes en su sencillo, en el Greatest Hits no sale como tuya."""
+    existente = _db().buscar_existente(r.artista, r.titulo, r.duracion, disco or r.album)
     return {"local": False, "id": r.video_id, "titulo": r.titulo, "artista": r.artista, "album": r.album,
-            "duracion": r.duracion, "portada": r.miniatura, "anio": r.anio,
+            "album_id": r.album_id or None, "duracion": r.duracion, "portada": r.miniatura, "anio": r.anio,
             "ruta": str(existente.ruta) if existente else None}
 
 
@@ -459,7 +462,7 @@ def buscar(d: dict) -> dict:
 
 def album(d: dict) -> dict:
     a = explorar.album(d["browse_id"])
-    a["canciones"] = [_en_linea(c) for c in a["canciones"]]
+    a["canciones"] = [_en_linea(c, a["titulo"]) for c in a["canciones"]]
     return {"album": a}
 
 
@@ -478,17 +481,95 @@ def artista(d: dict) -> dict:
 _VARIOS = ("various artists", "varios artistas", "varios", "va")
 
 
-def _album_igual(nombre: str, artista: str) -> explorar.ResultadoAlbum | None:
-    """Tu álbum en YouTube Music: primero el nombre idéntico y después el mismo sin "Deluxe", "Remastered"… Debe ser del
-    mismo artista: "Greatest Hits" tiene cientos, y con el de otro te pediría descargar canciones que no son de tu disco."""
+_puesto_album = biblioteca.puesto_album  # ver biblioteca: también decide si una canción ya es tuya
+
+
+@lru_cache(maxsize=256)
+def _albumes_yt(nombre: str, artista: str) -> tuple:
+    """Los discos de YouTube Music de ese artista que salen al buscar tu álbum, del que mejor le queda al que menos:
+    ((puesto, ResultadoAlbum), …). Deben ser del mismo artista: "Greatest Hits" tiene cientos, y con el de otro te
+    pediría descargar canciones que no son de tu disco. Se recuerda: al bajar un disco entero se pregunta por cada canción."""
     ppal = biblioteca.normalizar(biblioteca.artista_principal(artista))
     def mismo_artista(x):
         otro = biblioteca.normalizar(biblioteca.artista_principal(x.artista))
         return ppal in _VARIOS or ppal in otro or otro in ppal
     aptos = [x for x in explorar.buscar_albumes(f"{nombre} {artista}", 20) if mismo_artista(x)]
-    objetivo, base = biblioteca.normalizar(nombre), biblioteca.nombre_album(nombre)
-    return (next((x for x in aptos if biblioteca.normalizar(x.titulo) == objetivo), None)
-            or next((x for x in aptos if biblioteca.nombre_album(x.titulo) == base), None))
+    puestos = [(_puesto_album(nombre, x.titulo), i, x) for i, x in enumerate(aptos)]
+    puestos.sort(key=lambda p: (p[0] is None, p[0] or 0, p[1]))
+    return tuple((p, x) for p, _, x in puestos)
+
+
+def _album_igual(nombre: str, artista: str) -> explorar.ResultadoAlbum | None:
+    """Tu álbum en YouTube Music (ver _albumes_yt y _puesto_album), o None si ninguno es."""
+    lista = _albumes_yt(nombre or "", artista or "")
+    return lista[0][1] if lista and lista[0][0] is not None else None
+
+
+def _album_yt(browse_id: str) -> dict:
+    """Un álbum de YouTube Music con sus pistas, guardado 7 días como los demás."""
+    def pedir():
+        a = explorar.album(browse_id)
+        return a | {"canciones": [asdict(c) for c in a["canciones"]]}
+    return _guardado_7_dias("albumes_audio", browse_id, False, pedir)  # "albumes_yt" traía videos (ver explorar._solo_audio)
+
+
+def _pista_en(album: dict, video_id: str = "", titulo: str = "") -> int | None:
+    """En qué lugar del álbum va la canción: por su video y, si no, por su nombre."""
+    pistas = album["canciones"]
+    for i, c in enumerate(pistas):
+        if video_id and c["video_id"] == video_id:
+            return i
+    objetivo = biblioteca.normalizar(titulo)
+    return next((i for i, c in enumerate(pistas) if objetivo and biblioteca.normalizar(c["titulo"]) == objetivo), None)
+
+
+def _datos_yt(album: dict, i: int, artista: str = "") -> musicbrainz.Datos:
+    """Las etiquetas de la pista i de un álbum de YouTube Music. Sin género: YouTube Music no lo da."""
+    c = album["canciones"][i]
+    return musicbrainz.Datos(titulo=c["titulo"], artista=c["artista"] or artista, album=album["titulo"],
+                             artista_album=album["artista"], anio=album["anio"], pista=i + 1,
+                             total_pistas=len(album["canciones"]), genero="", mbid="", mbid_album="", mbid_grupo="",
+                             puntaje=100)
+
+
+def _bajar_imagen(url: str | None) -> bytes | None:
+    import requests
+    if not url:
+        return None
+    try:
+        r = requests.get(url, timeout=20)
+        return r.content if r.ok and r.content else None
+    except requests.RequestException:
+        return None
+
+
+def _etiquetar_descarga(ruta: Path, entrada: descargas.Entrada) -> None:
+    """Las etiquetas de una canción recién bajada: primero del álbum de YouTube Music en el que sale (de ahí la
+    escuchas y de ahí se bajó: así el disco se llama igual que en la app) y MusicBrainz solo para el género. Si no
+    está en ningún álbum de YouTube Music (un video suelto, un álbum que no tiene), todo de MusicBrainz, como antes."""
+    datos = biblioteca.leer_archivo(ruta)
+    album = None
+    try:
+        igual = _album_igual(datos["album"] or entrada.album or "", datos["artista"] or entrada.artista)
+        if igual:
+            album = _album_yt(igual.browse_id)
+            i = _pista_en(album, "" if entrada.por_busqueda else entrada.id, datos["titulo"])
+            if i is None:
+                album = None  # la canción no viene en ese disco: mejor no inventarle uno
+    except Exception as e:
+        print(f"[etiquetas] YouTube Music: {e}")
+        album = None
+    if not album:
+        musicbrainz.completar(ruta, datos["titulo"], datos["artista"], datos["duracion"], datos["album"])
+        return
+    nuevos = _datos_yt(album, i, datos["artista"])
+    musicbrainz.escribir(ruta, nuevos, _bajar_imagen(album.get("portada")))
+    try:
+        mb = musicbrainz.buscar(nuevos.titulo, nuevos.artista, datos["duracion"], nuevos.album)
+        if mb and mb.genero:
+            etiquetas.escribir(ruta, {"genero": mb.genero})
+    except Exception:
+        pass  # el género es un extra
 
 
 def _guardado_7_dias(carpeta: str, clave: str, forzar: bool, pedir) -> dict:
@@ -516,9 +597,10 @@ def artista_canciones(d: dict) -> dict:
 def disco_canciones(d: dict) -> dict:
     """Las canciones de un disco de YouTube Music, guardadas 7 días: "Ver todas" de un artista pide toda su discografía,
     disco por disco, para que cada uno salga completo (Thriller con las suyas y Thriller 40 con las suyas)."""
-    pistas = _guardado_7_dias("discos", d["browse_id"], d.get("forzar"),
+    pistas = _guardado_7_dias("discos_audio", d["browse_id"], d.get("forzar"),  # "discos" traía videos
                               lambda: {"pistas": [asdict(c) for c in explorar.album(d["browse_id"])["canciones"]]})["pistas"]
-    return {"canciones": [_en_linea(explorar.ResultadoCancion(**p)) for p in pistas]}
+    # Dentro de un álbum, cada pista trae el nombre del disco
+    return {"canciones": [_en_linea(explorar.ResultadoCancion(**p), p.get("album") or "") for p in pistas]}
 
 
 def album_faltantes(d: dict) -> dict:
@@ -527,7 +609,7 @@ def album_faltantes(d: dict) -> dict:
     def pedir():
         igual = _album_igual(nombre, artista_)
         return {"id": igual.browse_id, "pistas": [asdict(c) for c in explorar.album(igual.browse_id)["canciones"]]} if igual else {"id": None, "pistas": []}
-    guardado = _guardado_7_dias("albumes", f"{nombre}|{artista_}", d.get("forzar"), pedir)
+    guardado = _guardado_7_dias("faltantes_audio", f"{nombre}|{artista_}", d.get("forzar"), pedir)  # "albumes" traía videos
     if not guardado["id"]:
         return {"encontrado": False}
     a = biblioteca.Album(nombre, artista_, "", 0, None, d.get("grupo", ""))
@@ -715,9 +797,52 @@ def _tras_editar(ruta: Path) -> dict:
     return {"cancion": _local(c) if c else None}
 
 
+def _opciones_yt_cancion(titulo: str, artista: str, duracion: float | None) -> list[dict]:
+    """Los álbumes de YouTube Music en los que sale una canción, con la forma de musicbrainz.opciones."""
+    artista, titulo = biblioteca.separar_titulo(titulo, artista)
+    ppal = biblioteca.normalizar(biblioteca.artista_principal(artista))
+    objetivo = biblioteca.normalizar(titulo)
+    ids = []
+    for c in explorar.buscar_canciones(f"{titulo} {artista}", 15):
+        otro = biblioteca.normalizar(biblioteca.artista_principal(c.artista))
+        if not c.album_id or c.album_id in ids or biblioteca.normalizar(c.titulo) != objetivo:
+            continue
+        if ppal and ppal not in otro and otro not in ppal:
+            continue
+        if duracion and c.duracion and abs(c.duracion - duracion) > 15:
+            continue
+        ids.append(c.album_id)
+    salida = []
+    for browse_id in ids[:3]:
+        try:
+            a = _album_yt(browse_id)
+        except Exception:
+            continue
+        i = _pista_en(a, "", titulo)
+        if i is None:
+            continue
+        x = asdict(_datos_yt(a, i, artista))
+        salida.append(x | {"yt": browse_id, "tipo": a.get("tipo") or "Album", "pais": "YouTube Music",
+                           "miniatura": a.get("portada"), "portada_url": a.get("portada")})
+    return salida
+
+
 def metadata_opciones(d: dict) -> dict:
-    """Las ediciones de MusicBrainz en las que sale una canción, para elegir de cuál completar sus datos."""
-    return {"opciones": musicbrainz.opciones(d.get("titulo", ""), d.get("artista", ""), d.get("duracion"), d.get("album", ""))}
+    """Los álbumes en los que sale una canción, para elegir de cuál completar sus datos: primero los de YouTube Music
+    (de ahí escuchas y descargas) y después las ediciones de MusicBrainz."""
+    titulo, artista_, duracion = d.get("titulo", ""), d.get("artista", ""), d.get("duracion")
+    try:
+        yt = _opciones_yt_cancion(titulo, artista_, duracion)
+    except Exception as e:
+        print(f"[metadata] YouTube Music: {e}")
+        yt = []
+    try:
+        mb = musicbrainz.opciones(titulo, artista_, duracion, d.get("album", ""))
+    except Exception:
+        if not yt:
+            raise
+        mb = []
+    return {"opciones": yt + mb}
 
 
 def metadata_aplicar(d: dict) -> dict:
@@ -727,31 +852,40 @@ def metadata_aplicar(d: dict) -> dict:
     campos = {k: o.get(k) for k in ("titulo", "artista", "album", "artista_album", "anio", "pista", "total_pistas", "genero",
                                     "mbid", "mbid_album", "mbid_grupo")}
     datos = musicbrainz.Datos(**{k: v or ("" if k not in ("pista", "total_pistas") else None) for k, v in campos.items()}, puntaje=o.get("puntaje", 0))
-    musicbrainz.escribir(ruta, datos, musicbrainz.portada(datos) if d.get("portada", True) else None)
+    imagen = None
+    if d.get("portada", True):
+        imagen = _bajar_imagen(o.get("portada_url")) if o.get("portada_url") else musicbrainz.portada(datos)
+    musicbrainz.escribir(ruta, datos, imagen)
     return _tras_editar(ruta)
 
 
 def album_opciones(d: dict) -> dict:
-    """Las ediciones de un álbum para "Editar álbum": de MusicBrainz y, si no lo tiene, el de YouTube Music."""
+    """Las ediciones de un álbum para "Editar álbum": primero las de YouTube Music (de ahí escuchas y descargas; el
+    nombre puede venir en otro orden) y después las de MusicBrainz."""
     nombre, artista_ = d.get("nombre", ""), d.get("artista", "")
-    opciones = musicbrainz.buscar_albumes(nombre, artista_)
-    if opciones:
-        return {"opciones": opciones}
+    yt = []
     try:
-        igual = _album_igual(nombre, artista_)
-        a = explorar.album(igual.browse_id) if igual else None
+        lista = _albumes_yt(nombre, artista_)
+        # Los que son tu álbum; si ninguno, los primeros del artista para que elijas tú
+        elegidos = [x for p, x in lista if p is not None] or [x for _, x in lista[:3]]
+        for x in elegidos[:5]:
+            yt.append({"yt": x.browse_id, "mbid_album": "", "mbid_grupo": "", "album": x.titulo, "artista_album": x.artista,
+                       "anio": x.anio, "tipo": x.tipo or "Album", "pais": "YouTube Music", "pistas": None, "miniatura": x.miniatura})
+    except Exception as e:
+        print(f"[metadata] YouTube Music: {e}")
+    try:
+        mb = musicbrainz.buscar_albumes(nombre, artista_)
     except Exception:
-        a = None
-    if not a:
-        return {"opciones": []}
-    return {"opciones": [{"yt": a["browse_id"], "mbid_album": "", "mbid_grupo": "", "album": a["titulo"], "artista_album": a["artista"],
-                          "anio": a["anio"], "tipo": "Album", "pais": "", "pistas": len(a["canciones"]), "miniatura": a["portada"]}]}
+        if not yt:
+            raise
+        mb = []
+    return {"opciones": yt + mb}
 
 
 def _detalle_yt(browse_id: str) -> dict:
     """Un álbum de YouTube Music con la misma forma que musicbrainz.album_detalle. No trae género, disco ni mbid."""
-    a = explorar.album(browse_id)
-    pistas = [{"disco": 1, "pista": i, "titulo": c.titulo, "artista": c.artista or a["artista"], "duracion": c.duracion, "mbid": ""}
+    a = _album_yt(browse_id)
+    pistas = [{"disco": 1, "pista": i, "titulo": c["titulo"], "artista": c["artista"] or a["artista"], "duracion": c["duracion"], "mbid": ""}
               for i, c in enumerate(a["canciones"], 1)]
     return {"mbid_album": "", "mbid_grupo": "", "album": a["titulo"], "artista_album": a["artista"], "anio": a["anio"], "genero": "",
             "pistas": pistas, "discos": 1, "miniatura": a["portada"], "portada_url": a["portada"]}
@@ -859,7 +993,7 @@ def me_gusta(d: dict) -> dict:
     db = _db()
     canciones = []
     for r in db.lista_me_gusta():
-        local = db.buscar_existente(r["artista"] or "", r["titulo"] or "", r["duracion"])
+        local = db.buscar_existente(r["artista"] or "", r["titulo"] or "", r["duracion"], r["album"] or "")
         if local:
             canciones.append(_local(local) | {"id": r["video_id"]})
         else:
@@ -1149,7 +1283,7 @@ class _Gestor:
         tid = uuid.uuid4().hex[:10]
         self.trabajos[tid] = {"id": tid, "titulo": entrada.titulo, "artista": entrada.artista,
                               "portada": entrada.miniatura, "estado": "cola", "pct": 0, "creado": time.time()}
-        existente = _db().buscar_existente(entrada.artista, entrada.titulo, entrada.duracion)
+        existente = _db().buscar_existente(entrada.artista, entrada.titulo, entrada.duracion, entrada.album or "")
         if existente:
             self._avisar(tid, estado="existe", ruta=str(existente.ruta))
             return self.trabajos[tid]
@@ -1174,9 +1308,8 @@ class _Gestor:
             ruta = Path(res.ruta)
             if aj.get("musicbrainz", True):
                 self._avisar(tid, estado="etiquetando", pct=100)
-                datos = biblioteca.leer_archivo(ruta)
                 try:
-                    musicbrainz.completar(ruta, datos["titulo"], datos["artista"], datos["duracion"], datos["album"])
+                    _etiquetar_descarga(ruta, entrada)
                 except Exception:
                     pass
             _indexar(ruta)
