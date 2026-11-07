@@ -16,14 +16,17 @@
   let tuyo = $state(e.tuyo ?? null); // { canciones, albumes }
   let sinConexion = $state(false);
   let verMas = $state(false);
-  let verTodas = $state(false);
   const tuyas = $derived(tuyo?.canciones ?? []);
   const nombre = $derived(a?.nombre ?? e.nombre ?? "");
   const lista = $derived(tuyas.length ? tuyas : a?.canciones ?? []);
   const portada = $derived(a?.portada ?? tuyo?.albumes?.find((x) => x.portada)?.portada ?? tuyas.find((c) => c.portada)?.portada);
 
+  // Los dos "Ver todas" abren la misma vista: lo tuyo solo (sirve sin internet) o lo tuyo con toda su discografía
   function verTodasSusCanciones() {
-    abrir("artista_canciones", { lista: a.todas, nombre, tuyas, discos: a.albumes });
+    abrir("artista_canciones", { lista: a.todas, nombre, tuyas, discos: a.albumes, albumesTuyos: tuyo?.albumes });
+  }
+  function verTodasLasTuyas() {
+    abrir("artista_canciones", { soloTuyas: true, nombre, tuyas, albumesTuyos: tuyo?.albumes });
   }
 
   // Las primeras canciones se dejan listas para que suenen en cuanto las toques
@@ -71,13 +74,17 @@
         <button class="pildora clara" onclick={() => reproducir(lista, 0, nombre)}><Icono nombre="play" relleno tam={20} /> {t("Reproducir")}</button>
         <button class="pildora oscura" onclick={() => reproducirAleatorio(lista, nombre)}><Icono nombre="aleatorio" tam={20} /> {t("Aleatorio")}</button>
       </div>
-      <div class="titulo-seccion">{t("En tu biblioteca")} <small>{canciones(tuyas.length)}</small></div>
-      {#each verTodas ? tuyas : tuyas.slice(0, 6) as c, i (c.db_id)}
+      <div class="titulo-seccion">
+        {t("En tu biblioteca")}
+        {#if tuyas.length > 6}
+          <button onclick={verTodasLasTuyas}><small>{t("Ver todas ({n})", { n: tuyas.length })}</small></button>
+        {:else}
+          <small>{canciones(tuyas.length)}</small>
+        {/if}
+      </div>
+      {#each tuyas.slice(0, 6) as c, i (c.db_id)}
         <FilaCancion cancion={c} alTocar={() => reproducir(tuyas, i, nombre)} />
       {/each}
-      {#if tuyas.length > 6}
-        <button class="ver" onclick={() => (verTodas = !verTodas)}>{verTodas ? t("Ver menos") : t("Ver todas ({n})", { n: tuyas.length })}</button>
-      {/if}
       {#if tuyo.albumes.length}
         <div class="titulo-seccion">
           {t("Tus álbumes")}

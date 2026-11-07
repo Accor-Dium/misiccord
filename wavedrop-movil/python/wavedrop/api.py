@@ -468,7 +468,10 @@ def artista(d: dict) -> dict:
     a["canciones"] = [_en_linea(c) for c in a["canciones"]]
     mios = {biblioteca.nombre_album(x.nombre) for x in _db().albumes_de_artista(d.get("nombre") or a["nombre"])}
     a["albumes"] = [asdict(x) | {"tuyo": biblioteca.nombre_album(x.titulo) in mios} for x in a["albumes"]]
-    a["avance"] = {"tienes": sum(x["tuyo"] for x in a["albumes"][:a["discos"]]), "total": a["discos"]}
+    # Cada disco cuenta una vez aunque YouTube Music lo traiga en varias ediciones ("Abbey Road (2019 Mix)" y "(Super Deluxe Edition)")
+    discos = a["albumes"][:a["discos"]]
+    a["avance"] = {"tienes": len({biblioteca.nombre_album(x["titulo"]) for x in discos if x["tuyo"]}),
+                   "total": len({biblioteca.nombre_album(x["titulo"]) for x in discos})}
     return {"artista": a}
 
 
@@ -507,6 +510,14 @@ def artista_canciones(d: dict) -> dict:
     """Todo lo de un artista en YouTube Music. Si ya la tienes, la canción trae su `ruta`, como en cualquier lista en línea."""
     pistas = _guardado_7_dias("artistas", d["lista"], d.get("forzar"),
                               lambda: {"pistas": [asdict(c) for c in explorar.canciones_artista(d["lista"])]})["pistas"]
+    return {"canciones": [_en_linea(explorar.ResultadoCancion(**p)) for p in pistas]}
+
+
+def disco_canciones(d: dict) -> dict:
+    """Las canciones de un disco de YouTube Music, guardadas 7 días: "Ver todas" de un artista pide toda su discografía,
+    disco por disco, para que cada uno salga completo (Thriller con las suyas y Thriller 40 con las suyas)."""
+    pistas = _guardado_7_dias("discos", d["browse_id"], d.get("forzar"),
+                              lambda: {"pistas": [asdict(c) for c in explorar.album(d["browse_id"])["canciones"]]})["pistas"]
     return {"canciones": [_en_linea(explorar.ResultadoCancion(**p)) for p in pistas]}
 
 
@@ -1457,7 +1468,7 @@ FUNCIONES = {
     "metadata_opciones": metadata_opciones, "metadata_aplicar": metadata_aplicar,
     "album_opciones": album_opciones, "album_detalle": album_detalle, "album_guardar": album_guardar, "cambiar_portada": cambiar_portada,
     "album_faltantes": album_faltantes, "album_categorias": album_categorias, "artista_foto": artista_foto,
-    "artista_canciones": artista_canciones, "categorias_mover": categorias_mover,
+    "artista_canciones": artista_canciones, "disco_canciones": disco_canciones, "categorias_mover": categorias_mover,
     "categoria_guardar": categoria_guardar, "categoria_borrar": categoria_borrar,
     "renombrar_playlist": renombrar_playlist, "portada_playlist": portada_playlist, "ordenar_playlist": ordenar_playlist,
     "reproduccion": reproduccion, "estadisticas": estadisticas, "previa": previa, "precargar": precargar, "letra": letra,
