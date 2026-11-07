@@ -316,13 +316,40 @@ def guardar_ajustes(d: dict) -> dict:
 _recs = {"cargando": False}
 
 
+def _historial(n: int, sin_repetir: bool = False) -> list[dict]:
+    """Lo que sonó, tuyo o en línea (las vistas previas se guardan como "yt:<id>"). Las tuyas que ya borraste no salen."""
+    salida, vistas = [], set()
+    for c, e in _db().historial(n if not sin_repetir else n * 20):
+        if c:
+            x = _local(c)
+        elif str(e["e_ruta"]).startswith("yt:"):
+            x = {"local": False, "id": e["e_ruta"][3:], "titulo": e["e_titulo"], "artista": e["e_artista"], "album": "",
+                 "duracion": e["e_duracion"], "portada": e["e_portada"], "ruta": None}
+        else:
+            continue
+        clave = x.get("db_id") or x.get("id")
+        if sin_repetir:
+            if clave in vistas:
+                continue
+            vistas.add(clave)
+        salida.append(x | {"escuchada": e["e_fecha"]})
+        if len(salida) >= n:
+            break
+    return salida
+
+
+def historial(d: dict) -> dict:
+    """Cada vez que sonó algo, tuyo o en línea, de lo más reciente a lo más viejo."""
+    return {"canciones": _historial(max(1, min(2000, int(d.get("limite", 500)))))}
+
+
 def inicio(d: dict) -> dict:
     db = _db()
     guardadas = explorar.recomendaciones_guardadas()
     if guardadas is None:
         recomendaciones({})
     return {
-        "recientes": [_local(c) for c in db.recientes(12)],
+        "recientes": _historial(12, sin_repetir=True),  # también lo que escuchaste en línea
         "mas_escuchadas": [_local(c) for c, _n in db.mas_escuchadas(12)],
         "albumes": [_album_local(a) for a in db.albumes()[:12]],
         "secciones": _secciones(guardadas) if guardadas is not None else None,
@@ -403,7 +430,7 @@ def radio(d: dict) -> dict:
         if base is None:
             raise RuntimeError("No encontré esa canción en YouTube Music")
         vid = base.video_id
-    return {"canciones": [_en_linea(c) for c in explorar.radio(vid)]}
+    return {"canciones": [_en_linea(c) for c in explorar.radio(vid, 50)]}  # 25 se acababan enseguida
 
 
 # ---------- Compartir y exportar (PC) ----------
@@ -1601,7 +1628,7 @@ FUNCIONES = {
     "metadata_opciones": metadata_opciones, "metadata_aplicar": metadata_aplicar,
     "album_opciones": album_opciones, "album_detalle": album_detalle, "album_guardar": album_guardar, "cambiar_portada": cambiar_portada,
     "album_faltantes": album_faltantes, "album_categorias": album_categorias, "artista_foto": artista_foto,
-    "artista_canciones": artista_canciones, "disco_canciones": disco_canciones, "categorias_mover": categorias_mover,
+    "artista_canciones": artista_canciones, "disco_canciones": disco_canciones, "historial": historial, "categorias_mover": categorias_mover,
     "categoria_guardar": categoria_guardar, "categoria_borrar": categoria_borrar,
     "renombrar_playlist": renombrar_playlist, "portada_playlist": portada_playlist, "ordenar_playlist": ordenar_playlist,
     "reproduccion": reproduccion, "estadisticas": estadisticas, "previa": previa, "precargar": precargar, "letra": letra,

@@ -30,6 +30,7 @@
   import Descargas from "./vistas/Descargas.svelte";
   import Estadisticas from "./vistas/Estadisticas.svelte";
   import Genero from "./vistas/Genero.svelte";
+  import Historial from "./vistas/Historial.svelte";
   import Explorar from "./vistas/Explorar.svelte";
   import MeGusta from "./vistas/MeGusta.svelte";
   import Inicio from "./vistas/Inicio.svelte";
@@ -39,7 +40,7 @@
   const vistas = {
     inicio: Inicio, biblioteca: Biblioteca, descargas: Descargas, jams: Jams,
     album: Album, artista: Artista, buscar_artista: Artista, playlist: Playlist, ajustes: Ajustes, categoria: Categoria, artista_canciones: ArtistaCanciones,
-    biblioteca_albumes: Biblioteca, estadisticas: Estadisticas, me_gusta: MeGusta, genero: Genero, explorar: Explorar,
+    biblioteca_albumes: Biblioteca, estadisticas: Estadisticas, me_gusta: MeGusta, genero: Genero, explorar: Explorar, historial: Historial,
   };
 
   let listo = $state(false);

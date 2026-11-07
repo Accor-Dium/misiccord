@@ -7,7 +7,7 @@
   import { jalarParaActualizar } from "../lib/jalar.js";
   import { mantener } from "../lib/mantener.js";
   import { menuCancion } from "../lib/menuCancion.js";
-  import { reproducir } from "../lib/reproductor.svelte.js";
+  import { reproducir, reproducirConRadio } from "../lib/reproductor.svelte.js";
   import Buscador from "../componentes/Buscador.svelte";
   import FilaCancion from "../componentes/FilaCancion.svelte";
   import Icono from "../componentes/Icono.svelte";
@@ -163,7 +163,7 @@
               {#snippet pagina(grupo, p)}
                 <div class="marcacion">
                   {#each grupo as c, i}
-                    <button class="mosaico" onclick={() => reproducir(s.canciones, p * porPagina + i, s.titulo)}
+                    <button class="mosaico" onclick={() => reproducirConRadio(c)}
                       use:mantener={() => menuCancion(c)}>
                       <Portada url={c.portada} radio="10px" icono="nota" />
                       <span class="sombra"></span>
@@ -177,7 +177,7 @@
             <div class="carrusel">
               {#each s.canciones as c, i}
                 <Tarjeta portada={c.portada} titulo={c.titulo} subtitulo={c.artista} icono="nota" alMantener={() => menuCancion(c)}
-                  alTocar={() => reproducir(s.canciones, i, s.titulo)} />
+                  alTocar={() => reproducirConRadio(c)} />
               {/each}
             </div>
           {/if}
@@ -195,7 +195,7 @@
             {#each trozos(s.canciones, 4) as columna, j}
               <div class="columna">
                 {#each columna as c, i}
-                  <FilaCancion cancion={c} alTocar={() => reproducir(s.canciones, j * 4 + i, s.titulo)} />
+                  <FilaCancion cancion={c} alTocar={() => reproducirConRadio(c)} />
                 {/each}
               </div>
             {/each}
@@ -238,7 +238,7 @@
         <p class="vacio">{t("Todavía no tienes canciones. Búscalas arriba y descárgalas.")}</p>
       {/if}
       {#if d?.recientes?.length}
-        <div class="titulo-seccion">{t("Escuchado recientemente")}</div>
+        <div class="titulo-seccion">{t("Escuchado recientemente")} <button onclick={() => abrir("historial")}><small>{t("Ver historial")}</small></button></div>
         <div class="carrusel">
           {#each d.recientes as c, i}
             <Tarjeta portada={c.portada} titulo={c.titulo} subtitulo={c.artista} icono="nota" alMantener={() => menuCancion(c)}

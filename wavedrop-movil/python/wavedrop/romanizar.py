@@ -3,7 +3,8 @@
 - idioma(): por el tipo de escritura (hiragana/katakana → japonés, hangul → coreano, cirílico → ruso…);
   en alfabeto latino, por palabras comunes de cada idioma.
 - romanizar(): coreano (Romanización Revisada), japonés (Hepburn; los kanji se leen con el diccionario de pykakasi),
-  cirílico (ruso/ucraniano) y griego. El chino necesita un diccionario que no viene aquí: se deja sin romanizar.
+  cirílico (ruso/ucraniano), griego y, aproximados, árabe, hebreo y tailandés (no escriben las vocales cortas).
+  El chino necesita un diccionario que no viene aquí: se deja sin romanizar.
 """
 import re
 import unicodedata
@@ -13,7 +14,7 @@ NOMBRES = {
     "he": "Hebreo", "hi": "Hindi", "th": "Tailandés", "es": "Español", "en": "Inglés", "pt": "Portugués",
     "fr": "Francés", "it": "Italiano", "de": "Alemán",
 }
-ROMANIZABLES = {"ja", "ko", "ru", "uk", "el"}
+ROMANIZABLES = {"ja", "ko", "ru", "uk", "el", "ar", "he", "th"}
 
 _PALABRAS = {
     "es": {"el", "la", "de", "que", "y", "en", "los", "las", "un", "una", "por", "con", "no", "mi", "te", "me", "tu", "es", "lo", "se", "como", "pero", "yo", "amor", "quiero"},
@@ -238,6 +239,215 @@ def _por_tabla(texto: str, tabla: dict[str, str]) -> str:
     return "".join(salida)
 
 
+# ---------- Árabe, hebreo y tailandés (aproximados) ----------
+# Estas escrituras casi nunca escriben las vocales cortas (y el tailandés no separa palabras), así que la lectura es
+# aproximada: sirve para cantar sin saber leer la escritura, no es una transliteración académica.
+
+_ARABE = {
+    "ا": "a", "أ": "a", "إ": "i", "آ": "aa", "ٱ": "a", "ب": "b", "ت": "t", "ث": "th", "ج": "j", "ح": "h", "خ": "kh",
+    "د": "d", "ذ": "dh", "ر": "r", "ز": "z", "س": "s", "ش": "sh", "ص": "s", "ض": "d", "ط": "t", "ظ": "z", "ع": "'",
+    "غ": "gh", "ف": "f", "ق": "q", "ك": "k", "ل": "l", "م": "m", "ن": "n", "ه": "h", "ة": "a", "ى": "a", "ء": "'",
+    "ؤ": "'", "ئ": "'", "پ": "p", "چ": "ch", "ژ": "zh", "گ": "g", "ک": "k", "ی": "y",
+    "َ": "a", "ُ": "u", "ِ": "i", "ً": "an", "ٌ": "un", "ٍ": "in", "ْ": "", "ـ": "", "،": ",", "؟": "?", "؛": ";",
+    **{chr(0x0660 + i): str(i) for i in range(10)},
+}
+_ARABE_VOCALES = set("َُِاًٌٍ")
+
+
+def _arabe(linea: str) -> str:
+    salida = []
+    for palabra in re.split(r"(\s+)", linea):
+        if not palabra or palabra.isspace():
+            salida.append(palabra)
+            continue
+        # "ال" al principio es el artículo: al-
+        pre, cuerpo = ("al-", palabra[2:]) if palabra.startswith("ال") and len(palabra) > 3 else ("", palabra)
+        letras = []
+        for i, ch in enumerate(cuerpo):
+            previo = cuerpo[i - 1] if i else ""
+            if ch == "ّ":  # shadda: la consonante anterior va doble (aunque su vocal se haya escrito antes: مَّ)
+                k = len(letras) - 1
+                while k >= 0 and letras[k] in ("a", "u", "i", "an", "un", "in", ""):
+                    k -= 1
+                if k >= 0 and letras[k]:
+                    letras.insert(k + 1, letras[k][-1])
+                continue
+            if ch in "وي":
+                # Al principio o después de vocal es consonante (w, y); después de consonante es vocal larga (u, i)
+                consonante = i == 0 or previo in _ARABE_VOCALES
+                letras.append(("w" if ch == "و" else "y") if consonante else ("u" if ch == "و" else "i"))
+                continue
+            letras.append(_ARABE.get(ch, ch))
+        salida.append(pre + "".join(letras))
+    return "".join(salida)
+
+
+_HEBREO = {
+    "א": "", "ב": "v", "ג": "g", "ד": "d", "ה": "h", "ז": "z", "ח": "ch", "ט": "t", "כ": "kh", "ך": "kh", "ל": "l",
+    "מ": "m", "ם": "m", "נ": "n", "ן": "n", "ס": "s", "ע": "", "פ": "f", "ף": "f", "צ": "ts", "ץ": "ts", "ק": "k",
+    "ר": "r", "ש": "sh", "ת": "t", "׳": "'", "״": '"', "־": "-",
+    # Niqud (cuando la letra lo trae)
+    "ַ": "a", "ָ": "a", "ֲ": "a", "ֶ": "e", "ֵ": "e", "ֱ": "e", "ְ": "e", "ִ": "i", "ֹ": "o", "ֳ": "o", "ֻ": "u",
+}
+_HEBREO_DURAS = {"ב": "b", "כ": "k", "ך": "k", "פ": "p", "ף": "p"}
+_HEBREO_PUNTOS = "ְֱֲֳִֵֶַָֹֻּׁׂ"
+
+
+def _hebreo(linea: str) -> str:
+    salida = []
+    for palabra in re.split(r"(\s+)", linea):
+        if not palabra or palabra.isspace():
+            salida.append(palabra)
+            continue
+        letras = [ch for ch in palabra]
+        out, leidos = [], set()
+        for i, ch in enumerate(letras):
+            if i in leidos:
+                continue
+            if ch in _HEBREO_PUNTOS and ch not in "ְֱֲֳִֵֶַָֹֻ":
+                continue  # dagesh y puntos de shin/sin: se leen con su letra
+            marcas = ""
+            j = i + 1
+            while j < len(letras) and letras[j] in _HEBREO_PUNTOS:
+                marcas += letras[j]
+                j += 1
+            inicio = not any(c not in _HEBREO_PUNTOS for c in letras[:i])
+            final = j >= len(letras)
+            if ch == "ו":
+                if "ֹ" in marcas:
+                    out.append("o")
+                    leidos.update(range(i + 1, j))
+                elif "ּ" in marcas and not inicio:
+                    out.append("u")
+                    leidos.update(range(i + 1, j))
+                else:
+                    out.append("v" if inicio else "o")
+            elif ch == "י":
+                # Después de una i o una e escritas, la yud solo alarga la vocal (אֲנִי = ani)
+                out.append("y" if inicio else "" if out and out[-1] in ("i", "e") and letras[i - 1] in "ִֵֶ" else "i")
+            elif ch == "א":
+                # Al principio suena "a", salvo que la vocal la ponga lo que sigue (אוֹהֵב = ohev, אֲנִי = ani)
+                siguiente = letras[j] if j < len(letras) else ""
+                out.append("a" if inicio and not marcas.strip("ּׁׂ") and siguiente not in "וי" else "")
+            elif ch == "ה" and final and not inicio:
+                out.append("a")
+            elif ch == "ש":
+                out.append("s" if "ׂ" in marcas else "sh")
+            elif ch in _HEBREO_DURAS:
+                out.append(_HEBREO_DURAS[ch] if (inicio or "ּ" in marcas) else _HEBREO[ch])
+            elif ch == "ְ" and final:
+                out.append("")  # la shva al final no suena
+            else:
+                out.append(_HEBREO.get(ch, ch))
+        salida.append("".join(out))
+    return "".join(salida)
+
+
+# Tailandés (RTGS simplificado): consonante inicial / final
+_TH_INICIAL = {
+    "ก": "k", "ข": "kh", "ฃ": "kh", "ค": "kh", "ฅ": "kh", "ฆ": "kh", "ง": "ng", "จ": "ch", "ฉ": "ch", "ช": "ch",
+    "ซ": "s", "ฌ": "ch", "ญ": "y", "ฎ": "d", "ฏ": "t", "ฐ": "th", "ฑ": "th", "ฒ": "th", "ณ": "n", "ด": "d", "ต": "t",
+    "ถ": "th", "ท": "th", "ธ": "th", "น": "n", "บ": "b", "ป": "p", "ผ": "ph", "ฝ": "f", "พ": "ph", "ฟ": "f", "ภ": "ph",
+    "ม": "m", "ย": "y", "ร": "r", "ล": "l", "ว": "w", "ศ": "s", "ษ": "s", "ส": "s", "ห": "h", "ฬ": "l", "อ": "", "ฮ": "h",
+}
+_TH_FINAL = {**{c: "k" for c in "กขฃคฅฆ"}, "ง": "ng", **{c: "t" for c in "จชซฌฎฏฐฑฒดตถทธศษส"},
+             **{c: "n" for c in "ญณนรลฬ"}, **{c: "p" for c in "บปผฝพฟภ"}, "ม": "m", "ย": "i", "ว": "o", "อ": "", "ห": "", "ฮ": ""}
+_TH_VOCAL = {"ะ": "a", "ั": "a", "า": "a", "ำ": "am", "ิ": "i", "ี": "i", "ึ": "ue", "ื": "ue", "ุ": "u", "ู": "u",
+             "็": "", "่": "", "้": "", "๊": "", "๋": "", "ฤ": "rue", "ฦ": "lue", "ๆ": "", "ฯ": ""}
+_TH_ANTES = {"เ": "e", "แ": "ae", "โ": "o", "ใ": "ai", "ไ": "ai"}  # se escriben antes de la consonante y suenan después
+_TH_PEGADAS = set("ะัาำิีึืุู็่้๊๋์")
+_TH_GRUPO = set("กขคตปผพ")  # pueden ir con ร ล ว: kr, khl, pl…
+_TH_MUDA_H = set("งญนมยรลว")  # ห delante de estas no suena (หนึ่ง = nueng)
+
+
+def _thai(linea: str) -> str:
+    s = [chr(ord(c) - 0x0E50 + 0x30) if "๐" <= c <= "๙" else c for c in linea]
+    out, i = [], 0
+    inicial = vocal = False
+    pendiente = None
+    def sig(k):
+        return s[k] if k < len(s) else ""
+    def sin_tono(k):  # el siguiente índice que no es marca de tono
+        while sig(k) in ("่", "้", "๊", "๋"):
+            k += 1
+        return k
+    while i < len(s):
+        c = s[i]
+        if c in _TH_ANTES:
+            pendiente = c
+            i += 1
+            continue
+        if c in _TH_INICIAL:
+            if sig(i + 1) == "์":  # thanthakhat: esta consonante no se pronuncia
+                i += 2
+                continue
+            pegada = sig(i + 1) in _TH_PEGADAS
+            if c == "ห" and sig(i + 1) in _TH_MUDA_H and not vocal and pendiente is None:
+                i += 1  # ห muda: solo cambia el tono de la siguiente
+                continue
+            if inicial and not vocal and c in "รลว" and out and out[-1] in ("k", "kh", "t", "p", "ph") and pegada:
+                out.append(_TH_INICIAL[c])  # grupo: กล = kl
+                i += 1
+                continue
+            grupo = c in _TH_GRUPO and sig(i + 1) in "รลว" and sig(i + 2) in _TH_PEGADAS  # ครับ = khrap: empieza otra sílaba
+            if pendiente is None and inicial and vocal and not pegada and not grupo:
+                fin = _TH_FINAL.get(c, "")
+                if not (fin == "i" and out and out[-1].endswith("i")):
+                    out.append(fin)
+                inicial = vocal = False
+                i += 1
+                continue
+            if pendiente is None and inicial and not vocal and not pegada:
+                out.append("o" + _TH_FINAL.get(c, ""))  # คน = khon: la vocal que no se escribe
+                vocal = True
+                i += 1
+                continue
+            if inicial and not vocal:
+                out.append("a")  # สบาย = sabai
+            out.append(_TH_INICIAL[c])
+            inicial, vocal = True, False
+            i += 1
+            if pendiente is not None:
+                if c in _TH_GRUPO and sig(i) in "รลว" and sig(i + 1) not in _TH_PEGADAS:
+                    out.append(_TH_INICIAL[sig(i)])
+                    i += 1
+                v = _TH_ANTES[pendiente]
+                if pendiente == "เ" and sig(i) == "า":
+                    v, i = "ao", i + 1
+                elif pendiente == "เ" and sig(i) == "ี" and sig(sin_tono(i + 1)) == "ย":
+                    v, i = "ia", sin_tono(i + 1) + 1
+                elif pendiente == "เ" and sig(i) == "ื" and sig(sin_tono(i + 1)) == "อ":
+                    v, i = "uea", sin_tono(i + 1) + 1
+                elif pendiente == "เ" and sig(sin_tono(i)) == "อ":
+                    v, i = "oe", sin_tono(i) + 1
+                out.append(v)
+                vocal, pendiente = True, None
+            continue
+        if c in _TH_VOCAL:
+            if c == "ั" and sig(i + 1) == "ว":
+                out.append("ua")
+                i += 2
+                vocal = True
+                continue
+            out.append(_TH_VOCAL[c])
+            if c in "ะำ":
+                inicial = vocal = False
+            elif _TH_VOCAL[c]:
+                vocal = True
+            i += 1
+            continue
+        if c == "์":
+            i += 1
+            continue
+        if inicial and not vocal and not c.strip():
+            out.append("a")  # sílaba que se quedó sin vocal antes de un espacio
+        inicial = vocal = False
+        pendiente = None
+        out.append(c)
+        i += 1
+    return "".join(out)
+
+
 def romanizar(lineas: list[str], cod: str) -> list[str | None]:
     """Una romanización por línea (None en las que no se pudo, p. ej. con kanji)."""
     if cod == "ko":
@@ -249,4 +459,7 @@ def romanizar(lineas: list[str], cod: str) -> list[str | None]:
         return [_por_tabla(l, tabla) for l in lineas]
     if cod == "el":
         return [_por_tabla(l, _GRIEGO) for l in lineas]
+    funcion = {"ar": _arabe, "he": _hebreo, "th": _thai}.get(cod)
+    if funcion:
+        return [funcion(l) for l in lineas]
     return [None] * len(lineas)

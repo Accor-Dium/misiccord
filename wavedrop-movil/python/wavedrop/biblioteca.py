@@ -663,6 +663,15 @@ class Biblioteca:
             """SELECT c.*, COUNT(*) AS veces FROM eventos e JOIN canciones c ON c.ruta = e.ruta
                WHERE e.tipo = 'reproduccion' GROUP BY c.id ORDER BY veces DESC, MAX(e.fecha) DESC LIMIT ?""", (n,))]
 
+    def historial(self, n: int = 500) -> list[tuple[Cancion | None, sqlite3.Row]]:
+        """Cada reproducción, de la más reciente a la más vieja: (tu canción o None si fue en línea, el evento)."""
+        filas = self._q(
+            """SELECT e.ruta AS e_ruta, e.artista AS e_artista, e.titulo AS e_titulo, e.fecha AS e_fecha,
+                      e.duracion AS e_duracion, e.portada AS e_portada, c.*
+               FROM eventos e LEFT JOIN canciones c ON c.ruta = e.ruta
+               WHERE e.tipo = 'reproduccion' ORDER BY e.fecha DESC LIMIT ?""", (n,))
+        return [(self._cancion(r) if r["id"] is not None else None, r) for r in filas]
+
     def recientes(self, n: int = 12) -> list[Cancion]:
         return [self._cancion(r) for r in self._q(
             """SELECT c.* FROM eventos e JOIN canciones c ON c.ruta = e.ruta

@@ -3,7 +3,7 @@
   import { fade } from "svelte/transition";
   import { py } from "../lib/api.js";
   import { abrir, aviso, descargarLink, ui } from "../lib/estado.svelte.js";
-  import { reproducir } from "../lib/reproductor.svelte.js";
+  import { reproducir, reproducirConRadio } from "../lib/reproductor.svelte.js";
   import FilaCancion from "./FilaCancion.svelte";
   import Icono from "./Icono.svelte";
   import Tarjeta from "./Tarjeta.svelte";
@@ -18,7 +18,38 @@
   const r = $derived(e.busqueda);
   const texto = $derived(q.trim());
   const esLink = $derived(/^https?:\/\//.test(texto));
-  $effect(() => { activo = texto.length > 0; });
+  let enfocado = $state(false);
+  const verHistorial = $derived(enfocado && !texto && historial.length > 0);
+  $effect(() => { activo = texto.length > 0 || verHistorial; });
+
+  // Lo que has buscado: sale al tocar la caja vacía. Se guarda en este dispositivo al darle Enter o al abrir un
+  // resultado (no cada letra que tecleas). Lo más reciente primero, sin repetir, hasta 15.
+  const LLAVE = "misiccord_busquedas";
+  let historial = $state(leerHistorial());
+  function leerHistorial() {
+    try { return JSON.parse(localStorage.getItem(LLAVE) || "[]"); } catch { return []; }
+  }
+  function guardarHistorial(lista) {
+    historial = lista;
+    try { localStorage.setItem(LLAVE, JSON.stringify(lista)); } catch {}
+  }
+  function recordar(consulta = texto) {
+    const limpia = consulta.trim();
+    if (!limpia || /^https?:\/\//.test(limpia)) return;
+    guardarHistorial([limpia, ...historial.filter((h) => h.toLowerCase() !== limpia.toLowerCase())].slice(0, 15));
+  }
+  function olvidar(h) {
+    guardarHistorial(historial.filter((x) => x !== h));
+  }
+  function buscarDeNuevo(h) {
+    q = h;
+    alEscribir();
+    clearTimeout(espera);
+    buscar(h);
+    recordar(h);
+  }
+  /** Abrir un resultado también deja la búsqueda en el historial */
+  const yRecordar = (f) => () => { recordar(); f(); };
   let reinicio = ui.reinicio;
   $effect(() => {
     if (ui.reinicio === reinicio) return;
@@ -85,16 +116,35 @@
   const tipos = [["todo", t("Todo")], ["canciones", t("Canciones")], ["albumes", t("Álbumes")], ["artistas", t("Artistas")]];
 </script>
 
-<form class="caja" onsubmit={(ev) => { ev.preventDefault(); clearTimeout(espera); buscar(); document.activeElement?.blur(); }}>
+<form class="caja" onsubmit={(ev) => { ev.preventDefault(); clearTimeout(espera); buscar(); recordar(); document.activeElement?.blur(); }}>
   <Icono nombre={esLink ? "link" : "buscar"} tam={20} />
-  <input bind:value={q} oninput={alEscribir} placeholder={t("Busca canciones, artistas, álbumes o pega un link")} enterkeyhint="search" />
+  <input bind:value={q} oninput={alEscribir} placeholder={t("Busca canciones, artistas, álbumes o pega un link")} enterkeyhint="search"
+    onfocus={() => (enfocado = true)} onblur={() => setTimeout(() => (enfocado = false), 150)} />
   {#if buscando}<span class="girando"></span>{/if}
   {#if q}<button type="button" onclick={limpiar} aria-label={t("Borrar búsqueda")}><Icono nombre="cerrar" tam={18} /></button>{/if}
 </form>
 
 {#if activo}
   <div class="resultados" in:fade={{ duration: 160 }}>
-    {#if esLink}
+    {#if verHistorial}
+      <!-- pointerdown sin quitar el foco: si no, la caja se suelta antes del toque y el historial desaparece -->
+      <div class="titulo-seccion">
+        {t("Búsquedas recientes")}
+        <button onpointerdown={(ev) => ev.preventDefault()} onclick={() => guardarHistorial([])}><small>{t("Borrar todo")}</small></button>
+      </div>
+      <ul class="historial">
+        {#each historial as h (h)}
+          <li>
+            <button class="volver-a" onpointerdown={(ev) => ev.preventDefault()} onclick={() => buscarDeNuevo(h)}>
+              <Icono nombre="reloj" tam={19} /><span class="cortar">{h}</span>
+            </button>
+            <button class="quitar" onpointerdown={(ev) => ev.preventDefault()} onclick={() => olvidar(h)} aria-label={t("Quitar “{q}” del historial", { q: h })}>
+              <Icono nombre="cerrar" tam={16} />
+            </button>
+          </li>
+        {/each}
+      </ul>
+    {:else if esLink}
       <div class="link">
         <p>{t("¿Descargar todas las canciones de este link? Funciona con playlists y álbumes de YouTube, YT Music, Spotify, Tidal y SoundCloud.")}</p>
         <button class="pildora cian" onclick={() => descargarLink(texto).then(limpiar).catch(() => aviso(t("No pude leer ese link"), "error"))}>
@@ -111,7 +161,7 @@
       {#if locales.length && tipo !== "albumes" && tipo !== "artistas"}
         <div class="titulo-seccion">{t("En tu biblioteca")}</div>
         {#each locales as c, i}
-          <FilaCancion cancion={c} alTocar={() => reproducir(locales, i, t("Tu biblioteca"))} />
+          <FilaCancion cancion={c} alTocar={yRecordar(() => reproducir(locales, i, t("Tu biblioteca")))} />
         {/each}
       {/if}
 
@@ -122,14 +172,15 @@
             <div class={tipo === "todo" ? "carrusel" : "rejilla"}>
               {#each r.artistas as a}
                 <Tarjeta portada={a.miniatura} titulo={a.nombre} redonda icono="persona" ancho={tipo === "todo" ? "var(--artista)" : "100%"}
-                  alTocar={() => abrir("artista", { id: a.browse_id, nombre: a.nombre })} />
+                  alTocar={yRecordar(() => abrir("artista", { id: a.browse_id, nombre: a.nombre }))} />
               {/each}
             </div>
           {/if}
           {#if r.canciones?.length}
             {#if tipo === "todo"}<div class="titulo-seccion">{t("Canciones")}</div>{/if}
             {#each r.canciones as c, i (c.id)}
-              <FilaCancion cancion={c} alTocar={() => reproducir(r.canciones, i, t("Búsqueda “{q}”", r))} />
+              <!-- Como en Inicio: la que tocas y detrás su radio (no las demás que se llaman igual) -->
+              <FilaCancion cancion={c} alTocar={yRecordar(() => reproducirConRadio(c))} />
             {/each}
           {/if}
           {#if r.albumes?.length}
@@ -137,7 +188,7 @@
             <div class={tipo === "todo" ? "carrusel" : "rejilla"}>
               {#each r.albumes as a}
                 <Tarjeta portada={a.miniatura} titulo={a.titulo} subtitulo={[a.tipo, a.anio].filter(Boolean).join(" · ")}
-                  ancho={tipo === "todo" ? "148px" : "100%"} alTocar={() => abrir("album", { id: a.browse_id })} />
+                  ancho={tipo === "todo" ? "148px" : "100%"} alTocar={yRecordar(() => abrir("album", { id: a.browse_id }))} />
               {/each}
             </div>
           {/if}
@@ -166,6 +217,12 @@
   .rejilla { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 18px 14px; margin-top: 16px; }
   .link { margin-top: 20px; padding: 18px; border-radius: var(--radio); background: var(--tarjeta); }
   .link p { margin: 0 0 14px; color: var(--tenue); line-height: 1.5; }
+  .historial { list-style: none; margin: 0; padding: 0; }
+  .historial li { display: flex; align-items: center; gap: 4px; }
+  .volver-a { flex: 1; min-width: 0; display: flex; align-items: center; gap: 14px; padding: 12px 0; color: var(--texto); font-size: 15.5px; text-align: left; }
+  .volver-a :global(svg) { flex-shrink: 0; color: var(--tenue); }
+  .quitar { display: grid; place-items: center; width: 36px; height: 36px; color: var(--tenue); }
+  .quitar:hover, .volver-a:hover { color: var(--texto); }
   /* Mientras llegan los resultados de lo nuevo que escribiste, los anteriores se atenúan (no parpadean) */
   .viejo { opacity: 0.55; transition: opacity 0.2s; }
 </style>

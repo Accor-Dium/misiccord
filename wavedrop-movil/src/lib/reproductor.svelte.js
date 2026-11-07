@@ -526,6 +526,24 @@ export function reproducir(lista, i = 0, origen = "", { aunEnJam = false } = {})
 }
 
 /** Agrega a la cola: al final, o justo después de la que suena. Si no suena nada, empieza a sonar. */
+/**
+ * Tocar una canción suelta (las de Inicio): suena de inmediato y detrás se forma su radio de YouTube Music, canciones
+ * parecidas a esa, como hace YouTube Music. Antes sonaban las otras de la sección, que no tienen nada que ver entre sí
+ * (Funkytown y luego "A un minuto de ti"). Si mientras llega ya pusiste otra cosa, la radio no se agrega.
+ */
+export async function reproducirConRadio(c) {
+  reproducir([c], 0, t("Radio de {titulo}", { titulo: c.titulo }));
+  const sonando = rep.cola[0];
+  try {
+    const r = await py("radio", { id: c.id, titulo: c.titulo, artista: c.artista });
+    if (rep.cola[rep.indice] !== sonando && !rep.cola.includes(sonando)) return;
+    const ya = new Set(rep.cola.map((x) => x.id).filter(Boolean));
+    for (const x of r.canciones) if (!ya.has(x.id)) agregarACola(x);
+  } catch {
+    // Sin internet o sin radio: se queda sonando la que tocaste
+  }
+}
+
 export function agregarACola(c, aContinuacion = false) {
   if (!rep.actual) return reproducir([c], 0, t("Tu cola"));
   const copia = { ...c };
