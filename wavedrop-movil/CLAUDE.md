@@ -12,7 +12,7 @@ documentada abajo; si algo no está documentado, pregunta antes de "arreglarlo".
 
 ---
 
-## Estado del proyecto (al 2 de noviembre de 2026 · versión publicada: **4.0.1**)
+## Estado del proyecto (al 8 de noviembre de 2026 · versión publicada: **4.1.0**)
 
 Resumen para que no tengas que leer todo el código. Actualiza esta sección cuando publiques una versión.
 
@@ -79,6 +79,7 @@ medianos, el **menor**; detalles pequeños, el **parche**. Hasta 1.0.10 todo sub
 | 3.5.0 | (Omar) Categorías editables (crear, renombrar, ocultar, mover canciones), todas las canciones de un artista, Ver todos en el artista, bandas del ecualizador en una línea y tocar otra vez la pestaña regresa al principio. |
 | 4.0.0 | **Mis dispositivos**: vincular el cel con la PC sin cuentas (código o QR) y sincronizarse solos en la misma red Wi-Fi: Me gusta, playlists, categorías, historial y copiar las canciones que le falten a cada uno. |
 | 4.0.1 | Mis dispositivos en Android 17: pide el permiso Dispositivos cercanos (sin él no se veía la PC), el QR trae todas las IPs, tarjeta "Vinculando…", lector de QR con cuadro y Cancelar, y el servidor (sincronizar y jam) ya no tarda ~12 s en arrancar en PCs con VPN. |
+| 4.1.0 | Cambios de Omar: historial de lo escuchado y de búsquedas, radio al tocar una canción en Inicio y la búsqueda, carátulas de cassette con etiqueta japonesa, todas las canciones del artista estilo Musicolet (cada disco completo), datos de YouTube Music primero al descargar y "ya la tienes" por álbum, romanización de árabe, hebreo y tailandés. |
 
 ### Qué está probado y dónde
 - **En dispositivos reales** (lo probó quien administra el proyecto): app de Windows, Android en varios teléfonos (Samsung S25 Ultra, Pixel 7 Pro…),
