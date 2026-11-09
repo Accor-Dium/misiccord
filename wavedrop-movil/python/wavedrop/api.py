@@ -1437,6 +1437,51 @@ def jam_subir(d: dict) -> dict:
     return cuerpo
 
 
+def jam_mandar(d: dict) -> dict:
+    """Invitado: manda una canción de su dispositivo al jam. En la misma red la sirve desde aquí y el anfitrión
+    la va pidiendo al sonar (no se copia); por internet, o si el anfitrión no alcanza este dispositivo, se sube."""
+    import requests
+    from . import jam
+    ruta = Path(d["ruta"])
+    if not ruta.exists():
+        raise RuntimeError("No encontré el archivo de esa canción")
+    if d["base"].startswith("https://"):
+        return jam_subir(d)
+    portada = portada_local(ruta)
+    servida = jam.compartir(ruta, portada)
+    cancion = {"titulo": d.get("titulo") or ruta.stem, "artista": d.get("artista", ""), "album": d.get("album", ""),
+               "duracion": d.get("duracion") or biblioteca.leer_archivo(ruta)["duracion"],
+               "con_portada": bool(portada), **servida}
+    try:
+        r = requests.post(f"{d['base']}/agregar", json={"cliente": d["cliente"], "cancion": cancion},
+                          headers={"X-Codigo": d["codigo"]}, timeout=12)
+        cuerpo = r.json()
+    except (requests.RequestException, ValueError):
+        jam.dejar_de_compartir(tokens=[servida["token"]])
+        raise RuntimeError(_t("No se pudo conectar con el jam"))
+    if r.ok:
+        jam.compartida(servida["token"], cuerpo["pista"]["pid"])
+        _jam_compartiendo(1)
+        return cuerpo
+    _jam_compartiendo(jam.dejar_de_compartir(tokens=[servida["token"]]))
+    if cuerpo.get("codigo") == "sin_alcance":
+        return jam_subir(d)  # p. ej. el firewall de este dispositivo no deja entrar al anfitrión
+    raise RuntimeError(cuerpo.get("error") or f"El anfitrión respondió {r.status_code}")
+
+
+def jam_dejar(d: dict) -> dict:
+    """Invitado: deja de servir las canciones que ya sonaron o salieron de la cola (pids=None: todas)."""
+    from . import jam
+    _jam_compartiendo(jam.dejar_de_compartir(d.get("pids")))
+    return {}
+
+
+def _jam_compartiendo(quedan: int) -> None:
+    # En el cel, sin esto Android duerme la app con la pantalla apagada y el anfitrión ya no alcanza la canción
+    _fondo_actualizar("jam_compartir", _t("Tus canciones están en el jam") if quedan else None,
+                      detalle=_t("Suenan desde este dispositivo"))
+
+
 def jam_internet(d: dict) -> dict:
     """Anfitrión: abre (activar=True) o cierra el jam a internet con un túnel de Cloudflare."""
     from . import jam, tunel
@@ -1636,7 +1681,7 @@ FUNCIONES = {
     "descargar": descargar, "descargas": descargas_, "cancelar_descarga": cancelar_descarga,
     "limpiar_descargas": limpiar_descargas,
     "jam_crear": jam_crear, "jam_cerrar": jam_cerrar, "jam_buscar": jam_buscar, "jam_qr": jam_qr,
-    "jam_subir": jam_subir, "jam_internet": jam_internet, "actualizacion_descargar": actualizacion_descargar,
+    "jam_subir": jam_subir, "jam_mandar": jam_mandar, "jam_dejar": jam_dejar, "jam_internet": jam_internet, "actualizacion_descargar": actualizacion_descargar,
     "poner_idioma": poner_idioma, "inicio_en_linea": inicio_en_linea, "estado_animo": estado_animo,
     "explorar": explorar_, "playlist_yt": playlist_yt, "radio": radio,
     "destinos_exportar": destinos_exportar, "exportar_canciones": exportar_canciones,

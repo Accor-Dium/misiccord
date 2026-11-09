@@ -16,6 +16,10 @@ Cualquier Misiccord (Windows o Android) puede ser anfitrión. Este módulo levan
   POST /reaccion              {cliente, emoji}
   POST /control               {cliente, accion, ...}  solo el anfitrión (play, pausa, siguiente, mover...)
   POST /salir                 {cliente}
+  POST /subir                 (archivo) un invitado manda una canción suya: solo por internet o si no se le alcanza
+
+Una canción de un invitado en la red local no se copia: él la sirve desde su dispositivo (`compartir`, puertos
+47510–47519, GET /pista/<token> y /portada/<token>) y el anfitrión se la pasa a los demás por /audio/<pid>.
 
 Todas menos /info piden el código de 4 dígitos (cabecera X-Codigo o ?codigo=).
 El anfitrión anuncia la sala por UDP (puerto 47474) para que los demás la encuentren solos.
@@ -34,6 +38,7 @@ from pathlib import Path
 
 PUERTO_ANUNCIO = 47474
 PUERTOS = range(47480, 47490)
+PUERTOS_COMPARTIR = range(47510, 47520)  # 47500–47509 son de Mis dispositivos
 REACCIONES = {"🔥", "❤️", "😂", "👏", "🎉", "😮"}
 
 
@@ -59,6 +64,10 @@ def ips_locales() -> list[str]:
     except OSError:
         pass
     return ips or ["127.0.0.1"]
+
+
+# Lo que no sale de la sala: rutas del anfitrión y la dirección (con su token) del dispositivo de un invitado
+_PRIVADAS = ("ruta", "portada_local", "remota", "portada_remota", "de")
 
 
 class Sala:
@@ -95,7 +104,7 @@ class Sala:
 
     def publico(self) -> dict:
         with self.candado:
-            pistas = [{k: v for k, v in p.items() if k not in ("ruta", "portada_local")} for p in self.cola]
+            pistas = [{k: v for k, v in p.items() if k not in _PRIVADAS} for p in self.cola]
             invitados = [{"cliente": c[:6], "nombre": p["nombre"], "rol": p["rol"]}
                          for c, p in self.participantes.items() if time.time() - p["visto"] < 60]
             return {
@@ -153,7 +162,7 @@ class Sala:
 
     # --- Cola ---
 
-    def agregar_pista(self, cancion: dict, quien: str) -> dict:
+    def agregar_pista(self, cancion: dict, quien: str, remota: str | None = None) -> dict:
         from . import biblioteca, explorar
 
         pid = secrets.token_hex(5)
@@ -161,6 +170,16 @@ class Sala:
                  "album": cancion.get("album", ""), "duracion": cancion.get("duracion"),
                  "portada": cancion.get("portada") if str(cancion.get("portada") or "").startswith("http") else None,
                  "agregada_por": self.participantes.get(quien, {}).get("nombre", "Alguien"), "estado": "lista"}
+        if remota:
+            # Del dispositivo del invitado: suena directo de ahí, sin copiarla al anfitrión
+            pista.update(remota=f"{remota}/pista/{cancion['token']}", de=quien, directa=True)
+            if cancion.get("con_portada"):
+                pista["portada_remota"] = f"{remota}/portada/{cancion['token']}"
+                pista["portada"] = f"/portada/{pid}"
+            with self.candado:
+                self.cola.append(pista)
+            self.avisar()
+            return pista
         ruta = cancion.get("ruta")
         if not ruta and cancion.get("id"):
             existente = self.api._db().buscar_existente(pista["artista"], pista["titulo"], pista["duracion"], pista["album"])
@@ -216,6 +235,28 @@ class Sala:
                 self.indice -= 1
                 self.cola.insert(self.indice + 1, pista)
         self.avisar()
+
+    def quitar_directas(self, cliente: str):
+        """Quien se fue del jam ya no sirve sus canciones: salen las que faltaban por sonar."""
+        with self.candado:
+            antes = len(self.cola)
+            self.cola = [p for i, p in enumerate(self.cola) if i <= self.indice or p.get("de") != cliente]
+            cambio = len(self.cola) != antes
+        if cambio:
+            self.avisar()
+
+    def fallo_directa(self, pid: str):
+        """El invitado de esa canción ya no responde: si es la que suena, se pasa a la siguiente."""
+        with self.candado:
+            pista = next((p for p in self.cola if p["pid"] == pid), None)
+            if not pista or pista["estado"] == "error":
+                return
+            pista["estado"] = "error"
+            actual = 0 <= self.indice < len(self.cola) and self.cola[self.indice] is pista
+        if actual and self.sonando:
+            self.siguiente()
+        else:
+            self.avisar()
 
     def pista(self, pid: str) -> dict | None:
         with self.candado:
@@ -310,12 +351,17 @@ class _Manejador(BaseHTTPRequestHandler):
                 return self._esperar()
             if ruta.startswith("/audio/"):
                 pista = sala.pista(ruta.split("/")[2])
+                if pista and pista.get("remota"):
+                    return self._reenviar(pista, pista["remota"])
                 if pista and not pista.get("ruta") and pista.get("video_id"):
                     from . import flujo
                     return flujo.servir(self, pista["video_id"], self.headers.get("Range"), self._cors)
                 return self._archivo(pista, "ruta")
             if ruta.startswith("/portada/"):
-                return self._archivo(sala.pista(ruta.split("/")[2]), "portada_local")
+                pista = sala.pista(ruta.split("/")[2])
+                if pista and pista.get("portada_remota"):
+                    return self._reenviar(None, pista["portada_remota"])
+                return self._archivo(pista, "portada_local")
             if ruta == "/biblioteca":
                 q = self._consulta().get("q", "")
                 canciones = [sala.api._local(c) for c in sala.api._db().canciones(q)[:200]]
@@ -361,7 +407,15 @@ class _Manejador(BaseHTTPRequestHandler):
             if ruta == "/agregar":
                 if not es_anfitrion and not sala.invitados_agregan:
                     return self._json({"error": "El anfitrión no permite agregar canciones"}, 403)
-                return self._json({"pista": sala.agregar_pista(datos["cancion"], cliente)})
+                cancion = datos["cancion"]
+                if cancion.get("token"):
+                    remota = self._alcanzar_invitado(cancion)
+                    if not remota:
+                        return self._json({"error": "No alcanzo tu dispositivo", "codigo": "sin_alcance"}, 409)
+                    pista = sala.agregar_pista(cancion, cliente, remota)
+                else:
+                    pista = sala.agregar_pista(cancion, cliente)
+                return self._json({"pista": {k: v for k, v in pista.items() if k not in _PRIVADAS}})
             if ruta == "/votar":
                 sala.votos.add(cliente)
                 if len(sala.votos) >= sala.votos_necesarios():
@@ -378,6 +432,7 @@ class _Manejador(BaseHTTPRequestHandler):
                 return self._json({"ok": True})
             if ruta == "/salir":
                 sala.participantes.pop(cliente, None)
+                sala.quitar_directas(cliente)
                 sala.avisar()
                 return self._json({"ok": True})
             if ruta == "/control":
@@ -485,6 +540,7 @@ class _Manejador(BaseHTTPRequestHandler):
                     if c.startswith(d.get("cliente_corto", "-")) and c != sala.anfitrion:
                         sala.participantes.pop(c)
                         sala.bloqueados.add(c)
+                        threading.Thread(target=sala.quitar_directas, args=(c,), daemon=True).start()
         if accion == "siguiente":
             sala.siguiente()
             return
@@ -556,36 +612,74 @@ class _Manejador(BaseHTTPRequestHandler):
             with self.sala.cambio:
                 self.sala.cambio.wait(timeout=min(restante, 5))
 
+    def _alcanzar_invitado(self, cancion: dict) -> str | None:
+        """Dirección del servidor del invitado si se le alcanza desde aquí (misma red). Por el túnel nunca."""
+        import requests
+        ip = self.client_address[0]
+        if self.headers.get("CF-Connecting-IP") or ip.startswith("127."):
+            return None
+        base = f"http://{ip}:{int(cancion.get('puerto') or 0)}"
+        try:
+            r = requests.get(f"{base}/pista/{cancion['token']}", headers={"Range": "bytes=0-0"}, timeout=3)
+            return base if r.status_code in (200, 206) else None
+        except requests.RequestException:
+            return None
+
+    def _reenviar(self, pista: dict | None, url: str):
+        """Pasa a quien la pide (con Range) lo que sirve el dispositivo del invitado."""
+        import requests
+        cabeceras = {"Range": self.headers["Range"]} if self.headers.get("Range") else {}
+        try:
+            r = requests.get(url, headers=cabeceras, stream=True, timeout=(4, 30))
+        except requests.RequestException:
+            if pista:
+                self.sala.fallo_directa(pista["pid"])
+            return self._json({"error": "Quien mandó esta canción ya no está conectado"}, 502)
+        with r:
+            self.send_response(r.status_code)
+            self._cors()
+            for h in ("Content-Type", "Content-Length", "Content-Range", "Accept-Ranges"):
+                if r.headers.get(h):
+                    self.send_header(h, r.headers[h])
+            self.send_header("Cache-Control", "no-cache")
+            self.end_headers()
+            for bloque in r.iter_content(256 * 1024):
+                self.wfile.write(bloque)
+
     def _archivo(self, pista: dict | None, clave: str):
         if not pista or not pista.get(clave) or not Path(pista[clave]).exists():
             return self._json({"error": "No disponible"}, 404)
-        ruta = Path(pista[clave])
-        tamano = ruta.stat().st_size
-        inicio, fin = 0, tamano - 1
-        rango = self.headers.get("Range")
-        if rango and rango.startswith("bytes="):
-            a, _, b = rango[6:].partition("-")
-            inicio = int(a) if a else max(0, tamano - int(b))
-            fin = int(b) if a and b else tamano - 1
-            self.send_response(206)
-            self.send_header("Content-Range", f"bytes {inicio}-{fin}/{tamano}")
-        else:
-            self.send_response(200)
-        self._cors()
-        self.send_header("Content-Type", mimetypes.guess_type(ruta.name)[0] or "application/octet-stream")
-        self.send_header("Accept-Ranges", "bytes")
-        self.send_header("Content-Length", str(fin - inicio + 1))
-        self.send_header("Cache-Control", "no-cache")
-        self.end_headers()
-        with open(ruta, "rb") as f:
-            f.seek(inicio)
-            restante = fin - inicio + 1
-            while restante > 0:
-                bloque = f.read(min(256 * 1024, restante))
-                if not bloque:
-                    break
-                self.wfile.write(bloque)
-                restante -= len(bloque)
+        _servir_archivo(self, Path(pista[clave]), self._cors)
+
+
+def _servir_archivo(self: BaseHTTPRequestHandler, ruta: Path, cors) -> None:
+    """Manda el archivo completo o el pedazo que pida Range (para poder adelantar)."""
+    tamano = ruta.stat().st_size
+    inicio, fin = 0, tamano - 1
+    rango = self.headers.get("Range")
+    if rango and rango.startswith("bytes="):
+        a, _, b = rango[6:].partition("-")
+        inicio = int(a) if a else max(0, tamano - int(b))
+        fin = int(b) if a and b else tamano - 1
+        self.send_response(206)
+        self.send_header("Content-Range", f"bytes {inicio}-{fin}/{tamano}")
+    else:
+        self.send_response(200)
+    cors()
+    self.send_header("Content-Type", mimetypes.guess_type(ruta.name)[0] or "application/octet-stream")
+    self.send_header("Accept-Ranges", "bytes")
+    self.send_header("Content-Length", str(fin - inicio + 1))
+    self.send_header("Cache-Control", "no-cache")
+    self.end_headers()
+    with open(ruta, "rb") as f:
+        f.seek(inicio)
+        restante = fin - inicio + 1
+        while restante > 0:
+            bloque = f.read(min(256 * 1024, restante))
+            if not bloque:
+                break
+            self.wfile.write(bloque)
+            restante -= len(bloque)
 
 
 class _Servidor(ThreadingHTTPServer):
@@ -695,6 +789,78 @@ def _anunciar(sala: Sala, puerto: int) -> None:
         time.sleep(2)
     for s, _ in enchufes:
         s.close()
+
+
+# ---------- Invitado: servir sus canciones al anfitrión ----------
+# Así una canción de un invitado entra a la cola al instante y no se copia: el anfitrión la pide por pedazos
+# cuando le toca. Solo existe mientras el invitado tiene canciones suyas pendientes en la cola.
+
+_compartir: dict = {"servidor": None, "pistas": {}}  # token -> {"ruta", "portada", "pid"}
+_compartir_candado = threading.Lock()
+
+
+class _Proveedor(BaseHTTPRequestHandler):
+    """GET /pista/<token> y /portada/<token>: nada más. El token (que solo conoce el anfitrión) es el permiso."""
+    protocol_version = "HTTP/1.1"
+
+    def log_message(self, *args):
+        pass
+
+    def _cors(self):
+        self.send_header("Access-Control-Allow-Origin", "*")
+
+    def do_GET(self):
+        try:
+            tipo, _, token = urllib.parse.urlparse(self.path).path.strip("/").partition("/")
+            pista = _compartir["pistas"].get(token)
+            ruta = pista and {"pista": pista["ruta"], "portada": pista["portada"]}.get(tipo)
+            if not ruta or not Path(ruta).exists():
+                self.send_response(404)
+                self.send_header("Content-Length", "0")
+                self.end_headers()
+                return
+            _servir_archivo(self, Path(ruta), self._cors)
+        except (BrokenPipeError, ConnectionResetError):
+            pass
+
+
+def compartir(ruta: Path, portada: str | None) -> dict:
+    """Invitado: empieza a servir una canción suya. Devuelve el puerto y su token."""
+    with _compartir_candado:
+        if _compartir["servidor"] is None:
+            for puerto in PUERTOS_COMPARTIR:
+                try:
+                    servidor = _Servidor(("0.0.0.0", puerto), _Proveedor)
+                    break
+                except OSError:
+                    continue
+            else:
+                raise RuntimeError("No hay puertos libres para compartir la canción")
+            _compartir["servidor"] = servidor
+            threading.Thread(target=servidor.serve_forever, daemon=True).start()
+        token = secrets.token_urlsafe(16)
+        _compartir["pistas"][token] = {"ruta": str(ruta), "portada": portada, "pid": None}
+        return {"puerto": _compartir["servidor"].server_address[1], "token": token}
+
+
+def compartida(token: str, pid: str) -> None:
+    with _compartir_candado:
+        if token in _compartir["pistas"]:
+            _compartir["pistas"][token]["pid"] = pid
+
+
+def dejar_de_compartir(pids: list[str] | None = None, tokens: list[str] | None = None) -> int:
+    """Sin argumentos deja todo (salió del jam). Apaga el servidor si ya no queda nada; devuelve cuántas quedan."""
+    with _compartir_candado:
+        pistas = _compartir["pistas"]
+        for token in list(pistas):
+            if (pids is None and tokens is None) or pistas[token]["pid"] in (pids or ()) or token in (tokens or ()):
+                pistas.pop(token)
+        if not pistas and _compartir["servidor"]:
+            servidor, _compartir["servidor"] = _compartir["servidor"], None
+            threading.Thread(target=servidor.shutdown, daemon=True).start()
+            servidor.server_close()
+        return len(pistas)
 
 
 def buscar(segundos: float = 3.0) -> list[dict]:

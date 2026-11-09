@@ -12,7 +12,7 @@ documentada abajo; si algo no está documentado, pregunta antes de "arreglarlo".
 
 ---
 
-## Estado del proyecto (al 8 de noviembre de 2026 · versión publicada: **4.1.0**)
+## Estado del proyecto (al 9 de noviembre de 2026 · versión publicada: **4.2.0**)
 
 Resumen para que no tengas que leer todo el código. Actualiza esta sección cuando publiques una versión.
 
@@ -38,7 +38,7 @@ Resumen para que no tengas que leer todo el código. Actualiza esta sección cua
   `Music/Misiccord`, que pide "Acceso a todos los archivos").
 - **Jams** (escuchar juntos):
   - Modos *Sincronizado* (suena en todos) o *Solo aquí* (suena en el anfitrión, ideal con bocina). Cola compartida, votos para saltar, reacciones,
-    invitados mandan canciones de su teléfono o de YouTube Music (suenan al momento, sin esperar descarga), agregar desde cualquier lista.
+    invitados mandan canciones de su teléfono (en la red local suenan desde su teléfono, sin copiarse) o de YouTube Music (suenan al momento, sin esperar descarga), agregar desde cualquier lista.
   - Unirse: QR (escáner de la app o cámara normal), **link** que abre la app y entra solo, jams cercanos (UDP en la red) o IP + código.
   - **Por internet**: el anfitrión (PC o cel) toca "Abrir" en Invitar; túnel de Cloudflare, sin cuenta ni configurar el módem.
 - **Mis dispositivos** (Ajustes, sin cuentas): se vincula el cel con la PC una vez (código de 6 números o QR) y cada vez que están en la misma red Wi-Fi
@@ -80,6 +80,7 @@ medianos, el **menor**; detalles pequeños, el **parche**. Hasta 1.0.10 todo sub
 | 4.0.0 | **Mis dispositivos**: vincular el cel con la PC sin cuentas (código o QR) y sincronizarse solos en la misma red Wi-Fi: Me gusta, playlists, categorías, historial y copiar las canciones que le falten a cada uno. |
 | 4.0.1 | Mis dispositivos en Android 17: pide el permiso Dispositivos cercanos (sin él no se veía la PC), el QR trae todas las IPs, tarjeta "Vinculando…", lector de QR con cuadro y Cancelar, y el servidor (sincronizar y jam) ya no tarda ~12 s en arrancar en PCs con VPN. |
 | 4.1.0 | Cambios de Omar: historial de lo escuchado y de búsquedas, radio al tocar una canción en Inicio y la búsqueda, carátulas de cassette con etiqueta japonesa, todas las canciones del artista estilo Musicolet (cada disco completo), datos de YouTube Music primero al descargar y "ya la tienes" por álbum, romanización de árabe, hebreo y tailandés. |
+| 4.2.0 | Jams: la canción de un invitado suena desde su teléfono en la red local (sin copiarla al anfitrión, entra a la cola al instante; por internet se sigue subiendo) y crear o unirse a un jam pide el permiso Dispositivos cercanos (Android 17). |
 
 ### Qué está probado y dónde
 - **En dispositivos reales** (lo probó quien administra el proyecto): app de Windows, Android en varios teléfonos (Samsung S25 Ultra, Pixel 7 Pro…),
@@ -215,6 +216,13 @@ Todo el trabajo real vive en Python: python/wavedrop/  (el mismo código en las 
 - **QuickJS en Android, deno en Windows** como motor de JS de yt-dlp (`plataforma.js_runtimes`). En Android no hay ffmpeg: se baja m4a/opus tal cual.
 - **Cliente `android_music` sin JS** como primer intento en `flujo.py`: en el cel el JS por QuickJS tarda ~10 s por canción. Saltarse la página
   (`player_skip=webpage`) **provoca** "confirm you're not a bot": no lo actives.
+- **Canciones de un invitado en un jam (`api.jam_mandar`)**: en la red local **no se copian al anfitrión**. El invitado las sirve desde su
+  dispositivo (`jam.compartir`: servidor propio en 47510–47519, `/pista/<token>` y `/portada/<token>`, el token es el permiso) y el anfitrión
+  las reenvía por `/audio/<pid>` con Range (`_reenviar`); antes de aceptarla comprueba que alcanza al invitado (`_alcanzar_invitado`, 3 s).
+  Por internet o si no lo alcanza (firewall, túnel) se sube completa como antes (`/subir`). El invitado deja de servirlas al sonar o salir
+  de la cola (`soltarCompartidas` → `jam_dejar`) y al salir del jam; si se va, el anfitrión quita las suyas pendientes (`quitar_directas`)
+  y si deja de responder la salta (`fallo_directa`). En Android la tarea de fondo `jam_compartir` evita que se duerma mientras tenga alguna.
+  Unirse o crear un jam pide antes el permiso Dispositivos cercanos (`permisoRed`, Android 17).
 - **SSE solo en red local; sondeo largo `/esperar` por internet**: los túneles rápidos de Cloudflare no pasan SSE. El SSE va en HTTP/1.1 chunked a propósito.
 - **Seguridad del jam**: código de 4 dígitos + bloqueo tras 8 intentos fallidos por origen (`CF-Connecting-IP` por el túnel). No quites el límite.
 - **`allow_reuse_address = False` en Windows** (`jam.py`): si no, dos jams comparten puerto y se roban conexiones.

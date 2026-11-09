@@ -3,6 +3,7 @@
 import { py } from "./api.js";
 import { aviso, mostrarHoja } from "./estado.svelte.js";
 import { alternar, gananciaDe, preguntarAlReproducirEnJam, rep } from "./reproductor.svelte.js";
+import { permisoRed } from "./sincronizacion.svelte.js";
 import { t } from "./idioma.svelte.js";
 
 export const jam = $state({
@@ -17,6 +18,8 @@ export const jam = $state({
 const audio = new Audio();
 audio.preload = "auto";
 let eventos = null;
+// Canciones tuyas (de invitado) que suenan desde este dispositivo: se dejan de servir al sonar o salir de la cola
+const compartidas = new Set();
 
 // El audio del jam usa el mismo volumen que el reproductor normal (con la misma curva; sin refuerzo arriba de 100 %:
 // no pasa por Web Audio porque el audio del anfitrión no siempre manda CORS)
@@ -111,6 +114,10 @@ function escucharEventos() {
 }
 
 async function conectar(conexion) {
+  // Android 17+: sin "Dispositivos cercanos" la red local no responde (en las demás plataformas no hace nada)
+  if (!conexion.base.startsWith("https://") && !(await permisoRed())) {
+    throw new Error(t("Falta el permiso Dispositivos cercanos"));
+  }
   jam.conexion = conexion;
   await sincronizarReloj();
   const r = await pedir("/unirse", { nombre: conexion.nombre });
@@ -159,6 +166,10 @@ function terminar(mensaje) {
   jam.sala = null;
   jam.conexion = null;
   jam.conectado = false;
+  if (compartidas.size) {
+    compartidas.clear();
+    py("jam_dejar", {}).catch(() => {});
+  }
   if (mensaje) aviso(mensaje);
 }
 
@@ -179,6 +190,16 @@ const debeSonar = () => jam.escuchando && (jam.sala?.modo === "sincronizado" || 
 function aplicar(estado) {
   jam.sala = estado;
   actualizarAudio();
+  soltarCompartidas(estado);
+}
+
+function soltarCompartidas(estado) {
+  if (!compartidas.size) return;
+  const pendientes = new Set(estado.cola.slice(Math.max(0, estado.indice)).filter((p) => p.estado !== "error").map((p) => p.pid));
+  const sueltas = [...compartidas].filter((pid) => !pendientes.has(pid));
+  if (!sueltas.length) return;
+  for (const pid of sueltas) compartidas.delete(pid);
+  py("jam_dejar", { pids: sueltas }).catch(() => {});
 }
 
 function actualizarAudio() {
@@ -228,12 +249,20 @@ export function posicionJam() {
 
 // ---------- Acciones ----------
 
-/** Agrega una canción de TU biblioteca: el anfitrión la lee directo; un invitado se la sube por la red. */
+/**
+ * Agrega una canción de TU biblioteca: el anfitrión la lee directo. La de un invitado, en la misma red, suena desde
+ * su dispositivo (el anfitrión la va pidiendo, no la copia); por internet se le sube completa.
+ */
 export async function agregarPropia(c) {
   if (soyAnfitrion()) return agregar(c);
   const { base, codigo, cliente } = jam.conexion;
-  return py("jam_subir", { base, codigo, cliente, ruta: c.ruta, titulo: c.titulo, artista: c.artista,
-                           album: c.album, duracion: c.duracion });
+  const r = await py("jam_mandar", { base, codigo, cliente, ruta: c.ruta, titulo: c.titulo, artista: c.artista,
+                                     album: c.album, duracion: c.duracion });
+  if (r.pista?.directa) {
+    if (jam.conexion) compartidas.add(r.pista.pid);
+    else py("jam_dejar", {}).catch(() => {}); // saliste mientras se mandaba
+  }
+  return r;
 }
 
 /** ¿Puedo meter canciones a la cola? (el anfitrión siempre; los invitados si él lo permite) */

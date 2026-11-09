@@ -1,6 +1,7 @@
 // Traducción al inglés. Clave: el texto en español tal cual está en el código (con sus {datos}).
 // Lo que no esté aquí sale en español. Para otro idioma: copia este archivo y agrégalo en idioma.svelte.js.
 export const en = {
+  "Falta el permiso Dispositivos cercanos": "The Nearby devices permission is missing",
   "Automático (del dispositivo)": "Automatic (device language)",
   "1 canción": "1 song",
   "{n} canciones": "{n} songs",
