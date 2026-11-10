@@ -12,7 +12,7 @@ documentada abajo; si algo no está documentado, pregunta antes de "arreglarlo".
 
 ---
 
-## Estado del proyecto (al 9 de noviembre de 2026 · versión publicada: **4.2.0**)
+## Estado del proyecto (al 9 de noviembre de 2026 · versión publicada: **4.2.1**)
 
 Resumen para que no tengas que leer todo el código. Actualiza esta sección cuando publiques una versión.
 
@@ -81,6 +81,7 @@ medianos, el **menor**; detalles pequeños, el **parche**. Hasta 1.0.10 todo sub
 | 4.0.1 | Mis dispositivos en Android 17: pide el permiso Dispositivos cercanos (sin él no se veía la PC), el QR trae todas las IPs, tarjeta "Vinculando…", lector de QR con cuadro y Cancelar, y el servidor (sincronizar y jam) ya no tarda ~12 s en arrancar en PCs con VPN. |
 | 4.1.0 | Cambios de Omar: historial de lo escuchado y de búsquedas, radio al tocar una canción en Inicio y la búsqueda, carátulas de cassette con etiqueta japonesa, todas las canciones del artista estilo Musicolet (cada disco completo), datos de YouTube Music primero al descargar y "ya la tienes" por álbum, romanización de árabe, hebreo y tailandés. |
 | 4.2.0 | Jams: la canción de un invitado suena desde su teléfono en la red local (sin copiarla al anfitrión, entra a la cola al instante; por internet se sigue subiendo) y crear o unirse a un jam pide el permiso Dispositivos cercanos (Android 17). |
+| 4.2.1 | Video musical sincronizado con la canción: la canción espera a su video al empezar, al adelantar y si el video se traba; las diferencias chicas se corrigen sin saltos, y se elige el clip de duración más parecida. |
 
 ### Qué está probado y dónde
 - **En dispositivos reales** (lo probó quien administra el proyecto): app de Windows, Android en varios teléfonos (Samsung S25 Ultra, Pixel 7 Pro…),
@@ -235,6 +236,11 @@ Todo el trabajo real vive en Python: python/wavedrop/  (el mismo código en las 
   `explorar.buscar_video` porque el id de la canción en YT Music suele ser audio con la portada. El video descargado es `<canción>.mp4` junto al audio
   (`.mp4` no está en `biblioteca.EXTENSIONES`: así no se toma por canción) y `eliminar_canciones` lo borra también. Para **transmitir** solo sirve el cliente
   `android` de yt-dlp (mp4 360p por rangos); tv/web dan más calidad pero YouTube responde 403 sin token (`flujo._extraer_video` prueba cada candidato).
+  **El audio espera al video** (`retenido`, `alinear`): al empezar una canción con el video prendido no suena hasta que su video puede ir con ella (si en 10 s no llega, sigue sola: `sinEsperar`);
+  al adelantar, al prender el video a media canción o si el video se queda cargando (`waiting`), el audio se pausa, el video salta a donde va y arrancan juntos.
+  Antes el video saltaba solo y, como en un clip transmitido el salto tarda 1–2 s, llegaba tarde y volvía a saltar sin alcanzar nunca al audio. Diferencias de menos de 0.5 s
+  se corrigen con `playbackRate` del video (±10 %). Mientras espera, `rep.sonando` sigue diciendo lo que quiere el usuario (la pausa de esperar no cuenta como pausa) y `rep.cargando` muestra el círculo.
+  `buscar_video` elige el clip con la duración más parecida a la canción: uno con intro empezaría desfasado aunque la sincronía sea perfecta.
 - **Letra (`Letra.svelte`)**: el espacio arriba y abajo de la letra son divs medidos en px con el alto real de la caja. Con `padding` en vh la caja
   crecía más que su lugar y en el cel tapaba la barra para adelantar (tocabas una línea en vez de la barra). Y `scrollTo` en la caja, no `scrollIntoView`
   (ese movía al reproductor entero).

@@ -158,9 +158,11 @@ def buscar_video(artista: str, titulo: str, duracion: float | None = None) -> st
     if clave not in _clips:
         candidatos = [d for d in _yt().search(f"{biblioteca.artista_principal(artista)} {titulo}", filter="videos", limit=6)
                       if d.get("videoId")]
-        # El que dure lo mismo que la canción; si ninguno, el primero (es el que YouTube considera mejor)
-        elegido = next((d for d in candidatos if not duracion or not _dur(d) or abs(_dur(d) - duracion) <= 20),
-                       candidatos[0] if candidatos else None)
+        # El que dure más parecido a la canción (hasta 20 s de diferencia); si ninguno, el primero (el que YouTube
+        # considera mejor). No el primero que quepa: un clip con intro de 15 s cabía y quedaba desfasado del audio.
+        parecidos = [d for d in candidatos if duracion and _dur(d) and abs(_dur(d) - duracion) <= 20]
+        elegido = (min(parecidos, key=lambda d: abs(_dur(d) - duracion)) if parecidos
+                   else candidatos[0] if candidatos else None)
         _clips[clave] = elegido["videoId"] if elegido else None
     return _clips[clave]
 

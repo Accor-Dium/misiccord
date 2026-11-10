@@ -81,9 +81,21 @@ audios.forEach((a, i) => {
   a.addEventListener("ended", () => {
     if (i === actual && !avanceProgramado) siguienteAutomatico();
   });
-  a.addEventListener("play", () => { if (i === actual) { rep.sonando = true; sincronizarVideo(a); } });
+  a.addEventListener("play", () => {
+    if (i !== actual) return;
+    rep.sonando = true;
+    if (retenido) a.pause(); // sigue esperando al video (p. ej. el respaldo del flujo le dio play)
+    else sincronizarVideo(a);
+  });
   a.addEventListener("playing", () => { if (i === actual) saltos = 0; });
-  a.addEventListener("pause", () => { if (i === actual) { rep.sonando = false; sincronizarVideo(a); guardarPosicion(); } });
+  a.addEventListener("pause", () => {
+    if (i !== actual || retenido) return; // la pausa de esperar al video no es una pausa del usuario
+    rep.sonando = false;
+    sincronizarVideo(a);
+    guardarPosicion();
+  });
+  // Mientras el audio salta, el video no sigue con la parte de antes
+  a.addEventListener("seeking", () => { if (i === actual && videoActivo() && !video.paused) video.pause(); });
   a.addEventListener("seeked", () => { if (i === actual) { rep.salto++; sincronizarVideo(a); } });
   a.addEventListener("error", () => {
     if (i !== actual || !a.src) return;
@@ -276,24 +288,104 @@ export function montarVideo(nodo) {
   return { destroy: () => video.remove() };
 }
 
+// Que vayan juntos: mover el video a donde va el audio tarda (en un clip transmitido, 1–2 s), y si el audio sigue
+// mientras, el video llega tarde y vuelve a saltar sin alcanzarlo nunca. Por eso el audio ESPERA al video: al empezar
+// la canción, al adelantar y si el video se queda cargando (`alinear`). Las diferencias chicas se corrigen acelerando o
+// frenando el video un poco, sin brincos. Mientras espera, rep.sonando sigue diciendo lo que quiere el usuario.
+let retenido = false; // el audio está en pausa esperando al video
+let alineando = false;
+let sinEsperar = false; // este video no llegó a tiempo: la canción ya no lo espera, el video la alcanza como pueda
+let esperaInicial = null;
+
+const quiereVideo = () => rep.videoDisponible && rep.verVideo;
+const videoActivo = () => !!video.getAttribute("src") && rep.videoEstado !== "error";
+
+/** Espera a que `condicion()` se cumpla (revisándola con esos eventos de `m`); false si pasan `ms`. */
+function cuando(m, eventos, condicion, ms) {
+  return new Promise((ok) => {
+    if (condicion()) return ok(true);
+    const revisar = () => condicion() && fin(true);
+    const reloj = setTimeout(() => fin(false), ms);
+    function fin(v) {
+      clearTimeout(reloj);
+      for (const e of eventos) m.removeEventListener(e, revisar);
+      ok(v);
+    }
+    for (const e of eventos) m.addEventListener(e, revisar);
+  });
+}
+
+function retener(a) {
+  retenido = true;
+  rep.cargando = true;
+  if (!a.paused) a.pause();
+  if (!video.paused) video.pause();
+}
+
+/** El audio deja de esperar: si no le pusieron pausa mientras, sigue (y el video con él, por el evento "play"). */
+function soltar() {
+  clearTimeout(esperaInicial);
+  if (!retenido) return;
+  retenido = false;
+  rep.cargando = false;
+  if (rep.sonando) el().play().catch(() => {});
+}
+
+/** Pausa el audio, lleva el video a donde va y arrancan juntos cuando los dos pueden sonar. */
+async function alinear() {
+  if (alineando || !videoActivo() || video.readyState < 1) return;
+  alineando = true;
+  const yo = pedidoVideo;
+  const a = el();
+  retener(a);
+  video.currentTime = a.currentTime;
+  const llego = await cuando(video, ["seeked", "canplay", "error"],
+                             () => rep.videoEstado === "error" || (!video.seeking && video.readyState >= 3), 8000);
+  await cuando(a, ["canplay", "error"], () => a.readyState >= 3 || !!a.error, 8000);
+  alineando = false;
+  if (yo !== pedidoVideo || a !== el()) {
+    // Mientras, cambió la canción: su propio video la va a alinear (si ya cargó, de una vez)
+    if (retenido && videoActivo() && video.readyState >= 3) alinear();
+    return;
+  }
+  if (!llego) sinEsperar = true;
+  soltar();
+}
+
 function sincronizarVideo(a) {
-  if (!video.getAttribute("src") || rep.videoEstado === "error") return;
+  if (!videoActivo() || retenido || alineando) return;
+  const diferencia = video.currentTime - a.currentTime;
   if (a.paused) {
     if (!video.paused) video.pause();
-  } else if (video.paused && video.readyState >= 2) {
-    video.play().catch(() => {});
+    // Adelantaste en pausa: el video se mueve desde ya para que al darle play estén juntos
+    if (video.readyState >= 1 && !video.seeking && Math.abs(diferencia) > 0.1) video.currentTime = a.currentTime;
+    return;
   }
-  if (video.readyState >= 1 && Math.abs(video.currentTime - a.currentTime) > 0.5) video.currentTime = a.currentTime;
+  if (video.readyState < 2) return; // todavía carga: al poder sonar ("canplay") se alinea
+  if (Math.abs(diferencia) > 0.5) {
+    if (!sinEsperar) alinear();
+    else if (!video.seeking) video.currentTime = a.currentTime;
+    return;
+  }
+  video.playbackRate = Math.abs(diferencia) < 0.04 ? 1 : 1 - Math.max(-0.1, Math.min(0.1, diferencia * 0.5));
+  if (video.paused) video.play().catch(() => {});
 }
 
 video.addEventListener("loadedmetadata", () => { video.currentTime = el().currentTime; });
 video.addEventListener("canplay", () => {
   if (!video.getAttribute("src")) return;
   rep.videoEstado = "listo";
-  sincronizarVideo(el());
+  if (retenido) alinear();
+  else sincronizarVideo(el());
+});
+// Se quedó sin video que mostrar (red lenta): la canción lo espera en vez de dejarlo atrás
+video.addEventListener("waiting", () => {
+  if (!sinEsperar && !retenido && !el().paused && videoActivo()) alinear();
 });
 video.addEventListener("error", () => {
-  if (video.getAttribute("src")) rep.videoEstado = "error";
+  if (!video.getAttribute("src")) return;
+  rep.videoEstado = "error";
+  soltar();
 });
 
 /** Carga (o suelta) el video de la canción según el ajuste y el interruptor. */
@@ -302,15 +394,23 @@ async function prepararVideo(c) {
   video.pause();
   video.removeAttribute("src");
   video.load();
+  video.playbackRate = 1;
+  sinEsperar = false;
   rep.videoEstado = "";
-  if (!c || !rep.videoDisponible || !rep.verVideo) return;
+  if (!c || !quiereVideo()) {
+    soltar();
+    return;
+  }
   rep.videoEstado = "cargando";
   try {
     const r = await py("video", { ruta: c.ruta, id: c.id, titulo: c.titulo, artista: c.artista, duracion: c.duracion });
     if (yo !== pedidoVideo) return;
     video.src = r.ruta ? src(r.ruta) : r.url;
   } catch {
-    if (yo === pedidoVideo) rep.videoEstado = "error";
+    if (yo === pedidoVideo) {
+      rep.videoEstado = "error";
+      soltar();
+    }
   }
 }
 
@@ -359,11 +459,11 @@ function cruzarA(url, segundos, desde = 0) {
   if (viejo.paused || segundos <= 0) {
     viejo.pause();
     nuevo.volume = base();
-    nuevo.play().catch(() => {});
+    if (!retenido) nuevo.play().catch(() => {});
     return;
   }
   nuevo.volume = 0;
-  nuevo.play().catch(() => {});
+  if (!retenido) nuevo.play().catch(() => {}); // si espera al video, la vieja se apaga sola y la nueva entra con él
   const inicio = performance.now();
   const total = segundos * 1000;
   const v0 = viejo.volume;
@@ -404,6 +504,21 @@ async function cargar(i, manual, desde = 0) {
   rep.cargando = false;
   // El navegador deja arrancar Web Audio solo después de que tocas algo: aquí ya hubo un toque
   if (eq?.ctx.state === "suspended") eq.ctx.resume().catch(() => {});
+  if (quiereVideo()) {
+    // La canción no arranca hasta que su video pueda ir con ella; si en 10 s no llega, sigue sola
+    retenido = true;
+    rep.sonando = true;
+    rep.cargando = true;
+    clearTimeout(esperaInicial);
+    esperaInicial = setTimeout(() => {
+      if (retenido && !alineando) {
+        sinEsperar = true;
+        soltar();
+      }
+    }, 10000);
+  } else {
+    soltar();
+  }
   // Fundido completo cuando termina sola; uno cortito si la cambias tú
   cruzarA(fuente, manual ? Math.min(0.6, rep.fundido) : rep.fundido, desde);
   prepararVideo(c);
@@ -581,7 +696,8 @@ export function alternar() {
   if (retomar !== null) {
     saltos = rep.cola.length;
     cargar(rep.indice, true, retomar);
-  } else if (el().paused) el().play().catch(() => {});
+  } else if (retenido) rep.sonando = !rep.sonando; // esperando al video: solo cambia si debe sonar al llegar
+  else if (el().paused) el().play().catch(() => {});
   else el().pause();
 }
 
