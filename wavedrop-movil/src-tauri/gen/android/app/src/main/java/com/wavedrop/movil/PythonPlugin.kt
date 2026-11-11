@@ -26,7 +26,6 @@ import app.tauri.plugin.Invoke
 import app.tauri.plugin.JSObject
 import app.tauri.plugin.Plugin
 import com.chaquo.python.Python
-import com.chaquo.python.android.AndroidPlatform
 import org.json.JSONArray
 import org.json.JSONObject
 import java.util.concurrent.LinkedBlockingQueue
@@ -70,6 +69,8 @@ class ArgsMedios {
     var posicion: Double = 0.0
     var sonando: Boolean = false
     var enJam: Boolean = false
+    var cola: String = "[]" // JSON: [[título, artista], …] de la que suena y las que siguen (Android Auto)
+    var indice: Int = 0
 }
 
 @InvokeArg
@@ -114,31 +115,15 @@ class PythonPlugin(private val activity: Activity) : Plugin(activity) {
     // El plugin se crea con la primera Activity; si la app volvió a una sesión conservada (MainActivity), la visible es otra
     private val pantalla: Activity get() = MainActivity.actual ?: activity
 
-    private fun python(): Python {
-        if (!Python.isStarted()) {
-            Python.start(AndroidPlatform(activity.applicationContext))
-        }
-        return Python.getInstance()
+    init {
+        // Android Auto sonaba con la app cerrada: deja la sesión guardada (la interfaz la lee al arrancar) y, si sonaba,
+        // que siga sonando aquí (lo mismo que el Play del widget)
+        if (ReproductorAuto.entregar()) Medios.playAlAbrir = true
     }
 
-    /** Carpetas que usa Python: datos (base de datos), música, caché, dónde está qjs y los almacenamientos. */
-    private fun contexto(): String {
-        val app = activity.applicationContext
-        // Raíz de cada almacenamiento (interno y tarjetas SD): getExternalFilesDirs da .../Android/data/<app>/files en cada uno
-        val volumenes = JSONArray()
-        for (dir in app.getExternalFilesDirs(null)) {
-            val ruta = dir?.absolutePath ?: continue
-            val corte = ruta.indexOf("/Android/data/")
-            if (corte > 0) volumenes.put(ruta.substring(0, corte))
-        }
-        return JSONObject()
-            .put("datos", app.filesDir.absolutePath + "/wavedrop")
-            .put("musica", app.getExternalFilesDir(Environment.DIRECTORY_MUSIC)?.absolutePath ?: app.filesDir.absolutePath + "/musica")
-            .put("cache", app.cacheDir.absolutePath)
-            .put("libs", app.applicationInfo.nativeLibraryDir)
-            .put("volumenes", volumenes)
-            .toString()
-    }
+    private fun python(): Python = Nucleo.python(activity.applicationContext)
+
+    private fun contexto(): String = Nucleo.contexto(activity.applicationContext)
 
     @Command
     fun llamar(invoke: Invoke) {
@@ -322,8 +307,9 @@ class PythonPlugin(private val activity: Activity) : Plugin(activity) {
     @Command
     fun medios(invoke: Invoke) {
         val a = invoke.parseArgs(ArgsMedios::class.java)
+        val cola = JSONArray(a.cola).let { c -> List(c.length()) { c.getJSONArray(it).let { x -> x.optString(0) to x.optString(1) } } }
         ServicioMedios.actualizar(activity.applicationContext, if (!a.hay) null else EstadoMedios(
-            a.titulo, a.artista, a.album, a.portada, a.duracion, a.posicion, a.sonando, a.enJam))
+            a.titulo, a.artista, a.album, a.portada, a.duracion, a.posicion, a.sonando, a.enJam, cola, a.indice))
         invoke.resolve()
     }
 

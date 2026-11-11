@@ -8,8 +8,9 @@
 import { invoke } from "@tauri-apps/api/core";
 import { untrack } from "svelte";
 import { alEvento } from "./api.js";
+import { py } from "./api.js";
 import { control, jam, pistaActual, posicionJam, soyAnfitrion, urlJam, votar } from "./jam.svelte.js";
-import { alternar, anterior, irA, rep, siguiente } from "./reproductor.svelte.js";
+import { alternar, anterior, irA, rep, reproducir, reproducirDeCola, siguiente } from "./reproductor.svelte.js";
 
 const esAndroid = /Android/i.test(navigator.userAgent);
 const web = "mediaSession" in navigator ? navigator.mediaSession : null;
@@ -31,6 +32,8 @@ function ahora() {
     portada: c.portada || null, duracion: rep.dur || c.duracion || 0,
     // Mientras carga la siguiente, en pausa y en 0 (si no, el reloj sigue contando la anterior)
     posicion: rep.cargando ? 0 : rep.pos, sonando: rep.sonando && !rep.cargando,
+    // La cola de Android Auto: la que suena y las 29 que siguen (cada una se elige por su lugar, `indice` + n)
+    indice: rep.indice, cola: JSON.stringify(rep.cola.slice(rep.indice, rep.indice + 30).map((x) => [x.titulo, x.artista])),
   };
 }
 
@@ -63,8 +66,15 @@ function actualizarWeb(e) {
   } catch {}
 }
 
-/** Un botón del reloj, la notificación o los audífonos. */
-function accion(nombre, posicion) {
+/** Algo elegido en Android Auto: la carpeta de api.auto y su número (ServicioMedios.kt). Pasa por reproducir(), que en un jam pregunta. */
+async function tocarDeAuto(padre, indice) {
+  const r = await py("auto", { id: padre });
+  if (r.elementos.length) reproducir(r.elementos.map((e) => e.cancion), Math.min(indice, r.elementos.length - 1), r.titulo);
+}
+
+/** Un botón del reloj, la notificación, los audífonos o Android Auto. */
+function accion(nombre, posicion, d = {}) {
+  if (nombre === "auto") return tocarDeAuto(d.padre, d.indice).catch(() => {});
   if (jam.sala) {
     if (!soyAnfitrion()) {
       if (nombre === "siguiente") votar().catch(() => {});
@@ -81,9 +91,10 @@ function accion(nombre, posicion) {
   else if (nombre === "siguiente") siguiente();
   else if (nombre === "anterior") anterior();
   else if (nombre === "ir" && posicion != null) irA(posicion);
+  else if (nombre === "cola" && rep.cola[d.indice]) reproducirDeCola(d.indice);
 }
 
-alEvento("medios", (d) => accion(d.accion, d.posicion));
+alEvento("medios", (d) => accion(d.accion, d.posicion, d));
 
 /** Arranque: si la app se abrió con el Play del widget, sigue sonando lo que quedó (ReanudarWidget.kt). */
 export function revisarWidget() {

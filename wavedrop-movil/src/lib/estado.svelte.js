@@ -228,13 +228,21 @@ export async function descargar(canciones, coleccion = "") {
   aviso(lista.length === 1 ? t("Descargando “{titulo}”", { titulo: lista[0].titulo }) : t("{n} canciones en la cola", { n: lista.length }));
 }
 
-export async function descargarLink(url) {
+/**
+ * Baja todo lo de un link. Con `playlist` además lo importa: queda como playlist de la app, en el mismo orden, y cada canción
+ * entra en cuanto está (las que ya tienes, de una vez). El mismo link otra vez actualiza esa playlist (api._importar).
+ */
+export async function descargarLink(url, { playlist = false } = {}) {
   await pedirAvisosUnaVez();
-  const r = await py("descargar", { url });
+  const r = await py("descargar", { url, playlist });
   for (const t of r.trabajos) descargas.trabajos[t.id] = t;
+  if (r.playlist) ui.version++; // la playlist nueva o las que ya tenías ya están en ella
+  const ver = r.playlist ? { accion: { texto: t("Ver"), f: () => abrir("playlist", { id: r.playlist.id, nombre: r.playlist.nombre }) } } : {};
   // Tidal solo deja leer las primeras 50 de una playlist: que se sepa que faltan
   if (r.total > r.trabajos.length) {
-    aviso(t("{n} de {total} canciones de “{coleccion}” en la cola: el link solo deja leer esas", { n: r.trabajos.length, total: r.total, coleccion: r.coleccion }), "info", { duracion: 7000 });
+    aviso(t("{n} de {total} canciones de “{coleccion}” en la cola: el link solo deja leer esas", { n: r.trabajos.length, total: r.total, coleccion: r.coleccion }), "info", { duracion: 7000, ...ver });
+  } else if (r.playlist) {
+    aviso(t("Playlist “{nombre}” importada: sus {n} canciones entran conforme se descargan", { nombre: r.playlist.nombre, n: r.trabajos.length }), "ok", { duracion: 7000, ...ver });
   } else {
     aviso(t("{n} canciones de “{coleccion}” en la cola", { n: r.trabajos.length, coleccion: r.coleccion }));
   }

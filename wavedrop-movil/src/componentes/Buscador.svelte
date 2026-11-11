@@ -113,6 +113,11 @@
     alEscribir();
   }
 
+  /** Un link pegado: bajar sus canciones y, si `playlist`, también guardarla como playlist de la app. */
+  function bajarLink(playlist) {
+    descargarLink(texto, { playlist }).then(limpiar).catch(() => aviso(t("No pude leer ese link"), "error"));
+  }
+
   const tipos = [["todo", t("Todo")], ["canciones", t("Canciones")], ["albumes", t("Álbumes")], ["artistas", t("Artistas")]];
 </script>
 
@@ -147,8 +152,11 @@
     {:else if esLink}
       <div class="link">
         <p>{t("¿Descargar todas las canciones de este link? Funciona con playlists y álbumes de YouTube, YT Music, Spotify, Tidal y SoundCloud.")}</p>
-        <button class="pildora cian" onclick={() => descargarLink(texto).then(limpiar).catch(() => aviso(t("No pude leer ese link"), "error"))}>
-          <Icono nombre="descargas" tam={20} /> Descargar playlist
+        <button class="pildora cian" onclick={() => bajarLink(true)}>
+          <Icono nombre="lista" tam={20} /> {t("Importar como playlist")}
+        </button>
+        <button class="pildora oscura" onclick={() => bajarLink(false)}>
+          <Icono nombre="descargas" tam={20} /> {t("Solo descargar")}
         </button>
       </div>
     {:else}
@@ -217,6 +225,8 @@
   .rejilla { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 18px 14px; margin-top: 16px; }
   .link { margin-top: 20px; padding: 18px; border-radius: var(--radio); background: var(--tarjeta); }
   .link p { margin: 0 0 14px; color: var(--tenue); line-height: 1.5; }
+  .link { display: flex; flex-wrap: wrap; gap: 10px; }
+  .link p { flex-basis: 100%; margin-bottom: 4px; }
   .historial { list-style: none; margin: 0; padding: 0; }
   .historial li { display: flex; align-items: center; gap: 4px; }
   .volver-a { flex: 1; min-width: 0; display: flex; align-items: center; gap: 14px; padding: 12px 0; color: var(--texto); font-size: 15.5px; text-align: left; }

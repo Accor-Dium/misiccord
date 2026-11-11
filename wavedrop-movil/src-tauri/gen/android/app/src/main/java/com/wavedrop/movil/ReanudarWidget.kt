@@ -11,7 +11,7 @@ import android.os.Bundle
 class ReanudarWidget : Activity() {
     override fun onCreate(estado: Bundle?) {
         super.onCreate(estado)
-        if (Medios.eventos != null) {
+        if (Medios.eventos != null || ReproductorAuto.activo) { // la app viva, o Android Auto sonando sin ella
             Medios.avisar("play")
         } else {
             Medios.playAlAbrir = true
