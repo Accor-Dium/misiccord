@@ -12,7 +12,7 @@ documentada abajo; si algo no está documentado, pregunta antes de "arreglarlo".
 
 ---
 
-## Estado del proyecto (al 9 de noviembre de 2026 · versión publicada: **4.2.1**)
+## Estado del proyecto (al 10 de noviembre de 2026 · versión publicada: **4.3.0**)
 
 Resumen para que no tengas que leer todo el código. Actualiza esta sección cuando publiques una versión.
 
@@ -84,14 +84,14 @@ medianos, el **menor**; detalles pequeños, el **parche**. Hasta 1.0.10 todo sub
 | 4.1.0 | Cambios de Omar: historial de lo escuchado y de búsquedas, radio al tocar una canción en Inicio y la búsqueda, carátulas de cassette con etiqueta japonesa, todas las canciones del artista estilo Musicolet (cada disco completo), datos de YouTube Music primero al descargar y "ya la tienes" por álbum, romanización de árabe, hebreo y tailandés. |
 | 4.2.0 | Jams: la canción de un invitado suena desde su teléfono en la red local (sin copiarla al anfitrión, entra a la cola al instante; por internet se sigue subiendo) y crear o unirse a un jam pide el permiso Dispositivos cercanos (Android 17). |
 | 4.2.1 | Video musical sincronizado con la canción: la canción espera a su video al empezar, al adelantar y si el video se traba; las diferencias chicas se corrigen sin saltos, y se elige el clip de duración más parecida. |
-| *(sin publicar)* | **Android Auto completo** (Misiccord sale como app de música: navegar tu música, buscar, cola; con la app cerrada toca `ReproductorAuto`), pausa al desconectarse el coche o los audífonos, e **importar playlists** de Spotify, YouTube, YT Music, Tidal y SoundCloud como playlists de la app. |
+| 4.3.0 | (Elliot) **Android Auto completo** (Misiccord sale como app de música: navegar tu música, buscar, cola; con la app cerrada toca `ReproductorAuto`), pausa al desconectarse el coche o los audífonos, e **importar playlists** de Spotify, YouTube, YT Music, Tidal y SoundCloud como playlists de la app. |
 
 ### Qué está probado y dónde
 - **En dispositivos reales** (lo probó quien administra el proyecto): app de Windows, Android en varios teléfonos (Samsung S25 Ultra, Pixel 7 Pro…),
   jams en red local, escáner QR, jam por internet abierto desde el cel.
 - **Solo en el emulador o con scripts**: Mis dispositivos (dos procesos en la misma PC y la interfaz en el navegador: vincular, código equivocado, playlists, Me gusta, categorías, historial, copiar canciones en los dos sentidos, borrar), controles de reloj (con `cmd media_session dispatch`), links en Android, eliminar canciones,
   tiempos de streaming, streaming progresivo (en Chromium con la red frenada), retomar la sesión y el Play del widget con la app cerrada.
-- **Sin probar todavía (cambios sin publicar, 10 nov 2026)**: **todo lo de Android Auto**: el Kotlin nuevo (`AndroidAuto.kt`, `ServicioMedios` como MediaBrowserService) se escribió sin poder compilarlo; falta `npx tauri android build` y probarlo con el Desktop Head Unit (DHU) o un coche, con la app abierta y cerrada. De importar playlists se probó el núcleo con `scripts/probar_importar_auto.py` (orden, actualizar, árbol de Android Auto) y la interfaz compila (`vite build`, `svelte-check`), pero no se ha importado un link real.
+- **Sin probar todavía (de 4.3.0)**: **todo lo de Android Auto**: el Kotlin nuevo (`AndroidAuto.kt`, `ServicioMedios` como MediaBrowserService) ya compila y se publicó en 4.3.0, pero falta probarlo con el Desktop Head Unit (DHU) o un coche, con la app abierta y cerrada. De importar playlists se probó el núcleo con `scripts/probar_importar_auto.py` (orden, actualizar, árbol de Android Auto) y la interfaz compila (`vite build`, `svelte-check`), pero no se ha importado un link real.
 - **Sin probar todavía**: links y "una sola ventana" en Windows, panel de medios de Windows, un reloj real, un jam con YouTube Music entre teléfonos reales, videos musicales y carpetas de la biblioteca en el cel, lo de 1.0.8 (segundo plano, ecualizador, editar etiquetas) en teléfonos reales, y de 1.0.9: exportar a una USB real y todo en la app de Windows (se probó en navegador con el núcleo de Python y en el emulador: menú, compartir de Android, jalar para actualizar, idioma); de 1.0.10, el volumen arriba de 100 % con música real; de 2.0.1, el widget y quitar de recientes en teléfonos reales (en el emulador sí: sigue sonando, controles, reabrir, atrás, reiniciar para el QR) (la curva y el limitador se midieron en Chromium con señales de prueba); de 3.1.0, la burbuja con dos monitores o con escalado distinto de 100 % (se probó en un monitor de 3440×1440); de 3.2.0, el horizontal en teléfonos reales con muesca o bordes curvos (se probó en el navegador y en el emulador); de 3.3.0, la carátula de vinilo y CD en el cel y el volumen de la burbuja con música real (se vio en el navegador); de 3.4.0, retomar la sesión y el Play del widget con la app cerrada en teléfonos reales (se revisó el núcleo y la biblioteca en el navegador); Mis dispositivos entre un cel real y la PC (que Android reciba el anuncio UDP con la pantalla encendida, el aviso del firewall de Windows, copiar muchas canciones y quedarse sin espacio).
 
 ### Dónde guarda las cosas
