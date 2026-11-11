@@ -226,8 +226,12 @@ class Biblioteca:
             self.con.execute("ALTER TABLE eventos ADD COLUMN duracion REAL")
             self.con.execute("ALTER TABLE eventos ADD COLUMN portada TEXT")
             self.con.commit()
-        if "portada" not in {r[1] for r in self.con.execute("PRAGMA table_info(playlists)")}:
+        de_playlists = {r[1] for r in self.con.execute("PRAGMA table_info(playlists)")}
+        if "portada" not in de_playlists:
             self.con.execute("ALTER TABLE playlists ADD COLUMN portada TEXT")
+            self.con.commit()
+        if "origen" not in de_playlists:  # el link de la playlist importada (Spotify, YouTube…): importarla otra vez la actualiza
+            self.con.execute("ALTER TABLE playlists ADD COLUMN origen TEXT")
             self.con.commit()
         self.candado = threading.RLock()
 

@@ -1306,19 +1306,21 @@ class _Gestor:
         else:
             _fondo_actualizar(f"descarga:{tid}", None, listo="cancion" if t["estado"] == "listo" else None)
 
-    def agregar(self, entrada: descargas.Entrada, coleccion: str) -> dict:
+    def agregar(self, entrada: descargas.Entrada, coleccion: str, lugar: tuple[dict, int] | None = None) -> dict:
+        """lugar: (importación, posición) si la canción va a una playlist importada (ver _importar)."""
         tid = uuid.uuid4().hex[:10]
         self.trabajos[tid] = {"id": tid, "titulo": entrada.titulo, "artista": entrada.artista,
                               "portada": entrada.miniatura, "estado": "cola", "pct": 0, "creado": time.time()}
         existente = _db().buscar_existente(entrada.artista, entrada.titulo, entrada.duracion, entrada.album or "")
         if existente:
+            _a_la_playlist(lugar, existente.id)
             self._avisar(tid, estado="existe", ruta=str(existente.ruta))
             return self.trabajos[tid]
-        self._pool().submit(self._bajar, tid, entrada, coleccion)
+        self._pool().submit(self._bajar, tid, entrada, coleccion, lugar)
         emitir("descarga", {"trabajo": self.trabajos[tid]})
         return self.trabajos[tid]
 
-    def _bajar(self, tid: str, entrada: descargas.Entrada, coleccion: str):
+    def _bajar(self, tid: str, entrada: descargas.Entrada, coleccion: str, lugar: tuple[dict, int] | None = None):
         aj = _ajustes()
         formato = descargas.FORMATOS[min(int(aj.get("formato", 2)), len(descargas.FORMATOS) - 1)]
         d = descargas.Descargador(str(plataforma.carpeta_musica()), formato, not aj.get("por_artista", True), coleccion)
@@ -1344,6 +1346,7 @@ class _Gestor:
             c = _db().cancion_por_ruta(ruta)
             if c:
                 _db().registrar("descarga", ruta, c.artista, c.titulo)
+                _a_la_playlist(lugar, c.id)  # antes del "listo": la playlist abierta se recarga con ese aviso
             if aj.get("video_descargar"):
                 # Se anota antes de dar la canción por lista: así el servicio en segundo plano no se apaga entre las dos
                 _fondo_actualizar(f"video:{tid}", _t("Video de “{titulo}”", titulo=entrada.titulo))
@@ -1371,12 +1374,62 @@ class _Gestor:
 _gestor = _Gestor()
 
 
+# ---------- Importar playlists (Spotify, YouTube, Tidal, SoundCloud) ----------
+# Las playlists de la app solo tienen canciones descargadas: importar = bajar las que falten y que cada una entre a su
+# lugar en cuanto esté (las que ya tenías, de inmediato). Importar otra vez el mismo link actualiza esa misma playlist.
+
+_candado_importar = threading.Lock()
+
+
+def _origen(url: str) -> str:
+    """El mismo link se comparte de muchas formas: Spotify agrega ?si=… e /intl-es/, YouTube tiene varios dominios y
+    la playlist puede venir dentro de un watch?v=…&list=…"""
+    import urllib.parse
+    p = urllib.parse.urlsplit(url.strip())
+    lista = urllib.parse.parse_qs(p.query).get("list")
+    if lista:
+        return f"youtube:{lista[0]}"
+    ruta = re.sub(r"^/intl-[a-z]{2}(-[a-z]{2})?(?=/)", "", p.path, flags=re.I).rstrip("/")
+    return f"{p.netloc.lower().removeprefix('www.')}{ruta}"
+
+
+def _importar(url: str, col: descargas.Coleccion) -> dict:
+    """La playlist de la app donde entra lo de ese link (la misma si ya se importó antes)."""
+    from .sincronizar import _nombre_libre
+    db, origen = _db(), _origen(url)
+    fila = db._q("SELECT id, nombre FROM playlists WHERE origen = ?", (origen,))
+    if fila:
+        pid, nombre = fila[0]["id"], fila[0]["nombre"]
+    else:
+        nombre = _nombre_libre(col.titulo.strip() or "Playlist", None)
+        pid = db.crear_playlist(nombre)
+        db._w("UPDATE playlists SET origen = ? WHERE id = ?", (origen, pid))
+    return {"playlist": pid, "nombre": nombre, "ids": [None] * len(col.entradas)}
+
+
+def _a_la_playlist(lugar: tuple[dict, int] | None, cancion_id: int) -> None:
+    """Una canción de una playlist importada ya está: entra en el orden del original y lo que agregaste tú va al final."""
+    if not lugar:
+        return
+    imp, n = lugar
+    db, pid = _db(), imp["playlist"]
+    with _candado_importar:
+        imp["ids"][n] = cancion_id
+        db.agregar_a_playlist(pid, [cancion_id])
+        orden = list(dict.fromkeys(c for c in imp["ids"] if c))  # repetida en el original: entra una vez
+        suyas = set(orden)
+        db.ordenar_playlist(pid, orden + [c.id for c in db.canciones_de_playlist(pid) if c.id not in suyas])
+
+
 def descargar(d: dict) -> dict:
-    """Recibe canciones de YouTube Music ({"canciones": [...]}) o un link de playlist/álbum ({"url": ...})."""
+    """Recibe canciones de YouTube Music ({"canciones": [...]}) o un link de playlist/álbum ({"url": ...}).
+    Con {"playlist": true} el link además queda como playlist de la app (importar)."""
     if d.get("url"):
         col = descargas.obtener_coleccion(d["url"])
-        trabajos = [_gestor.agregar(e, col.titulo) for e in col.entradas]
-        return {"coleccion": col.titulo, "trabajos": trabajos, "total": col.total}
+        imp = _importar(d["url"], col) if d.get("playlist") else None
+        trabajos = [_gestor.agregar(e, col.titulo, (imp, n) if imp else None) for n, e in enumerate(col.entradas)]
+        return {"coleccion": col.titulo, "trabajos": trabajos, "total": col.total,
+                "playlist": {"id": imp["playlist"], "nombre": imp["nombre"]} if imp else None}
     trabajos = []
     for i, c in enumerate(d.get("canciones", []), start=1):
         r = explorar.ResultadoCancion(c["id"], c["titulo"], c["artista"], c.get("album", ""),
@@ -1651,6 +1704,57 @@ def sesion_guardada(d: dict) -> dict:
         return sesion
 
 
+# ---------- Android Auto ----------
+# El coche pide lo que hay en cada carpeta (ServicioMedios.kt, onLoadChildren) y, al tocar "<carpeta>#<n>", la interfaz
+# o el reproductor de Android Auto (ReproductorAuto.kt) piden aquí esa misma lista: así <n> siempre es la misma canción.
+
+def auto(d: dict) -> dict:
+    """Lo que hay dentro de `id`: carpetas o canciones. "buscar:<texto>" es la búsqueda por voz ("pon … en Misiccord").
+    Android Auto enseña los hijos de la raíz como pestañas y solo caben 4: álbumes y artistas van dentro de Biblioteca."""
+    i, db = d.get("id") or "raiz", _db()
+
+    def carpeta(id_, titulo, subtitulo="", portada=None):
+        return {"id": id_, "titulo": titulo, "subtitulo": subtitulo, "portada": portada, "carpeta": True}
+
+    if i == "raiz":
+        return {"titulo": "Misiccord", "elementos": [
+            carpeta("recientes", _t("Recientes")), carpeta("me_gusta", _t("Me gusta")),
+            carpeta("playlists", _t("Playlists")), carpeta("biblioteca", _t("Biblioteca"))]}
+    if i == "biblioteca":
+        return {"titulo": _t("Biblioteca"), "elementos": [carpeta("albumes", _t("Álbumes")), carpeta("artistas", _t("Artistas"))]}
+    if i == "playlists":
+        return {"titulo": _t("Playlists"), "elementos": [carpeta(f"playlist:{p['id']}", p["nombre"], portada=p["portada"])
+                                                         for p in db.playlists()]}
+    if i == "albumes":
+        return {"titulo": _t("Álbumes"), "elementos": [carpeta("album:" + json.dumps([a.nombre, a.grupo], ensure_ascii=False),
+                                                               a.nombre, a.artista, a.portada) for a in db.albumes()]}
+    if i == "artistas":
+        return {"titulo": _t("Artistas"), "elementos": [carpeta(f"artista:{a['nombre']}", a["nombre"], portada=a["foto"] or a["portada"])
+                                                        for a in db.artistas()]}
+    if i == "recientes":
+        titulo, canciones = _t("Recientes"), _historial(50, sin_repetir=True)
+    elif i == "me_gusta":
+        titulo, canciones = _t("Me gusta"), me_gusta({})["canciones"]
+    elif i.startswith("playlist:"):
+        pid = int(i[9:])
+        titulo = next((p["nombre"] for p in db.playlists() if p["id"] == pid), "")
+        canciones = playlist({"id": pid})["canciones"]
+    elif i.startswith("album:"):
+        nombre, grupo = json.loads(i[6:])
+        titulo, canciones = nombre, album_local({"nombre": nombre, "grupo": grupo})["canciones"]
+    elif i.startswith("artista:"):
+        titulo, canciones = i[8:], [_local(c) for c in db.canciones_de_artista(i[8:])]
+    elif i.startswith("buscar:"):
+        # Primero lo tuyo (sirve sin internet); si no tienes nada así, YouTube Music
+        titulo = i[7:]
+        canciones = [_local(c) for c in db.canciones(titulo)[:50]] or [_en_linea(c) for c in explorar.buscar_canciones(titulo, 20)]
+    else:
+        raise RuntimeError(f"No existe {i}")
+    canciones = [c for c in canciones if c.get("ruta") or c.get("id")]  # Me gusta sin archivo ni id no se pueden oír
+    return {"titulo": titulo, "elementos": [{"id": f"{i}#{n}", "titulo": c["titulo"], "subtitulo": c.get("artista") or "",
+                                             "portada": c.get("portada"), "cancion": c} for n, c in enumerate(canciones)]}
+
+
 # ---------- Entrada ----------
 
 FUNCIONES = {
@@ -1685,7 +1789,7 @@ FUNCIONES = {
     "poner_idioma": poner_idioma, "inicio_en_linea": inicio_en_linea, "estado_animo": estado_animo,
     "explorar": explorar_, "playlist_yt": playlist_yt, "radio": radio,
     "destinos_exportar": destinos_exportar, "exportar_canciones": exportar_canciones,
-    "copiar_archivos": copiar_archivos, "mostrar_archivo": mostrar_archivo,
+    "copiar_archivos": copiar_archivos, "mostrar_archivo": mostrar_archivo, "auto": auto,
 }
 
 

@@ -44,6 +44,13 @@ _EN = {
     "1 canción descargada": "1 song downloaded",
     "{n} canciones descargadas": "{n} songs downloaded",
     "Video descargado": "Video downloaded",
+    # Android Auto (api.auto)
+    "Recientes": "Recent",
+    "Me gusta": "Liked songs",
+    "Playlists": "Playlists",
+    "Biblioteca": "Library",
+    "Álbumes": "Albums",
+    "Artistas": "Artists",
 }
 
 

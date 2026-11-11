@@ -5,4 +5,6 @@
   <!-- Para compartir canciones de cualquier carpeta de música, también de tarjetas SD (/storage/XXXX-XXXX) -->
   <external-files-path name="musica_app" path="." />
   <root-path name="almacenamiento" path="storage" />
+  <!-- Fotos de artistas y carátulas de playlists, para las listas de Android Auto -->
+  <files-path name="datos" path="wavedrop" />
 </paths>

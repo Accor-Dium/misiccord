@@ -712,4 +712,10 @@ export const en = {
   "Guardar": "Save",
   "Álbum guardado": "Album saved",
   "No se pudieron guardar {n}: {error}": "{n} couldn't be saved: {error}",
+  // Importar playlists
+  "Importar": "Import",
+  "Importar como playlist": "Import as playlist",
+  "Solo descargar": "Just download",
+  "Guardarla también como playlist en tu biblioteca": "Also save it as a playlist in your library",
+  "Playlist “{nombre}” importada: sus {n} canciones entran conforme se descargan": "Playlist “{nombre}” imported: its {n} songs are added as they download",
 };

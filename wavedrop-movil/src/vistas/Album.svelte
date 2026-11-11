@@ -157,6 +157,11 @@
     <div class="acciones">
       <button class="pildora clara" onclick={() => reproducir(a.canciones, 0, a.titulo)}><Icono nombre="play" relleno tam={20} /> {t("Reproducir")}</button>
       <button class="pildora oscura" onclick={() => reproducirAleatorio(a.canciones, a.titulo)}><Icono nombre="aleatorio" tam={20} /> {t("Aleatorio")}</button>
+      {#if e.playlist && a.lista}
+        <!-- Playlist de YouTube Music: queda como playlist tuya (y baja lo que falte) -->
+        <button class="redondo relleno" onclick={() => descargarLink(a.lista, { playlist: true }).catch(() => aviso(t("No pude leer ese link"), "error"))}
+                aria-label={t("Importar como playlist")} title={t("Importar como playlist")}><Icono nombre="lista" tam={22} /></button>
+      {/if}
       {#if faltan.length}
         <button class="redondo relleno" onclick={descargarTodo} aria-label={e.playlist ? t("Descargar playlist") : t("Descargar álbum")}><Icono nombre="descargas" tam={22} /></button>
       {/if}

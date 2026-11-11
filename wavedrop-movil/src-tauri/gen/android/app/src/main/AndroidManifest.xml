@@ -67,10 +67,19 @@
             android:name="android.support.FILE_PROVIDER_PATHS"
             android:resource="@xml/file_paths" />
         </provider>
+        <!-- Exportado para que Android Auto lo encuentre y lo enlace (aunque la app esté cerrada): qué ve cada app lo decide onGetRoot -->
         <service
             android:name=".ServicioMedios"
-            android:exported="false"
-            android:foregroundServiceType="mediaPlayback" />
+            android:exported="true"
+            android:foregroundServiceType="mediaPlayback">
+            <intent-filter>
+                <action android:name="android.media.browse.MediaBrowserService" />
+            </intent-filter>
+        </service>
+        <!-- Misiccord sale en Android Auto como app de música -->
+        <meta-data
+            android:name="com.google.android.gms.car.application"
+            android:resource="@xml/automotive_app_desc" />
         <!-- Widget de la pantalla de inicio (WidgetMisiccord.kt y su Play, ReanudarWidget.kt) -->
         <activity
             android:name=".ReanudarWidget"

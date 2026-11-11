@@ -10,6 +10,9 @@
 
   let link = $state("");
   let leyendo = $state(false);
+  // Importar = además guardarla como playlist de la app. Un link de álbum no lo necesita (ya sale en Álbumes)
+  let comoPlaylist = $state(true);
+  $effect(() => { comoPlaylist = !/\/album\/|list=OLAK5uy_/i.test(link); });
   const lista = $derived(Object.values(descargas.trabajos).sort((a, b) => b.creado - a.creado));
   const textos = {
     cola: t("En cola"), buscando: t("Buscando…"), descargando: t("Descargando"), etiquetando: t("Completando datos"),
@@ -25,7 +28,7 @@
     if (!link.trim()) return;
     leyendo = true;
     try {
-      await descargarLink(link.trim());
+      await descargarLink(link.trim(), { playlist: comoPlaylist });
       link = "";
     } catch {
       aviso(t("No pude leer ese link"), "error");
@@ -53,8 +56,12 @@
   <form class="caja" onsubmit={(ev) => { ev.preventDefault(); bajarLink(); }}>
     <Icono nombre="link" tam={20} />
     <input bind:value={link} placeholder={t("Pega un link de playlist o álbum")} />
-    <button class="pildora cian chica" disabled={leyendo || !link.trim()}>{leyendo ? t("Leyendo…") : t("Descargar")}</button>
+    <button class="pildora cian chica" disabled={leyendo || !link.trim()}>{leyendo ? t("Leyendo…") : comoPlaylist ? t("Importar") : t("Descargar")}</button>
   </form>
+  <label class="opcion">
+    <input type="checkbox" bind:checked={comoPlaylist} />
+    {t("Guardarla también como playlist en tu biblioteca")}
+  </label>
   <p class="nota">{t("YouTube, YT Music, Spotify, Tidal o SoundCloud. Las que ya tienes no se vuelven a bajar.")}</p>
 
   {#each lista as tr (tr.id)}
@@ -90,6 +97,8 @@
   .chica { height: 42px; padding: 0 16px; font-size: 14px; }
   .chica:disabled { opacity: 0.5; }
   .nota { color: var(--tenue); font-size: 13px; margin: 8px 2px 14px; }
+  .opcion { display: flex; align-items: center; gap: 10px; margin: 12px 2px 0; font-size: 14px; cursor: pointer; }
+  .opcion input { width: 18px; height: 18px; accent-color: var(--cian); }
   .trabajo { display: flex; align-items: center; gap: 12px; padding: 8px 0; }
   .textos { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 3px; }
   small { color: var(--tenue); font-size: 13px; }
