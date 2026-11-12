@@ -12,7 +12,7 @@ documentada abajo; si algo no está documentado, pregunta antes de "arreglarlo".
 
 ---
 
-## Estado del proyecto (al 10 de noviembre de 2026 · versión publicada: **4.3.0**)
+## Estado del proyecto (al 12 de noviembre de 2026 · versión publicada: **4.3.1**)
 
 Resumen para que no tengas que leer todo el código. Actualiza esta sección cuando publiques una versión.
 
@@ -86,7 +86,7 @@ medianos, el **menor**; detalles pequeños, el **parche**. Hasta 1.0.10 todo sub
 | 4.2.0 | Jams: la canción de un invitado suena desde su teléfono en la red local (sin copiarla al anfitrión, entra a la cola al instante; por internet se sigue subiendo) y crear o unirse a un jam pide el permiso Dispositivos cercanos (Android 17). |
 | 4.2.1 | Video musical sincronizado con la canción: la canción espera a su video al empezar, al adelantar y si el video se traba; las diferencias chicas se corrigen sin saltos, y se elige el clip de duración más parecida. |
 | 4.3.0 | (Elliot) **Android Auto completo** (Misiccord sale como app de música: navegar tu música, buscar, cola; con la app cerrada toca `ReproductorAuto`), pausa al desconectarse el coche o los audífonos, e **importar playlists** de Spotify, YouTube, YT Music, Tidal y SoundCloud como playlists de la app. |
-| *(sin publicar)* | **Android Auto completo** (Misiccord sale como app de música: navegar tu música, buscar, cola; con la app cerrada toca `ReproductorAuto`), pausa al desconectarse el coche o los audífonos, **importar playlists** de Spotify, YouTube, YT Music, Tidal y SoundCloud como playlists de la app, y "Agregar a playlist" en el menú de una vista previa (la descarga y la mete a la playlist). |
+| 4.3.1 | (Elliot) **Agregar a playlist desde una vista previa**: en una canción que no tienes, se descarga y entra al final de esa playlist al terminar (si ya la tienes, entra de una vez). |
 
 ### Qué está probado y dónde
 - **En dispositivos reales** (lo probó quien administra el proyecto): app de Windows, Android en varios teléfonos (Samsung S25 Ultra, Pixel 7 Pro…),
