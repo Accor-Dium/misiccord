@@ -12,7 +12,7 @@ documentada abajo; si algo no está documentado, pregunta antes de "arreglarlo".
 
 ---
 
-## Estado del proyecto (al 12 de noviembre de 2026 · versión publicada: **4.3.1**)
+## Estado del proyecto (al 12 de noviembre de 2026 · versión publicada: **4.3.2**)
 
 Resumen para que no tengas que leer todo el código. Actualiza esta sección cuando publiques una versión.
 
@@ -87,6 +87,7 @@ medianos, el **menor**; detalles pequeños, el **parche**. Hasta 1.0.10 todo sub
 | 4.2.1 | Video musical sincronizado con la canción: la canción espera a su video al empezar, al adelantar y si el video se traba; las diferencias chicas se corrigen sin saltos, y se elige el clip de duración más parecida. |
 | 4.3.0 | (Elliot) **Android Auto completo** (Misiccord sale como app de música: navegar tu música, buscar, cola; con la app cerrada toca `ReproductorAuto`), pausa al desconectarse el coche o los audífonos, e **importar playlists** de Spotify, YouTube, YT Music, Tidal y SoundCloud como playlists de la app. |
 | 4.3.1 | (Elliot) **Agregar a playlist desde una vista previa**: en una canción que no tienes, se descarga y entra al final de esa playlist al terminar (si ya la tienes, entra de una vez). |
+| 4.3.2 | Abren los artistas cuya página trae un carrusel promocional sin título (Alan Walker decía "No encontré a…" y no salían sus canciones populares): falla de ytmusicapi que se esquiva en `explorar._cliente`. |
 
 ### Qué está probado y dónde
 - **En dispositivos reales** (lo probó quien administra el proyecto): app de Windows, Android en varios teléfonos (Samsung S25 Ultra, Pixel 7 Pro…),
@@ -336,6 +337,9 @@ Todo el trabajo real vive en Python: python/wavedrop/  (el mismo código en las 
 - **Tidal (`descargas._leer_tidal`)**: se lee `embed.tidal.com/<tipo>s/<id>` (canciones en `window.tidalMediaSessionMetadata`, orden y duración en
   sus `<list-item>`); el nombre y el total salen del JSON-LD de `tidal.com/<tipo>/<id>`. La página no dice su charset: se decodifica como UTF-8 a mano.
   Solo trae 50 canciones: `Coleccion.total` avisa cuántas faltan. **No** uses la API interna del reproductor web de Tidal (pide un token suyo).
+- **Páginas de artista con carrusel sin título** (`explorar._cliente`): algunas (Alan Walker) traen arriba uno promocional ("Watch the new music video")
+  y ytmusicapi 1.12.3 se rompía (`get_artist`: KeyError 'header', "No encontré a Alan Walker") y buscaba las canciones populares solo en la primera sección.
+  Todo `YTMusic` se crea con `_cliente()`, que quita esos carruseles de la respuesta de un canal (`browseId` `UC…`) antes de que la librería la lea. Si una versión nueva de ytmusicapi lo arregla, se puede quitar.
 - **Géneros de YouTube Music** (`explorar.playlists_de_estado`): `get_mood_playlists` de ytmusicapi solo sirve para los estados de ánimo; en los géneros
   truena ("Unable to find navigationEndpoint") porque vienen en secciones. Ahí se leen con `parse_mixed_content` (`_estado_por_secciones`).
 - **Compartir en Android** pasa por `FileProvider` (`res/xml/file_paths.xml` incluye `/storage` para tarjetas SD) con `ClipData`: sin ella WhatsApp no recibe

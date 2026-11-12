@@ -23,10 +23,31 @@ from .idioma import actual as idioma_actual, t
 _local = threading.local()
 
 
+def _cliente(**opciones) -> YTMusic:
+    """YTMusic que quita de la página de un artista los carruseles sin título. Algunos (Alan Walker) traen arriba uno
+    promocional ("Watch the new music video") y ytmusicapi 1.12.3 se rompe con él: busca las canciones populares solo en
+    la primera sección (salían 0) y da por hecho que todo carrusel tiene título (get_artist truena con KeyError 'header'
+    y el artista no abre). Ninguno de los que se usan (canciones, álbumes, sencillos, parecidos…) viene sin título."""
+    from ytmusicapi.navigation import SECTION_LIST, SINGLE_COLUMN_TAB, nav
+    cliente = YTMusic(**opciones)
+    enviar = cliente._send_request
+
+    def _send_request(endpoint, body, *args, **kwargs):
+        respuesta = enviar(endpoint, body, *args, **kwargs)
+        if endpoint == "browse" and str(body.get("browseId", "")).startswith("UC"):  # canal = artista
+            secciones = nav(respuesta, SINGLE_COLUMN_TAB + SECTION_LIST, True)
+            if isinstance(secciones, list):
+                secciones[:] = [x for x in secciones if "header" in x.get("musicCarouselShelfRenderer", {"header": 1})]
+        return respuesta
+
+    cliente._send_request = _send_request
+    return cliente
+
+
 def _yt() -> YTMusic:
     # Un cliente por hilo: las búsquedas corren en segundo plano
     if not hasattr(_local, "cliente"):
-        _local.cliente = YTMusic()
+        _local.cliente = _cliente()
     return _local.cliente
 
 
@@ -36,7 +57,7 @@ def _yt_idioma() -> YTMusic:
     los filtros (canciones, álbumes) regresan vacíos."""
     idioma = idioma_actual()
     if getattr(_local, "idioma", None) != idioma:
-        _local.cliente_idioma = YTMusic(language=idioma)
+        _local.cliente_idioma = _cliente(language=idioma)
         _local.idioma = idioma
     return _local.cliente_idioma
 
