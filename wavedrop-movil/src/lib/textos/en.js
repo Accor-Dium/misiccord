@@ -712,6 +712,7 @@ export const en = {
   "Guardar": "Save",
   "Álbum guardado": "Album saved",
   "No se pudieron guardar {n}: {error}": "{n} couldn't be saved: {error}",
+  "Descargando “{titulo}”: entra a “{nombre}” al terminar": "Downloading “{titulo}”: it goes into “{nombre}” when done",
   // Importar playlists
   "Importar": "Import",
   "Importar como playlist": "Import as playlist",

@@ -3,17 +3,19 @@
 import { py } from "./api.js";
 import { compartir } from "./compartir.js";
 import { pedirEliminar } from "./eliminar.js";
-import { abrir, abrirAlbumDe, alternarMeGusta, aviso, cerrarReproductor, completarDatos, descargar, mostrarHoja, ui, verInfo } from "./estado.svelte.js";
+import { abrir, abrirAlbumDe, alternarMeGusta, aviso, cerrarReproductor, completarDatos, descargar, descargarAPlaylist, mostrarHoja, ui, verInfo } from "./estado.svelte.js";
 import { t } from "./idioma.svelte.js";
 import { agregarAlJam, puedoAgregar } from "./jam.svelte.js";
 import { agregarACola, reproducir, rep } from "./reproductor.svelte.js";
 
+/** Las de tu biblioteca entran de una vez; una vista previa se descarga y entra al terminar (descargarAPlaylist). */
 async function aPlaylist(c) {
   const { playlists } = await py("biblioteca");
   mostrarHoja({
     titulo: t("Agregar a playlist"),
     opciones: playlists.length
       ? playlists.map((p) => ({ texto: p.nombre, icono: "lista", accion: async () => {
+          if (!c.db_id) return descargarAPlaylist(c, p).catch((e) => aviso(e.message, "error"));
           await py("agregar_a_playlist", { id: p.id, db_ids: [c.db_id] });
           ui.version++;
           aviso(t("Agregada a “{nombre}”", { nombre: p.nombre }), "ok");
@@ -65,6 +67,8 @@ export async function menuCancion(c, extras = []) {
   ];
 
   const ops = [...extras];
+  // Vista previa: el botón grande es Descargar; aquí, descargarla directo a una playlist
+  if (!c.db_id && (c.id || c.ruta)) ops.push({ texto: t("Agregar a playlist"), icono: "lista", accion: () => aPlaylist(c) });
   if (enJam) ops.push({ texto: t("Agregar al jam"), icono: "jam", accion: () => agregarAlJam(c) });
   ops.push({ texto: t("Iniciar radio"), icono: "radio", accion: () => radio(c) });
   ops.push({ texto: t("Agregar a la cola"), icono: "cola", accion: () => {

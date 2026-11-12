@@ -31,7 +31,7 @@ descargas.obtener_coleccion = lambda url: col
 class Falso:  # "descarga" creando el archivo
     def __init__(self, *a): pass
     def descargar(self, e, prog, canc):
-        return types.SimpleNamespace(ruta=str(mp3("nueva", e.titulo, e.artista, "Origin")))
+        return types.SimpleNamespace(ruta=str(mp3(e.titulo, e.titulo, e.artista, "Origin")))
 descargas.Descargador = Falso
 class Ya:  # el pool corre todo en el momento
     def submit(self, f, *a): f(*a)
@@ -60,6 +60,15 @@ assert len(api._db().playlists()) == 1
 z = api.descargar({"url": "https://music.youtube.com/playlist?list=PLy", "playlist": True})
 assert z["playlist"]["nombre"] == "Mi lista (2)", z
 assert api._origen("https://www.youtube.com/watch?v=abc&list=PLy") == api._origen("https://music.youtube.com/playlist?list=PLy")
+
+# "Agregar a playlist" desde una vista previa: se baja y entra al final; si ya la tienes, entra de una vez
+antes = orden(pid)
+w = api.descargar({"canciones": [{"id": "yt1", "titulo": "Previa", "artista": "Muse", "duracion": 2}], "a_playlist": pid})
+assert w["ya"] == 0 and orden(pid) == antes + ["Previa"], orden(pid)
+uno = next(c for c in api.biblioteca_({})["canciones"] if c["titulo"] == "Uno")
+api.quitar_de_playlist({"id": pid, "db_ids": [uno["db_id"]]})
+w = api.descargar({"canciones": [{"id": "yt2", "titulo": "Uno", "artista": "Queen", "ruta": uno["ruta"]}], "a_playlist": pid})
+assert w["ya"] == 1 and w["trabajos"] == [] and orden(pid)[-1] == "Uno", (w, orden(pid))
 
 # Android Auto
 raiz = api.auto({})["elementos"]

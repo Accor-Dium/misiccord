@@ -1408,11 +1408,15 @@ def _importar(url: str, col: descargas.Coleccion) -> dict:
 
 
 def _a_la_playlist(lugar: tuple[dict, int] | None, cancion_id: int) -> None:
-    """Una canción de una playlist importada ya está: entra en el orden del original y lo que agregaste tú va al final."""
+    """Una canción de una playlist importada ya está: entra en el orden del original y lo que agregaste tú va al final.
+    Sin orden que seguir (`ids` None: "Agregar a playlist" de una vista previa) solo entra al final."""
     if not lugar:
         return
     imp, n = lugar
     db, pid = _db(), imp["playlist"]
+    if imp["ids"] is None:
+        db.agregar_a_playlist(pid, [cancion_id])
+        return
     with _candado_importar:
         imp["ids"][n] = cancion_id
         db.agregar_a_playlist(pid, [cancion_id])
@@ -1430,12 +1434,21 @@ def descargar(d: dict) -> dict:
         trabajos = [_gestor.agregar(e, col.titulo, (imp, n) if imp else None) for n, e in enumerate(col.entradas)]
         return {"coleccion": col.titulo, "trabajos": trabajos, "total": col.total,
                 "playlist": {"id": imp["playlist"], "nombre": imp["nombre"]} if imp else None}
-    trabajos = []
+    # {"a_playlist": id}: además entran a esa playlist (al final) en cuanto estén, como al importar
+    destino = {"playlist": int(d["a_playlist"]), "ids": None} if d.get("a_playlist") else None
+    trabajos, ya = [], 0
     for i, c in enumerate(d.get("canciones", []), start=1):
+        if destino and c.get("ruta"):  # vista previa de una que ya tienes: entra de una vez, sin bajar nada
+            local = _db().cancion_por_ruta(Path(c["ruta"]))
+            if local:
+                _a_la_playlist((destino, 0), local.id)
+                ya += 1
+                continue
         r = explorar.ResultadoCancion(c["id"], c["titulo"], c["artista"], c.get("album", ""),
                                       c.get("duracion"), c.get("portada"))
-        trabajos.append(_gestor.agregar(explorar.a_entrada(r, i), d.get("coleccion") or "YouTube Music"))
-    return {"trabajos": trabajos}
+        trabajos.append(_gestor.agregar(explorar.a_entrada(r, i), d.get("coleccion") or "YouTube Music",
+                                        (destino, 0) if destino else None))
+    return {"trabajos": trabajos, "ya": ya + sum(t["estado"] == "existe" for t in trabajos)}
 
 
 def descargas_(d: dict) -> dict:
