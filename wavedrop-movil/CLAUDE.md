@@ -38,6 +38,7 @@ Resumen para que no tengas que leer todo el código. Actualiza esta sección cua
   Metadatos de YouTube Music (MusicBrainz si no está ahí; de MusicBrainz solo el género), carpetas por artista, 1–4 descargas a la vez, carpeta configurable (en Android: carpeta de la app o la pública
   `Music/Misiccord`, que pide "Acceso a todos los archivos").
   **Importar playlists** (Descargas, al pegar un link en el buscador o el botón de lista en una playlist de YouTube Music): además de bajarlas, queda como playlist de la app en el mismo orden; importar el mismo link otra vez la actualiza.
+  **Agregar a playlist desde una vista previa** (menú ⋯ de una canción que no tienes): se descarga y entra al final de esa playlist al terminar; si ya la tienes, entra de una vez.
 - **Jams** (escuchar juntos):
   - Modos *Sincronizado* (suena en todos) o *Solo aquí* (suena en el anfitrión, ideal con bocina). Cola compartida, votos para saltar, reacciones,
     invitados mandan canciones de su teléfono (en la red local suenan desde su teléfono, sin copiarse) o de YouTube Music (suenan al momento, sin esperar descarga), agregar desde cualquier lista.
@@ -85,6 +86,7 @@ medianos, el **menor**; detalles pequeños, el **parche**. Hasta 1.0.10 todo sub
 | 4.2.0 | Jams: la canción de un invitado suena desde su teléfono en la red local (sin copiarla al anfitrión, entra a la cola al instante; por internet se sigue subiendo) y crear o unirse a un jam pide el permiso Dispositivos cercanos (Android 17). |
 | 4.2.1 | Video musical sincronizado con la canción: la canción espera a su video al empezar, al adelantar y si el video se traba; las diferencias chicas se corrigen sin saltos, y se elige el clip de duración más parecida. |
 | 4.3.0 | (Elliot) **Android Auto completo** (Misiccord sale como app de música: navegar tu música, buscar, cola; con la app cerrada toca `ReproductorAuto`), pausa al desconectarse el coche o los audífonos, e **importar playlists** de Spotify, YouTube, YT Music, Tidal y SoundCloud como playlists de la app. |
+| *(sin publicar)* | **Android Auto completo** (Misiccord sale como app de música: navegar tu música, buscar, cola; con la app cerrada toca `ReproductorAuto`), pausa al desconectarse el coche o los audífonos, **importar playlists** de Spotify, YouTube, YT Music, Tidal y SoundCloud como playlists de la app, y "Agregar a playlist" en el menú de una vista previa (la descarga y la mete a la playlist). |
 
 ### Qué está probado y dónde
 - **En dispositivos reales** (lo probó quien administra el proyecto): app de Windows, Android en varios teléfonos (Samsung S25 Ultra, Pixel 7 Pro…),
@@ -299,6 +301,7 @@ Todo el trabajo real vive en Python: python/wavedrop/  (el mismo código en las 
 - **Importar playlists (`api._importar`, `_a_la_playlist`)**: las playlists de la app solo tienen canciones descargadas, así que importar = bajar lo que falte y que cada una entre en cuanto está, en el orden del original (las que agregaste tú van al final; repetida en el original, entra una vez). Las que ya tenías entran al momento.
   La playlist recuerda su link en `playlists.origen` (normalizado por `_origen`: sin el `?si=` ni `/intl-es/` de Spotify; en YouTube solo cuenta `list=`, en cualquier dominio): importarlo otra vez actualiza esa misma, no crea otra. No se borra de la playlist lo que el original ya no tenga.
   En Descargas la casilla "Guardarla también como playlist" viene puesta salvo en links de álbum (`/album/`, `list=OLAK5uy_`). Prueba: `scripts/probar_importar_auto.py`.
+  **"Agregar a playlist" de una vista previa** (`menuCancion.aPlaylist` → `descargarAPlaylist` → `api.descargar` con `a_playlist`): usa el mismo `_a_la_playlist` con `ids` None, que solo la agrega al final (sin reordenar). Si la vista previa trae `ruta` (ya la tienes) entra de una vez sin bajar nada. Las playlists siguen siendo solo de canciones descargadas: lo que falle al bajar no entra.
 - **Categorías** (`lib/categorias.js`, `vistas/Categoria.svelte`): se deducen en la interfaz del género, el álbum y las 3 carpetas más cercanas al archivo, no de toda la ruta ("C:\Users\Anime Fan\…"). No se tocan las etiquetas.
   Gana lo que hizo el usuario: `categorias_canciones`, luego `categorias_albumes` y al final lo deducido más los géneros sumados en la tabla `categorias`. Esa tabla guarda las creadas y los cambios a las de la app, que no se borran: se ocultan (`oculta`), porque sus reglas siguen en el código.
   Las décadas son categorías más (id `d1980`): salen del año, pero se renombran, se llenan y se vacían igual. Lo corregido a mano sin ninguna década conserva la de su año; por eso sacar una canción de su década guarda `sin-decada`.

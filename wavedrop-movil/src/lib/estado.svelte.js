@@ -229,6 +229,22 @@ export async function descargar(canciones, coleccion = "") {
 }
 
 /**
+ * "Agregar a playlist" de una canción que no está en tu biblioteca (vista previa): se descarga y entra a esa playlist al
+ * terminar. Si ya la tienes (o ya estaba descargada), entra de una vez.
+ */
+export async function descargarAPlaylist(c, playlist) {
+  await pedirAvisosUnaVez();
+  const r = await py("descargar", { canciones: [c], coleccion: playlist.nombre, a_playlist: playlist.id });
+  for (const x of r.trabajos) descargas.trabajos[x.id] = x;
+  if (r.ya) {
+    ui.version++;
+    aviso(t("Agregada a “{nombre}”", { nombre: playlist.nombre }), "ok");
+  } else {
+    aviso(t("Descargando “{titulo}”: entra a “{nombre}” al terminar", { titulo: c.titulo, nombre: playlist.nombre }), "ok");
+  }
+}
+
+/**
  * Baja todo lo de un link. Con `playlist` además lo importa: queda como playlist de la app, en el mismo orden, y cada canción
  * entra en cuanto está (las que ya tienes, de una vez). El mismo link otra vez actualiza esa playlist (api._importar).
  */
